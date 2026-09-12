@@ -98,6 +98,8 @@ estimates should not be assumed to be on a common liability scale.
 
 ## genomicPCA/GWAMA
 
+Complete example, including a dataset ID and optional GWAMA-summary overrides:
+
 ```bash
 ldsc-gpca gpca \
   --input /absolute/path/selected_traits.csv \
@@ -105,8 +107,21 @@ ldsc-gpca gpca \
   --gpca_input_folder /absolute/path/gpca_inputs \
   --source_path /absolute/path/my_GWAMA_26032020.R \
   --outdir /absolute/path/gpca_output \
-  --splitby_chr split
+  --splitby_chr split \
+  --dataset-id cluster1 \
+  --gwama-output-n-eff 330000 \
+  --gwama-output-info 0.9
 ```
+
+Post-processing runs automatically after successful GWAMA. With this example:
+
+* Combined results: `/absolute/path/gpca_output/cluster1_GWAMA_combined_results.txt.gz`
+* Selected-column summary: `/absolute/path/gpca_output/harmonised/cluster1_GPCA_inputs.txt.gz`
+* Override audit: `/absolute/path/gpca_output/cluster1_postprocess.json`
+
+The values `330000` and `0.9` are example overrides, **not defaults**. Omit those
+two options to preserve reported N_eff and INFO. They never change LDSC/GPCA
+calculations or filtering.
 
 The GPCA manifest is a separate CSV requiring `traitname`; its row order defines
 matrix and GWAMA order. The LDSC file must supply every selected self-pair and pair,
@@ -123,7 +138,17 @@ does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC her
 
 After successful GWAMA, results are combined automatically. No `--postprocess`
 flag is needed. The selected-column summary defaults to `--outdir/harmonised/`.
-Optionally append these settings to the GPCA command above:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| Post-processing | Automatic after successful GWAMA | No `--postprocess` flag required |
+| `--dataset-id` | Name of the `--outdir` folder | Prefix for exported filenames; replaces `--postprocess-name` |
+| `--harmonised-output` | `<outdir>/harmonised/` | Optional alternative folder for the selected-column summary |
+| `--gwama-output-n-eff` | Preserve reported N_eff | Optional N_eff override in the exported summary only |
+| `--gwama-output-info` | Preserve reported INFO | Optional INFO override in the exported summary only |
+
+To change the summary folder, add `--harmonised-output` to the main command. The
+complete set of optional export settings is:
 
 ```bash
 --harmonised-output /absolute/path/harmonised \
