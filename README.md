@@ -117,16 +117,7 @@ The externally supplied GWAMA function must already use the Fürtjes modificatio
 loadings. The package does not modify this function. Python pairwise LDSC output
 does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC here.
 
-## Development and attribution
-
-```bash
-python -m unittest discover -s tests -v
-python -m pip wheel . --no-deps --wheel-dir dist
-```
-
-The modular implementation lives in `src/ldsc_gpca/`. Modify the bundled R script
-and its root copy together; a test enforces equality. The original standalone Python
-script is retained locally under ignored `backups/` during migration.
+## Attribution
 
 Method: [Anna Fürtjes genomicPCA tutorial](https://annafurtjes.github.io/genomicPCA/25082021_geneticPCA_explanation.html).
 Upstream: [Bulik-Sullivan LDSC](https://github.com/bulik/ldsc).

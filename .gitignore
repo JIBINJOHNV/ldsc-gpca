@@ -7,6 +7,9 @@ dist/
 .DS_Store
 .pytest_cache/
 backups/
+tests/
+.github/
+VALIDATION.md
 *.before_*
 # Never commit analysis inputs, results or credentials by default.
 *.vcf
