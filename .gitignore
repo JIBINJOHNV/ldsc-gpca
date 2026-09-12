@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.DS_Store
+.pytest_cache/
+backups/
+*.before_*
+# Never commit analysis inputs, results or credentials by default.
+*.vcf
+*.vcf.gz
+*.sumstats.gz
+*.log
+*.csv
+*.tsv
+*.gz
+*.RData
+*.rds
+.env
+.env.*
+results/
