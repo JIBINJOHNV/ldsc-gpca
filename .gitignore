@@ -10,6 +10,9 @@ backups/
 tests/
 .github/
 VALIDATION.md
+# Legacy launchers retained locally; installed commands use src/ldsc_gpca.
+/gpsca_gwama_python_ldsc.r
+/ldsc_analysis_v2.py
 *.before_*
 # Never commit analysis inputs, results or credentials by default.
 *.vcf

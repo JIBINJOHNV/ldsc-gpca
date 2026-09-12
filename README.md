@@ -1,6 +1,6 @@
 # ldsc-gpca
 
-One command-line interface for two existing workflows:
+Python LDSC and genomicPCA/GWAMA through a unified command-line interface.
 
 * `ldsc-gpca ldsc`: VCF extraction, munging, and pairwise Python LDSC.
 * `ldsc-gpca gpca`: genomicPCA/GWAMA from Python LDSC tables using the bundled R script.
@@ -13,9 +13,11 @@ conversion. Packaging tests are not a substitute for scientific validation on re
 ## Installation
 
 Use Python 3.10–3.12 in an isolated environment (local validation used Python 3.10).
-From this folder:
+Clone the repository, then install the package:
 
 ```bash
+git clone https://github.com/JIBINJOHNV/ldsc-gpca.git
+cd ldsc-gpca
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install .
@@ -26,8 +28,8 @@ ldsc-gpca gpca --help
 
 For development, use `python -m pip install -e .` instead.
 You can also run `python -m ldsc_gpca ...`.
-The old `python ldsc_analysis_v2.py ...` command works after installation.
-The root `gpsca_gwama_python_ldsc.r` remains directly runnable with `Rscript`.
+Use the installed commands above for both workflows. The R script is packaged
+under `src/ldsc_gpca/r/` and located automatically by `ldsc-gpca gpca`.
 
 ### External dependencies
 
@@ -117,11 +119,33 @@ The externally supplied GWAMA function must already use the Fürtjes modificatio
 loadings. The package does not modify this function. Python pairwise LDSC output
 does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC here.
 
+## Package layout
+
+```text
+ldsc-gpca/
+├── README.md
+├── pyproject.toml
+├── MANIFEST.in
+└── src/ldsc_gpca/
+    ├── cli.py              # Command dispatch
+    ├── ldsc_cli.py         # LDSC options and orchestration
+    ├── extraction.py       # VCF filtering and prevalence preparation
+    ├── munging.py          # Summary-statistic munging
+    ├── pairwise.py         # LDSC batches and retries
+    ├── results.py          # Result validation and compilation
+    ├── utils.py            # Shared helpers
+    ├── gpca.py             # R launcher
+    └── r/gpsca_gwama_python_ldsc.r
+```
+
 ## Attribution
 
 Method: [Anna Fürtjes genomicPCA tutorial](https://annafurtjes.github.io/genomicPCA/25082021_geneticPCA_explanation.html).
 Upstream: [Bulik-Sullivan LDSC](https://github.com/bulik/ldsc).
 Packaging follows [setuptools entry points](https://setuptools.pypa.io/en/latest/userguide/entry_point.html)
 and [package data](https://setuptools.pypa.io/en/latest/userguide/datafiles.html).
-Third-party software retains its own licensing. No redistribution license has been
-selected for this repository; confirm ownership and licensing before public release.
+
+## License
+
+No redistribution license has been selected for this repository. Public availability
+does not grant an open-source license. Third-party software retains its own licensing.

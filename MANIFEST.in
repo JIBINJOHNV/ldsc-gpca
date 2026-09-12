@@ -1,5 +1,5 @@
-include gpsca_gwama_python_ldsc.r
-include ldsc_analysis_v2.py
+exclude gpsca_gwama_python_ldsc.r
+exclude ldsc_analysis_v2.py
 exclude VALIDATION.md
 prune tests
 prune .github
