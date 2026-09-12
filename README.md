@@ -137,21 +137,19 @@ does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC her
 ### Automatic GWAMA post-processing
 
 After successful GWAMA, results are combined automatically. No `--postprocess`
-flag is needed. The selected-column summary defaults to `--outdir/harmonised/`.
+flag is needed. The selected-column summary is always saved to `<outdir>/harmonised/`.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | Post-processing | Automatic after successful GWAMA | No `--postprocess` flag required |
 | `--dataset-id` | Name of the `--outdir` folder | Prefix for exported filenames; replaces `--postprocess-name` |
-| `--harmonised-output` | `<outdir>/harmonised/` | Optional alternative folder for the selected-column summary |
+| Summary folder | `<outdir>/harmonised/` | Fixed location; no separate folder option |
 | `--gwama-output-n-eff` | Preserve reported N_eff | Optional N_eff override in the exported summary only |
 | `--gwama-output-info` | Preserve reported INFO | Optional INFO override in the exported summary only |
 
-To change the summary folder, add `--harmonised-output` to the main command. The
-complete set of optional export settings is:
+The optional dataset and summary-value settings are:
 
 ```bash
---harmonised-output /absolute/path/harmonised \
 --dataset-id cluster1 \
 --gwama-output-n-eff 330000 \
 --gwama-output-info 0.9
@@ -166,7 +164,7 @@ in the folder are ignored. The expected source filename suffix is
 | Output | Location |
 | --- | --- |
 | `{name}_GWAMA_combined_results.txt.gz` | `--outdir` |
-| `{name}_GPCA_inputs.txt.gz` | `--harmonised-output` (default: `--outdir/harmonised/`) |
+| `{name}_GPCA_inputs.txt.gz` | `<outdir>/harmonised/` (always) |
 | `{name}_postprocess.json` (sources, row count, overrides) | `--outdir` |
 
 `--dataset-id` sets `{name}` and defaults to the name of the `--outdir` folder. Both compressed
