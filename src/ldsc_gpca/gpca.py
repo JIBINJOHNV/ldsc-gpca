@@ -9,7 +9,7 @@ import sys
 
 def postprocess_parser():
     parser = argparse.ArgumentParser(prog='ldsc-gpca gpca', add_help=False, allow_abbrev=False,
-                                     description='Automatic post-processing after successful GPCA/GWAMA. The selected-column summary is always saved in <outdir>/harmonised/.')
+                                     description='Automatic post-processing after successful GPCA/GWAMA. The selected-column summary is always saved in <outdir>/harmonisation_input/.')
     parser.add_argument('--dataset-id', help='Dataset identifier used as the output filename prefix. Default: name of the --outdir folder.')
     parser.add_argument('--gwama-output-n-eff', dest='n_eff', type=float, help='Override N_eff only in the exported GWAMA selected-column summary (e.g. 330000), not LDSC/GPCA calculations. Default: preserve reported values.')
     parser.add_argument('--gwama-output-info', dest='info_value', type=float, help='Override INFO only in the exported GWAMA selected-column summary (e.g. 0.9), not variant filtering or LDSC/GPCA calculations. Default: preserve reported values.')
@@ -45,7 +45,7 @@ def main(argv=None):
         out_parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
         out_parser.add_argument('--outdir', required=True)
         outdir = out_parser.parse_known_args(r_args)[0].outdir
-        harmonised_output = Path(outdir) / 'harmonised'
+        harmonised_output = Path(outdir) / 'harmonisation_input'
         from .postprocess import snapshot_outputs
         previous = snapshot_outputs(outdir)
     script = files('ldsc_gpca').joinpath('r/gpsca_gwama_python_ldsc.r')

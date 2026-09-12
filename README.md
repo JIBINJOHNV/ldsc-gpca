@@ -116,7 +116,7 @@ ldsc-gpca gpca \
 Post-processing runs automatically after successful GWAMA. With this example:
 
 * Combined results: `/absolute/path/gpca_output/cluster1_GWAMA_combined_results.txt.gz`
-* Selected-column summary: `/absolute/path/gpca_output/harmonised/cluster1_GPCA_inputs.txt.gz`
+* Selected-column summary: `/absolute/path/gpca_output/harmonisation_input/cluster1_GPCA_inputs.txt.gz`
 * Override audit: `/absolute/path/gpca_output/cluster1_postprocess.json`
 
 The values `330000` and `0.9` are example overrides, **not defaults**. Omit those
@@ -137,13 +137,13 @@ does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC her
 ### Automatic GWAMA post-processing
 
 After successful GWAMA, results are combined automatically. No `--postprocess`
-flag is needed. The selected-column summary is always saved to `<outdir>/harmonised/`.
+flag is needed. The selected-column summary is always saved to `<outdir>/harmonisation_input/`.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | Post-processing | Automatic after successful GWAMA | No `--postprocess` flag required |
 | `--dataset-id` | Name of the `--outdir` folder | Prefix for exported filenames; replaces `--postprocess-name` |
-| Summary folder | `<outdir>/harmonised/` | Fixed location; no separate folder option |
+| Summary folder | `<outdir>/harmonisation_input/` | Fixed location; no separate folder option |
 | `--gwama-output-n-eff` | Preserve reported N_eff | Optional N_eff override in the exported summary only |
 | `--gwama-output-info` | Preserve reported INFO | Optional INFO override in the exported summary only |
 
@@ -164,7 +164,7 @@ in the folder are ignored. The expected source filename suffix is
 | Output | Location |
 | --- | --- |
 | `{name}_GWAMA_combined_results.txt.gz` | `--outdir` |
-| `{name}_GPCA_inputs.txt.gz` | `<outdir>/harmonised/` (always) |
+| `{name}_GPCA_inputs.txt.gz` | `<outdir>/harmonisation_input/` (always) |
 | `{name}_postprocess.json` (sources, row count, overrides) | `--outdir` |
 
 `--dataset-id` sets `{name}` and defaults to the name of the `--outdir` folder. Both compressed
