@@ -13,10 +13,10 @@ def main(argv=None):
   ldsc             Run Python LDSC using Docker.
   gpca             Python-LDSC results -> PCA/GWAMA.
   genomicsem gpca  Existing GenomicSEM RData -> PCA/GWAMA.
+  genomicsem ldsc  Native munge -> LDSC, or start from existing munged files.
 
-NOT YET INTEGRATED
-  genomicsem munge and genomicsem ldsc are not available commands.
-  Run those upstream steps separately, then supply their RData to genomicsem gpca.
+NOTES
+  GenomicSEM munging is included in genomicsem ldsc, not a standalone command.
   GWAMA postprocessing runs automatically; postprocess is not a top-level command.
 
 Use ldsc-gpca <command> --help for required columns, separators, defaults and choices.

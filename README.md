@@ -6,6 +6,7 @@ Python LDSC and genomicPCA/GWAMA through a unified command-line interface.
 * `ldsc-gpca ldsc`: VCF extraction, munging, and pairwise Python LDSC.
 * `ldsc-gpca gpca`: genomicPCA/GWAMA from Python LDSC tables using the bundled R script.
 * `ldsc-gpca genomicsem gpca`: genomicPCA/GWAMA from native GenomicSEM `LDSCoutput` RData.
+* `ldsc-gpca genomicsem ldsc`: native GenomicSEM munging followed by LDSC, or LDSC from existing munged files.
 
 This package does not replace LDSC, convert the R method to Python, or fabricate
 GenomicSEM sampling covariance matrices. Both backends reuse neutral shared
@@ -21,8 +22,8 @@ conversion. Packaging tests are not a substitute for scientific validation on re
 | `ldsc-gpca ldsc` | Yes | VCF manifest, or existing Python LDSC munged files with `--ldsc_only` |
 | `ldsc-gpca gpca` | Yes | Complete pairwise Python LDSC table |
 | `ldsc-gpca genomicsem gpca` | Yes | Existing GenomicSEM `LDSCoutput` RData |
-| `ldsc-gpca genomicsem munge` | **Not integrated** | Run upstream GenomicSEM munging separately |
-| `ldsc-gpca genomicsem ldsc` | **Not integrated** | Run upstream GenomicSEM LDSC separately |
+| `ldsc-gpca genomicsem ldsc` | Yes | Unmunged summary tables, or existing munged files |
+| `ldsc-gpca genomicsem munge` | No standalone command | Munging is included in `genomicsem ldsc` by default |
 
 Postprocessing is automatic after GWAMA; it is not a top-level `postprocess` command.
 No-argument commands and `--help` display guidance without opening input files or
@@ -82,6 +83,7 @@ ldsc-gpca prepare --help
 ldsc-gpca ldsc --help
 ldsc-gpca gpca --help
 ldsc-gpca genomicsem gpca --help
+ldsc-gpca genomicsem ldsc --help
 ```
 
 For development, use `python -m pip install -e .` instead.
@@ -108,6 +110,91 @@ under `src/ldsc_gpca/r/` and located automatically by `ldsc-gpca gpca`.
 Python dependency ranges are in `pyproject.toml`. For reproducible analyses, record
 `pip freeze`, `sessionInfo()` from R, and the Docker image digest; the image tag is
 not an immutable scientific environment.
+
+## Native GenomicSEM munging and LDSC
+
+Requires local R and an installed [GenomicSEM package](https://github.com/GenomicSEM/GenomicSEM).
+This route does not use Docker, Python LDSC or an external GWAMA source.
+
+To run munging first, supply a **comma-separated CSV** with these headers:
+
+```csv
+traitname,munge_inputs,sampleprevalence,populationprevalence
+protein1,/data/protein1.txt,NA,NA
+disease1,/data/disease1.txt,0.2,0.05
+```
+
+```bash
+ldsc-gpca genomicsem ldsc \
+  --input /data/traits.csv \
+  --hm3 /references/w_hm3.snplist \
+  --ld /references/eur_ld_chr \
+  --wld /references/eur_weights_chr \
+  --outdir /results/native_ldsc \
+  --cores 4
+```
+
+To **skip munging**, instead supply `--munge-output /data/munged` and omit `--hm3`.
+The manifest then needs only `traitname,sampleprevalence,populationprevalence`;
+the directory must contain exactly one `{traitname}.sumstats.gz` or `.sumstats`
+for each selected trait. Alternatively use `--munged-input` with file paths in
+a `traits` manifest column, matching the original LDSC script's format.
+These two options are mutually exclusive. Without either, munging always runs.
+
+| Input | Format and required columns |
+| --- | --- |
+| Manifest | CSV; `traitname,sampleprevalence,populationprevalence`, plus `munge_inputs` in default mode or `traits` with `--munged-input` |
+| Unmunged GWAS | Whitespace-delimited; `SNP,A1,A2,P`, signed effect (`BETA` or `Z`), and `N`; optional positive manifest `N` overrides file N |
+| `--hm3` | Whitespace-delimited reference with `SNP,A1,A2`; native munging performs reference-allele alignment, not just SNP selection |
+| Existing munged files | Tab-separated; `SNP,A1,A2,N,Z` (column order can vary) |
+| `--ld` | Directory with `1.l2.ldscore.gz` through the selected last chromosome and corresponding `.l2.M_5_50` files |
+| `--wld` | Optional separate directory of chromosome `.l2.ldscore.gz` weights; omitted means use `--ld` |
+
+Trait names must be unique, non-empty and contain no whitespace or path separators.
+Relative manifest file paths resolve beside the manifest; trait order is preserved.
+For quantitative traits, both prevalence entries must be blank/NA. For binary
+liability conversion, both must be strictly between zero and one. Mixed rows are
+allowed, but partial prevalence pairs stop: this route does not infer sample
+prevalence or change supplied sample sizes. Ensure N and sample prevalence are
+appropriate for the study's sampling/meta-analysis design. Native covariance S
+retains the resulting observed/liability scales; it is not a common-unit covariance
+matrix merely because all traits are in one file.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--cores` | `1` | Munging workers; does not parallelize LDSC |
+| `--info-filter` | `0.9` | Native munging INFO threshold when the field is present |
+| `--maf-filter` | `0.01` | Native munging MAF threshold when the field is present |
+| `--chromosomes` | `22` | Read chromosomes 1 through this value; allowed 1–22 |
+| `--n-blocks` | `200` | Requested jackknife blocks; GenomicSEM overrides this for >18 traits |
+| `--chisq-max` | Unset | Use GenomicSEM automatic rule; otherwise a finite positive threshold |
+| `--invalid-h2-action` | `drop` | Audit/drop non-positive or non-finite raw h2; alternative `error` |
+| `--rscript` | `Rscript` | Executable name or path |
+
+GenomicSEM's own logs report column interpretation, missing INFO/MAF filtering,
+and any internal parameter changes. See its authoritative
+[munge implementation](https://github.com/GenomicSEM/GenomicSEM/blob/master/R/munge.R)
+and [LDSC implementation](https://github.com/GenomicSEM/GenomicSEM/blob/master/R/ldsc.R).
+
+The wrapper first runs `stand=FALSE`, saves raw results and audits h2. It then
+runs `stand=TRUE` on retained traits to obtain genuine `V` and `V_Stand`.
+Fewer than two retained traits or invalid final matrices stop the run; no final
+RData is published on failure. No covariance matrices are synthesized or repaired.
+Use a fresh/empty output directory; existing results are never overwritten.
+
+Outputs under `--outdir`:
+
+* `munge_output/`: newly generated munged files (default mode only).
+* `Resolved_Manifest.csv`, `Selected_Traits.csv`: resolved inputs and retained trait order.
+* `GenomicSEM_LDSC_Trait_QC.csv`: each trait's raw h2, scale, action and reason.
+* `GenomicSEM_LDSC_Events.csv`: warnings/errors/completion once R pipeline starts.
+* `genomicPCA_LDSC_raw.RData`: first-pass results.
+* `genomicPCA_LDSC.RData`: validated `LDSCoutput` for `genomicsem gpca --ldsc_path`.
+* Native log files and `sessionInfo.txt` for provenance.
+
+Use `Selected_Traits.csv` as the GPCA manifest with an existing GPCA input folder;
+add matching `vcf_files` if automatic VCF preparation is needed. This command does
+not itself run GPCA/GWAMA. Failed munging stops instead of silently removing traits.
 
 ## Prepare inputs from QC-filtered VCFs
 

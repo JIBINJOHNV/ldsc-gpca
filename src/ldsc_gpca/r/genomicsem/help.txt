@@ -73,6 +73,6 @@ INPUT FILE CONTRACT
   --source_path: R source defining already-modified my_GWAMA or multivariate_GWAMA.
 
 AVAILABILITY
-  Only genomicsem gpca is integrated. GenomicSEM munge and ldsc run separately.
+  genomicsem ldsc runs native munge/LDSC or accepts existing munged files.
   Both PCA matrix choices write all-PC variance and PC1 protein contributions.
   GWAMA uses PC1 only. Native covariance uses S on its supplied scales.

@@ -18,7 +18,7 @@ genomicsem_parser <- function() {
       "    Whole genome: {traitname}_GenomicPCA_inputs.tsv.\n",
       "  --source_path: R source defining already-modified my_GWAMA or multivariate_GWAMA.\n\n",
       "AVAILABILITY\n",
-      "  Only genomicsem gpca is integrated. GenomicSEM munge and ldsc run separately.\n",
+      "  genomicsem ldsc runs native munge/LDSC or accepts existing munged files.\n",
       "  Both PCA matrix choices write all-PC variance and PC1 protein contributions.\n",
       "  GWAMA uses PC1 only. Native covariance uses S on its supplied scales.\n"))
   p$add_argument("--input", required = TRUE, metavar = "MANIFEST.csv", help = "Comma-separated manifest; required header traitname. Required; no default.")
