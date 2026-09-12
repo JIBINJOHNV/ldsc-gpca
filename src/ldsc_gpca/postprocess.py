@@ -133,7 +133,7 @@ def process_gwama_results(outdir, harmonised_output, name=None, n_eff=None,
     audit_path = outdir / f'{name}_postprocess.json'
     for path in [combined_path, summary_path, audit_path]:
         if path.exists():
-            raise FileExistsError(f'Refusing to overwrite {path}; choose a new --postprocess-name or output folder')
+            raise FileExistsError(f'Refusing to overwrite {path}; choose a new --dataset-id or output folder')
     files, logs = current_run_files(outdir, previous_files)
     archive_dir = outdir / 'chromosome_wise'
     if archive:
@@ -141,7 +141,7 @@ def process_gwama_results(outdir, harmonised_output, name=None, n_eff=None,
             if (archive_dir / path.name).exists():
                 raise FileExistsError(f'Archive destination already exists: {archive_dir / path.name}')
     combined, summary = combine_results(files, n_eff, info_value)
-    audit = {'sources': [str(p) for p in files], 'rows': len(combined),
+    audit = {'dataset_id': name, 'sources': [str(p) for p in files], 'rows': len(combined),
              'combined_output': str(combined_path), 'summary_output': str(summary_path),
              'overrides': {'N_eff': n_eff, 'INFO': info_value},
              'override_scope': 'selected-column summary only; combined output preserves reported values',

@@ -119,19 +119,20 @@ The externally supplied GWAMA function must already use the Fürtjes modificatio
 loadings. The package does not modify this function. Python pairwise LDSC output
 does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC here.
 
-### Optional post-processing
+### Automatic GWAMA post-processing
 
-Append these options to the GPCA command above:
+After successful GWAMA, results are combined automatically. No `--postprocess`
+flag is needed. The selected-column summary defaults to `--outdir/harmonised/`.
+Optionally append these settings to the GPCA command above:
 
 ```bash
---postprocess \
 --harmonised-output /absolute/path/harmonised \
---postprocess-name cluster1 \
+--dataset-id cluster1 \
 --gwama-output-n-eff 330000 \
 --gwama-output-info 0.9
 ```
 
-Post-processing is disabled by default. It runs only after successful R execution
+Post-processing always runs after successful GWAMA. It requires successful R execution
 and a successful, updated `GWAMA_Run_Status.csv`. Validation-only runs skip it.
 Only current-run output prefixes in that status file are read; other matching files
 in the folder are ignored. The expected source filename suffix is
@@ -140,10 +141,10 @@ in the folder are ignored. The expected source filename suffix is
 | Output | Location |
 | --- | --- |
 | `{name}_GWAMA_combined_results.txt.gz` | `--outdir` |
-| `{name}_GPCA_inputs.txt.gz` | `--harmonised-output` |
+| `{name}_GPCA_inputs.txt.gz` | `--harmonised-output` (default: `--outdir/harmonised/`) |
 | `{name}_postprocess.json` (sources, row count, overrides) | `--outdir` |
 
-`--postprocess-name` defaults to the name of the `--outdir` folder. Both compressed
+`--dataset-id` sets `{name}` and defaults to the name of the `--outdir` folder. Both compressed
 tables are tab-delimited. Results are sorted numerically by chromosome and position;
 the combined table includes `count_question`, `count_plus`, and `count_minus` from
 `Direction`. Missing required columns, empty results, invalid direction strings or
@@ -194,7 +195,7 @@ ldsc-gpca/
     ├── results.py          # Result validation and compilation
     ├── utils.py            # Shared helpers
     ├── gpca.py             # R launcher
-    ├── postprocess.py      # Optional GWAMA combination and export
+    ├── postprocess.py      # Automatic GWAMA combination and export
     └── r/gpsca_gwama_python_ldsc.r
 ```
 
