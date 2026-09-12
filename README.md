@@ -119,6 +119,63 @@ The externally supplied GWAMA function must already use the Fürtjes modificatio
 loadings. The package does not modify this function. Python pairwise LDSC output
 does not supply GenomicSEM's full `V`/`V_Stand`, so it cannot support paLDSC here.
 
+### Optional post-processing
+
+Append these options to the GPCA command above:
+
+```bash
+--postprocess \
+--harmonised-output /absolute/path/harmonised \
+--postprocess-name cluster1 \
+--n-eff 330000 \
+--info-value 0.9
+```
+
+Post-processing is disabled by default. It runs only after successful R execution
+and a successful, updated `GWAMA_Run_Status.csv`. Validation-only runs skip it.
+Only current-run output prefixes in that status file are read; other matching files
+in the folder are ignored. The expected source filename suffix is
+`.N_weighted_GWAMA.results.txt.gz`; custom GWAMA functions must use that convention.
+
+| Output | Location |
+| --- | --- |
+| `{name}_GWAMA_combined_results.txt.gz` | `--outdir` |
+| `{name}_GPCA_inputs.txt.gz` | `--harmonised-output` |
+| `{name}_postprocess.json` (sources, row count, overrides) | `--outdir` |
+
+`--postprocess-name` defaults to the name of the `--outdir` folder. Both compressed
+tables are tab-delimited. Results are sorted numerically by chromosome and position;
+the combined table includes `count_question`, `count_plus`, and `count_minus` from
+`Direction`. Missing required columns, empty results, invalid direction strings or
+positions, duplicate SNPIDs, missing files and unchanged old results cause an error.
+
+The selected-column summary contains:
+
+```text
+SNPID CHR BP EA OA EAF N_eff BETA SE Z PVAL INFO
+```
+
+`--n-eff` and `--info-value` are optional, finite overrides, **not automatic defaults**.
+N_eff must be positive and INFO must lie in [0,1]. Without an override, that column
+must exist and its reported values are preserved. An override can also supply an
+absent column. Overrides affect only the selected-column summary, not the combined
+results. They are user-supplied constants, not values estimated by this operation.
+Despite its filename, this summary is not the nine-column per-trait GWAMA input
+format and does not perform allele harmonisation or genome-build conversion.
+
+Original files are kept by default. Add `--archive-chromosomes` to move the current
+run's source results and matching logs into `--outdir/chromosome_wise/` only after
+both tables and the audit have been saved. Existing output/archive paths are never
+overwritten. An archive failure leaves saved outputs in place and is reported as an
+error; some originals may already have moved. Choose a new name/output directory
+for repeat exports. No automatic post-processing retry is performed.
+
+Show these options without requiring R:
+
+```bash
+ldsc-gpca gpca --postprocess-help
+```
+
 ## Package layout
 
 ```text
@@ -135,6 +192,7 @@ ldsc-gpca/
     ├── results.py          # Result validation and compilation
     ├── utils.py            # Shared helpers
     ├── gpca.py             # R launcher
+    ├── postprocess.py      # Optional GWAMA combination and export
     └── r/gpsca_gwama_python_ldsc.r
 ```
 
