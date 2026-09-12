@@ -16,9 +16,9 @@ GPCA_COLUMNS = ['SNPID', 'CHR', 'BP', 'EA', 'OA', 'EAF', 'N_eff',
 
 def validate_overrides(n_eff, info_value):
     if n_eff is not None and (not math.isfinite(n_eff) or n_eff <= 0):
-        raise ValueError('--n-eff must be finite and > 0')
+        raise ValueError('--gwama-output-n-eff must be finite and > 0')
     if info_value is not None and (not math.isfinite(info_value) or not 0 <= info_value <= 1):
-        raise ValueError('--info-value must be finite and in [0,1]')
+        raise ValueError('--gwama-output-info must be finite and in [0,1]')
 
 
 def filename_component(value):

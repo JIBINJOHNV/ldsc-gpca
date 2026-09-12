@@ -12,8 +12,8 @@ def postprocess_parser():
     parser.add_argument('--postprocess', action='store_true', help='Combine current-run GWAMA results. Default: disabled.')
     parser.add_argument('--harmonised-output', help='Folder for the selected-column compressed summary; required with --postprocess.')
     parser.add_argument('--postprocess-name', help='Output filename prefix. Default: name of the --outdir folder.')
-    parser.add_argument('--n-eff', type=float, help='Override summary N_eff (e.g. 330000). Default: preserve reported values.')
-    parser.add_argument('--info-value', type=float, help='Override summary INFO (e.g. 0.9). Default: preserve reported values.')
+    parser.add_argument('--gwama-output-n-eff', dest='n_eff', type=float, help='Override N_eff only in the exported GWAMA selected-column summary (e.g. 330000), not LDSC/GPCA calculations. Default: preserve reported values.')
+    parser.add_argument('--gwama-output-info', dest='info_value', type=float, help='Override INFO only in the exported GWAMA selected-column summary (e.g. 0.9), not variant filtering or LDSC/GPCA calculations. Default: preserve reported values.')
     parser.add_argument('--archive-chromosomes', action='store_true', help='Move current-run source results/logs to outdir/chromosome_wise after saving outputs. Default: keep originals.')
     parser.add_argument('--postprocess-help', action='store_true', help='Show these options without requiring R.')
     return parser

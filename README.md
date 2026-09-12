@@ -127,8 +127,8 @@ Append these options to the GPCA command above:
 --postprocess \
 --harmonised-output /absolute/path/harmonised \
 --postprocess-name cluster1 \
---n-eff 330000 \
---info-value 0.9
+--gwama-output-n-eff 330000 \
+--gwama-output-info 0.9
 ```
 
 Post-processing is disabled by default. It runs only after successful R execution
@@ -155,7 +155,9 @@ The selected-column summary contains:
 SNPID CHR BP EA OA EAF N_eff BETA SE Z PVAL INFO
 ```
 
-`--n-eff` and `--info-value` are optional, finite overrides, **not automatic defaults**.
+`--gwama-output-n-eff` and `--gwama-output-info` are optional, finite overrides,
+**not automatic defaults**. They affect only the exported GWAMA selected-column
+summary, never LDSC/GPCA calculations or variant filtering.
 N_eff must be positive and INFO must lie in [0,1]. Without an override, that column
 must exist and its reported values are preserved. An override can also supply an
 absent column. Overrides affect only the selected-column summary, not the combined
