@@ -2,6 +2,7 @@
 
 Python LDSC and genomicPCA/GWAMA through a unified command-line interface.
 
+* `ldsc-gpca prepare`: QC-filtered VCFs to GPCA inputs and optional LDSC munging tables.
 * `ldsc-gpca ldsc`: VCF extraction, munging, and pairwise Python LDSC.
 * `ldsc-gpca gpca`: genomicPCA/GWAMA from Python LDSC tables using the bundled R script.
 
@@ -22,17 +23,21 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install .
 ldsc-gpca --help
+ldsc-gpca prepare --help
 ldsc-gpca ldsc --help
 ldsc-gpca gpca --help
 ```
 
 For development, use `python -m pip install -e .` instead.
 You can also run `python -m ldsc_gpca ...`.
-Use the installed commands above for both workflows. The R script is packaged
+Use the installed commands above for these workflows. The R script is packaged
 under `src/ldsc_gpca/r/` and located automatically by `ldsc-gpca gpca`.
 
 ### External dependencies
 
+* Preparation: local `bcftools` on PATH (or specify `--bcftools /path/to/bcftools`).
+  This step uses Polars and local bcftools, not Docker. See the
+  [official bcftools query documentation](https://samtools.github.io/bcftools/bcftools.html#query).
 * LDSC: Docker on PATH, a running Docker daemon, and `jibinjv/ldsc:v3`.
   Docker must be able to mount all input/output/reference folders. Use absolute paths.
   The current extraction code assumes a POSIX host (Linux/macOS); native Windows
@@ -47,6 +52,86 @@ under `src/ldsc_gpca/r/` and located automatically by `ldsc-gpca gpca`.
 Python dependency ranges are in `pyproject.toml`. For reproducible analyses, record
 `pip freeze`, `sessionInfo()` from R, and the Docker image digest; the image tag is
 not an immutable scientific environment.
+
+## Prepare inputs from QC-filtered VCFs
+
+Use this command when per-trait GPCA inputs do not already exist:
+
+```bash
+ldsc-gpca prepare \
+  --input /absolute/path/prepare_traits.csv \
+  --outdir /absolute/path/prepared \
+  --splitby_chr split \
+  --gpca-id-source chr_pos_ref_alt \
+  --prepare-workers 4
+```
+
+The manifest requires these columns; row order and trait names are preserved:
+
+```text
+traitname,vcf_files
+protein1,/absolute/path/protein1.vcf.gz
+protein2,/absolute/path/protein2.vcf.gz
+```
+
+Relative VCF paths are resolved against the manifest directory. Each VCF must
+contain exactly one GWAS sample and FORMAT fields AF, ES, SE, LP, and NEF. Inputs
+must already be QC-filtered, biallelic, consistently aligned across traits, and on
+the same genome build. ES and AF must refer to ALT. This command does not perform
+allele harmonisation, liftover, imputation-score filtering or MHC filtering.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--gpca-id-source` | `chr_pos_ref_alt` | GPCA SNPID values; alternative: `vcf_id` |
+| `--write-munge-inputs` | Off | Also write HapMap-filtered munging input tables |
+| `--hapmap-file` | None | Required with `--write-munge-inputs`; tab-delimited with a `SNP` column |
+| `--munge-id-source` | `vcf_id` | Munging SNP values; alternative: `chr_pos_ref_alt` |
+| `--splitby_chr` | `split` | Per-chromosome files; `nosplit` writes one file per trait |
+| `--prepare-workers` | `4` | Concurrent preparation workers |
+| `--bcftools` | `bcftools` | Local executable name or path |
+
+To also produce LDSC munging tables, add:
+
+```bash
+--write-munge-inputs \
+--hapmap-file /absolute/path/w_hm3.snplist \
+--munge-id-source vcf_id
+```
+
+The two identifier choices are independent. `chr_pos_ref_alt` constructs
+`CHR_POS_REF_ALT` after removing a `chr` prefix and normalising chromosome/position
+numbers. `vcf_id` uses VCF ID unchanged; it does not look up or convert rsIDs.
+The munging identifier must match the HapMap `SNP` values. A standard rsID list
+therefore needs rsIDs in VCF ID; coordinate IDs require a coordinate-ID list.
+Zero HapMap matches is an error. GPCA variants are **never restricted to HapMap**.
+
+Outputs:
+
+* `<outdir>/gpca_inputs/{traitname}_chr{CHR}_GenomicPCA_inputs.tsv` for split mode.
+* `<outdir>/gpca_inputs/{traitname}_GenomicPCA_inputs.tsv` for nosplit mode.
+* `<outdir>/munge_inputs/{traitname}_munge_inputs.txt` only when requested.
+* `<outdir>/Preparation_Status.csv` and `Preparation_Settings.json` for audit.
+
+GPCA columns are exactly `SNPID CHR BP EA OA EAF N Z P`, tab-delimited.
+EA=ALT, OA=REF, EAF=FORMAT/AF, N=FORMAT/NEF, Z=ES/SE and P=10^(-LP).
+Munging tables are space-delimited with `SNP CHR POS A1 A2 eaf_A1 beta se N p`.
+They are **unmunged tables**, not `.sumstats.gz`; no LDSC command is executed by
+`prepare`. This export preserves your supplied NEF convention. It does not derive
+NC+NCO, apply prevalence conversion or use `--gwama-output-n-eff` for input N.
+Confirm that NEF is appropriate for your GWAS and downstream analysis.
+
+Only chromosomes 1–22 are retained. Split mode requires at least one variant on
+each chromosome per trait because the current R loader expects all 22 files.
+Invalid/missing numeric fields, SE <= 0, N <= 0, negative LP, invalid frequency,
+duplicate variants/selected identifiers, and multiallelic or symbolic alleles stop
+preparation. P-value underflow is unchanged: extreme LP can produce zero; counts
+are reported but no values are capped. Standard LDSC may reject those zero P-values.
+
+Each worker uses a unique temporary TSV. If any trait fails, no prepared tables are
+published and the status CSV lists failures. Existing output folders/audit files
+are never overwritten; use a fresh outdir after a failure or for a different set
+of settings. Each worker loads one extracted trait into memory; lower
+`--prepare-workers` for large datasets.
 
 ## Python LDSC
 
@@ -128,6 +213,21 @@ matrix and GWAMA order. The LDSC file must supply every selected self-pair and p
 with rg/diagnostic/intercept columns and supported observed or liability heritability
 columns. Extra traits are allowed. The bundled R help describes QC, scale selection,
 correlation/covariance modes, input file naming, and audit outputs in detail.
+
+### Automatic preparation when GPCA inputs are absent
+
+Omit `--gpca_input_folder` from the GPCA command to run the same preparation module
+first. In that case, `--input` must contain both `traitname` and `vcf_files` as shown
+above. Prepared files are saved to `<outdir>/gpca_inputs/` and passed to R automatically.
+All selected manifest traits must prepare successfully before R starts. You can use
+the preparation options above (including the two identifier settings and optional
+munging export) directly with `ldsc-gpca gpca` in this automatic mode.
+
+If `--gpca_input_folder` is supplied, the existing files are used and checked by R;
+no conversion takes place. Non-default preparation settings are rejected rather
+than silently ignored. `--validate_only` skips preparation and GWAMA. To reuse
+previously generated inputs after an R failure, explicitly supply their folder on
+the next invocation. No preprocessing or scientific changes are made to the R script.
 
 The externally supplied GWAMA function must already use the Fürtjes modification:
 `W <- t(t(sqrt(N)) * h2)` and `sqrt_W <- W`, where its `h2` argument receives PC
@@ -211,6 +311,7 @@ ldsc-gpca/
 ├── MANIFEST.in
 └── src/ldsc_gpca/
     ├── cli.py              # Command dispatch
+    ├── prepare.py          # VCF to GPCA and optional munging inputs
     ├── ldsc_cli.py         # LDSC options and orchestration
     ├── extraction.py       # VCF filtering and prevalence preparation
     ├── munging.py          # Summary-statistic munging

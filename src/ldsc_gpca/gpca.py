@@ -8,6 +8,7 @@ import sys
 
 
 def postprocess_parser():
+    from .prepare import add_prepare_options
     parser = argparse.ArgumentParser(prog='ldsc-gpca gpca', add_help=False, allow_abbrev=False,
                                      description='Automatic post-processing after successful GPCA/GWAMA. The selected-column summary is always saved in <outdir>/harmonisation_input/.')
     parser.add_argument('--dataset-id', help='Dataset identifier used as the output filename prefix. Default: name of the --outdir folder.')
@@ -15,6 +16,7 @@ def postprocess_parser():
     parser.add_argument('--gwama-output-info', dest='info_value', type=float, help='Override INFO only in the exported GWAMA selected-column summary (e.g. 0.9), not variant filtering or LDSC/GPCA calculations. Default: preserve reported values.')
     parser.add_argument('--archive-chromosomes', action='store_true', help='Move current-run source results/logs to outdir/chromosome_wise after saving outputs. Default: keep originals.')
     parser.add_argument('--postprocess-help', action='store_true', help='Show these options without requiring R.')
+    add_prepare_options(parser)
     return parser
 
 
@@ -44,7 +46,28 @@ def main(argv=None):
     if not help_requested:
         out_parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
         out_parser.add_argument('--outdir', required=True)
-        outdir = out_parser.parse_known_args(r_args)[0].outdir
+        out_parser.add_argument('--input')
+        out_parser.add_argument('--gpca_input_folder')
+        out_parser.add_argument('--splitby_chr', choices=['split','nosplit'], default='split')
+        out_parser.add_argument('--validate_only', action='store_true')
+        inputs = out_parser.parse_known_args(r_args)[0]
+        outdir = inputs.outdir
+        if inputs.gpca_input_folder is not None and not inputs.validate_only:
+            if (opts.write_munge_inputs or opts.hapmap_file or opts.gpca_id_source != 'chr_pos_ref_alt'
+                    or opts.munge_id_source != 'vcf_id' or opts.prepare_workers != 4 or opts.bcftools != 'bcftools'):
+                parser.error('VCF preparation settings require omitting --gpca_input_folder; use ldsc-gpca prepare to create new tables')
+        if inputs.gpca_input_folder is None and not inputs.validate_only:
+            if not inputs.input:
+                parser.error('Automatic VCF preparation requires --input with traitname and vcf_files columns')
+            from .prepare import prepare_inputs, preparation_kwargs
+            from polars.exceptions import PolarsError
+            try:
+                folder = prepare_inputs(inputs.input, outdir, splitby_chr=inputs.splitby_chr,
+                                        **preparation_kwargs(opts))
+            except (OSError, ValueError, PolarsError) as error:
+                print(f'ERROR: VCF preparation failed: {error}', file=sys.stderr)
+                return 1
+            r_args += ['--gpca_input_folder', str(folder)]
         harmonised_output = Path(outdir) / 'harmonisation_input'
         from .postprocess import snapshot_outputs
         previous = snapshot_outputs(outdir)
