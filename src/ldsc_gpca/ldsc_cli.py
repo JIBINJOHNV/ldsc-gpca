@@ -3,7 +3,8 @@ import os
 import math
 import json
 import hashlib
-import argparse
+import sys
+from .helptext import HelpParser, LDSC_INPUT_HELP
 import pandas as pd
 from .utils import optional_prevalence, is_valid_gz
 from .extraction import run_vcf_to_table
@@ -12,12 +13,12 @@ from .pairwise import parallel_ldsc_analysis
 from .results import compile_results, check_saved_filters
 
 # Define command-line arguments
-parser = argparse.ArgumentParser(prog="ldsc-gpca ldsc", description="LDSC rg calculation using summary statistics in VCF format")
+parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise Python LDSC from VCF summary statistics (Docker required).", epilog=LDSC_INPUT_HELP)
 
-parser.add_argument('-output_folder', '--output_folder', help="Name of the output folder with full path", required=True)
-parser.add_argument('-ld_ref_snp_file', '--ld_ref_snp_file', help="SNPs from hapmap project", required=True)
-parser.add_argument('-input_file', '--input_file', help="CSV columns: gwas_name, vcf_files, ref, pop_prevalence, sample_prevalence (target accepted). Missing population prevalence keeps NEF; supplied population prevalence selects NC+NCO and fills missing sample prevalence from their median case fraction. Requires host Polars.", required=True)
-parser.add_argument('-ld_ref', '--ld_ref', help="ldscore file path", required=True)
+parser.add_argument('-output_folder', '--output_folder', metavar='DIRECTORY', help="Output directory; LDSC tables and logs are written below it.", required=True)
+parser.add_argument('-ld_ref_snp_file', '--ld_ref_snp_file', metavar='ALLELES.tsv', help="Whitespace-separated HapMap allele table with SNP,A1,A2 headers; passed to LDSC --merge-alleles.", required=True)
+parser.add_argument('-input_file', '--input_file', metavar='MANIFEST.csv', help="Comma-separated trait manifest; required headers and prevalence rules below.", required=True)
+parser.add_argument('-ld_ref', '--ld_ref', metavar='DIRECTORY', help="Chromosome LD-score reference directory (not an individual file).", required=True)
 parser.add_argument('-n_cores', '--n_cores', help="Number of parallel Docker containers", default=5, type=int)
 
 filter_group = parser.add_argument_group('Variant filters')
@@ -53,6 +54,10 @@ parser.add_argument('-ldsc_input_folder', '--ldsc_input_folder', help="Path to p
 parser.add_argument('--ldsc-retries', type=int, default=1,
                     help='Additional attempts per failed pairwise LDSC command. Default: 1 (2 total attempts); 0 disables retries. Successful batches are not repeated. Result-validation failures are not retried.')
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        parser.print_help()
+        return 0
     args = parser.parse_args(argv)
     output_folder = os.path.abspath(args.output_folder)
     snp_include_file = os.path.abspath(args.ld_ref_snp_file)

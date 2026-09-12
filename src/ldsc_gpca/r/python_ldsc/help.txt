@@ -1,0 +1,165 @@
+usage: ldsc-gpca gpca --input MANIFEST.csv --python_ldsc LDSC.csv[.gz] --outdir DIRECTORY [options]
+
+Build genomic-PC1 weights and run the modified Fuertjes GWAMA method
+using a complete pairwise results table produced by Python ldsc.py.
+
+optional arguments:
+  -h, --help            Show this help message and exit.
+
+Required inputs:
+  --input MANIFEST.csv  CSV trait manifest. Required column: 'traitname'. No
+                        other manifest columns are required; extra columns are
+                        ignored. Trait names must be unique/non-empty, and row
+                        order defines matrix and GWAMA order.
+  --python_ldsc LDSC.csv[.gz]
+                        Complete pairwise Python LDSC table in CSV/TSV format;
+                        gzip is accepted. Required columns are listed below.
+  --outdir DIRECTORY    Directory for QC audit files, matrices, weights, and
+                        GWAMA results.
+
+GWAMA inputs (not required with --validate_only):
+  --gpca_input_folder DIRECTORY
+                        Directory containing the nine-column per-trait GWAMA
+                        input files.
+  --source_path GWAMA_FUNCTION.R
+                        R file defining the already-modified my_GWAMA()
+                        function.
+  --splitby_chr {split,nosplit}
+                        GWAMA input layout: 'split' uses chromosomes 1-22;
+                        'nosplit' uses one whole-genome file per trait.
+                        Default: split.
+
+Trait and failed-result handling:
+  --allow_missing_traits
+                        Remove manifest traits absent from the LDSC table.
+                        Without this flag, an absent selected trait stops the
+                        run. Extra LDSC traits are ignored.
+  --failed_ldsc_action {error,drop_traits}
+                        For missing/non-finite/invalid selected pairs: 'error'
+                        stops; 'drop_traits' removes traits until a complete
+                        valid subset remains. No estimates are imputed.
+                        Default: error.
+
+QC comparison thresholds:
+  --duplicate_tolerance FLOAT, --tolerance FLOAT
+                        Maximum absolute difference between duplicate
+                        orientations for rg, SE, p, and intercept estimates.
+                        Default: 0.001.
+  --duplicate_z_tolerance FLOAT
+                        Maximum absolute duplicate-orientation z difference.
+                        Default: 0.01.
+  --self_rg_tolerance FLOAT
+                        Maximum |self rg - 1|. With the default 0.01, values
+                        from 0.99 through 1.01 pass.
+  --comparison_epsilon FLOAT
+                        Floating-point allowance added to boundary
+                        comparisons. Default: 1e-12.
+
+PCA settings:
+  --heritability_scale {auto,liability,observed,mixed}
+                        Heritability columns used for self-pair QC and
+                        covariance PCA. 'auto' uses populated values for
+                        selected traits, ignoring empty pairs. Correlation:
+                        per-trait scale; covariance: one complete common
+                        scale. 'mixed' explicitly permits trait-specific
+                        covariance scales, only when each trait has one
+                        populated scale. Ambiguity stops; no conversion.
+                        Default: auto.
+  --pca_matrix {correlation,covariance}
+                        Matrix decomposed for PC1: 'correlation' uses S_Stand;
+                        'covariance' derives genetic covariance from rg and
+                        selected-scale self h2, following the tutorial
+                        alternative procedure. CTI is unchanged. Default:
+                        correlation.
+  --pc1_orientation {tutorial,as_computed}
+                        PC1 sign convention. 'tutorial' flips the entire
+                        loading vector when its median is negative;
+                        'as_computed' keeps R's eigenvector sign. Association
+                        strength and p-values are unchanged. Default:
+                        tutorial.
+
+Diagnostic warning/error controls:
+  --h2_z_warn_threshold FLOAT
+                        Warn when retained self-pair h2/SE is below this
+                        value. Diagnostic only; never removes traits. Use 0 to
+                        disable. Default: 2.
+  --z_consistency_tolerance FLOAT
+                        Maximum relative difference between reported z and
+                        rg/SE after duplicate collapse. Default: 0.01.
+  --z_consistency_action {warn,error}
+                        Warn or stop when z is inconsistent with rg/SE.
+                        Default: warn.
+  --rg_out_of_range_action {warn,error}
+                        Warn or stop for finite off-diagonal rg outside
+                        [-1,1]. Values are never clamped. Default: warn.
+  --negative_eigen_action {warn,error}
+                        Warn or stop for substantive negative selected-PCA-
+                        matrix eigenvalues. Raw values are reported. Default:
+                        warn.
+  --matrix_eigen_tolerance FLOAT
+                        Relative cutoff separating substantive negative
+                        eigenvalues from floating-point noise. Default: 1e-8.
+
+Execution and performance:
+  --validate_only       Run LDSC QC and PCA and write audit files, but do not
+                        run GWAMA.
+  --cores N             Workers for chromosome-split GWAMA. 0 selects up to 22
+                        based on available physical cores. Default: 0.
+  --ldsc_chunk_size N   Number of LDSC rows read per streaming chunk. Default:
+                        250000.
+  --color {auto,always,never}
+                        Help-message colour: auto for terminals, always to
+                        force it, or never to disable it. NO_COLOR is
+                        respected in auto mode. Default: auto.
+
+INPUT FILE FORMATS
+  Manifest: comma-separated CSV with a header row.
+  Python LDSC: CSV, tab-separated TSV or whitespace-delimited text;
+    separator is detected from the header; gzip (.gz) is accepted.
+  GWAMA inputs: tab-separated TSV, exact ordered columns:
+    SNPID,CHR,BP,EA,OA,EAF,N,Z,P
+    A1/A2/p aliases are accepted for EA/OA/P.
+  Split files: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv
+  Whole-genome files: {traitname}_GenomicPCA_inputs.tsv
+  --source_path: R source defining the already-modified GWAMA function.
+
+REQUIRED MANIFEST COLUMN
+  traitname    Unique, non-empty trait identifier. Each row selects one
+               trait, and row order defines all analysis matrices.
+  Direct R needs no other manifest columns. The package CLI additionally
+  requires vcf_files if --gpca_input_folder is omitted for preparation.
+
+REQUIRED PYTHON LDSC COLUMNS
+  Always required:
+    p1, p2, rg, se, z, p, h2_int, h2_int_se, gcov_int, gcov_int_se
+  Plus one complete heritability pair:
+    h2_liab, h2_liab_se  OR  h2_obs, h2_obs_se
+  Auto ignores empty pairs; ambiguous populated scales require a choice.
+  Mixed-scale covariance requires --heritability_scale mixed.
+
+MATRIX DEFINITIONS
+  Correlation matrix: diagonal = 1; off-diagonal = rg
+  Covariance matrix:  diagonal = selected-scale self h2; off-diagonal =
+                      rg * sqrt(h2_1 * h2_2)
+  GWAMA CTI matrix:  diagonal = h2_int; off-diagonal = gcov_int
+
+PC1 SIGN CONVENTION
+  Default --pc1_orientation tutorial: multiply the entire PC1 loading
+  vector by -1 when its median is negative. Use 'as_computed' only to
+  retain R's arbitrary eigenvector direction for legacy comparison.
+
+IMPORTANT DEFAULTS
+  Extra LDSC traits are ignored. Missing or invalid selected values stop
+  the run. No LDSC value is imputed or silently clamped. Use
+  --failed_ldsc_action drop_traits only when automatic removal is wanted.
+
+VALIDATION-ONLY EXAMPLE
+  Rscript gpsca_gwama_python_ldsc.r \
+    --input selected_traits.csv \
+    --python_ldsc all_pairwise_ldsc.csv.gz \
+    --outdir validation_results \
+    --failed_ldsc_action drop_traits \
+    --validate_only
+
+Run with GWAMA by additionally providing --gpca_input_folder and
+--source_path, and omit --validate_only.

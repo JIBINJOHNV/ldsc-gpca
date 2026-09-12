@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ldsc-gpca"
-version = "0.2.0"
+version = "0.3.3"
 description = "Python LDSC and R genomicPCA/GWAMA workflows through one CLI"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -17,4 +17,4 @@ ldsc-gpca = "ldsc_gpca.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ldsc_gpca = ["r/*.r"]
+ldsc_gpca = ["r/*.r", "r/*.R", "r/shared/*.R", "r/python_ldsc/*.R", "r/genomicsem/*.R", "r/python_ldsc/help.txt", "r/genomicsem/help.txt"]
