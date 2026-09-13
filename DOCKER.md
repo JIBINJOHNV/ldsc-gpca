@@ -9,8 +9,18 @@ docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 genomicsem ldsc --help
 docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 gpca --help
 ```
 
-The default command displays help. Arguments after the image name are passed
-to `ldsc-gpca`. The build reuses `scripts/setup_environments.sh`, installing
+The default command displays help. Subcommands such as `gpca` and `--help` are
+passed to `ldsc-gpca`. Explicit executables are run directly, so this also works:
+
+```bash
+docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 /bin/bash -c 'ldsc-gpca --version; bcftools --version'
+```
+
+This shell-compatible entrypoint supports Nextflow task wrappers. See
+[Nextflow and Google Batch](examples/nextflow/README.md) for local tests,
+registry publication and cloud configuration. Rebuild older images before using it.
+
+The build reuses `scripts/setup_environments.sh`, installing
 bcftools, the Python/R package environment, pinned GenomicSEM, and the isolated
 CBIIT LDSC environment. Its existing installation checks must all pass.
 Docker is not required inside the container.
@@ -54,6 +64,14 @@ digest and these records for reproducible analyses. A successful build checks
 software availability, not scientific correctness of an analysis dataset.
 
 ## Verified local build
+
+The Nextflow-compatible rebuild passed on Linux amd64:
+`sha256:9fe79adbdae20a312bbed0f8407722c3ebbcf9f672258e2e6502ae19ca6c5521`.
+Nextflow 26.04.6 successfully ran both provided workflows locally with Docker.
+The tool-check task completed with resource tracing enabled. Three-trait QC/PCA
+outputs matched independent NumPy calculations, including manifest order, CTI,
+eigenvalues and signed PC1 loadings. An absent trait correctly caused task failure.
+Google Batch configuration was parsed, but no live cloud job was submitted.
 
 The Linux amd64 image `ldsc-gpca:0.5.0` was successfully built and run locally.
 The image must be rebuilt after package changes, including bundled-source updates.

@@ -16,6 +16,7 @@ establish that a dataset or analysis is suitable for publication.
 ## Contents
 
 - [Install and activate](#install-and-activate)
+- [Docker installation and usage](#docker-install-and-run-without-host-conda)
 - [Choose a workflow](#choose-a-workflow)
 - [Prepare per-trait GPCA inputs](#prepare-per-trait-gpca-inputs)
 - [Run Python LDSC](#run-python-ldsc)
@@ -27,6 +28,9 @@ establish that a dataset or analysis is suitable for publication.
 - [Reproducibility and implementation](#reproducibility-and-implementation)
 
 ## Install and activate
+
+This section is for native Conda installation. To use containers instead, jump to
+[Docker installation and usage](#docker-install-and-run-without-host-conda).
 
 ### 1. Install once
 
@@ -140,6 +144,65 @@ Installing only with `python -m pip install .` installs the Python package, not 
 bcftools, GenomicSEM or the isolated LDSC environment. It is suitable only when you
 manage those dependencies separately. Python 3.10–3.12 is required by this package;
 the provided main environment uses Python 3.11.
+
+## Docker: install and run without host Conda
+
+Choose **either** the Conda installation above **or** Docker. With Docker, all
+analysis dependencies are inside the image; no host R or Conda activation is needed.
+
+### Build the image once
+
+Install and start [Docker Desktop](https://docs.docker.com/desktop/) on macOS,
+or [Docker Engine](https://docs.docker.com/engine/install/) on Linux. Then:
+
+```bash
+git clone https://github.com/JIBINJOHNV/ldsc-gpca.git
+cd ldsc-gpca
+docker build --platform linux/amd64 -t ldsc-gpca:0.5.0 .
+docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 --help
+```
+
+The first build downloads substantial dependencies and takes several minutes.
+Use Linux amd64, including emulation on Apple Silicon. The image is not currently
+published: do not assume `docker pull jibinjohnv/ldsc-gpca` is available.
+
+### Run an analysis
+
+Mount a host folder containing your files. This QC/PCA-only example does not
+require per-variant GWAMA inputs:
+
+```bash
+docker run --rm --platform linux/amd64 \
+  --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v /absolute/path/to/data:/work -w /work \
+  ldsc-gpca:0.5.0 gpca \
+  --input /work/selected_traits.csv \
+  --python_ldsc /work/all_pairwise_python_ldsc.csv \
+  --outdir /work/qc_results --validate_only
+```
+
+Replace the host folder and filenames. Results appear on your computer under
+`/absolute/path/to/data/qc_results`. See the [input contracts](#run-gpca-and-gwama)
+for the required manifest and LDSC columns. All paths inside a manifest must also
+resolve inside the container.
+
+The same image runs `prepare`, `ldsc`, `gpca` and `genomicsem` commands.
+For GWAMA, remove `--validate_only` and supply `--gpca_input_folder`.
+The bundled GWAMA source omits INFO: automatic export additionally requires a
+scientifically justified `--gwama-output-info` value. Do not invent one.
+
+### Nextflow and GCP
+
+The image accepts Bash task commands as well as the package CLI. Nextflow runs
+outside the analysis image and launches it for each task; there is no Docker-in-Docker.
+
+- [Docker usage and shell commands](DOCKER.md)
+- [Nextflow examples and Google Batch setup](examples/nextflow/README.md)
+
+GCP requires a registry-hosted image accessible to its job service account, a GCS
+work directory, authentication and appropriate IAM permissions. A locally built
+image alone is not available to Google Batch. Cloud execution incurs charges.
+Live GCP execution has not been verified in this workspace.
 
 ## Choose a workflow
 
