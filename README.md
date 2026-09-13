@@ -34,6 +34,19 @@ the R parsers and bundled, so it remains accessible when R is missing. R parser
 changes must regenerate `r/python_ldsc/help.txt` and `r/genomicsem/help.txt`;
 local parity tests check that the generated text matches the actual R help.
 
+GPCA help is scoped to the requested section (for both backends):
+
+| Help option | Shows |
+| --- | --- |
+| `--help` or no arguments | Analysis/QC inputs and automatic GWAMA export options; one usage block |
+| `--prepare-help` | Optional VCF preparation options, required VCF/manifest columns and separators |
+| `--postprocess-help` | GWAMA export options only; no VCF preparation requirements |
+
+Preparation options remain accepted on GPCA commands, but apply only when
+`--gpca_input_folder` is omitted and the run is not `--validate_only`.
+The standalone `prepare`, Python `ldsc`, and `genomicsem ldsc` commands retain
+their own module-specific help. No unrelated module help is appended to them.
+
 ## Input files: columns and separators
 
 | File / option | Separator or format | Required content |
