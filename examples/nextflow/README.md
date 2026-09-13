@@ -2,6 +2,11 @@
 
 These examples use the same image for local and cloud tasks:
 
+The image uses `USER root` and `ENTRYPOINT []`. Python/R tools are on `PATH`,
+and the isolated LDSC environment is selected internally. Nextflow supplies
+the task command directly; no activation or entrypoint override is required.
+In process scripts, write the full command, for example `ldsc-gpca gpca ...`.
+
 - `smoke.nf`: checks the installed tools; no scientific input required.
 - `gpca_qc.nf`: runs Python-LDSC QC and PCA only, with strict package defaults.
   It does not run LDSC estimation, GWAMA or automatic export.

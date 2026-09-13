@@ -9,7 +9,6 @@
 !scripts/
 !scripts/setup_environments.sh
 !scripts/install_genomicsem.R
-!scripts/docker-entrypoint.sh
 !src/
 !src/**
 **/__pycache__/**

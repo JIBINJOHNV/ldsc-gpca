@@ -5,18 +5,26 @@ From the repository directory, with Docker Desktop or Docker Engine running:
 ```bash
 docker build --platform linux/amd64 --progress=plain -t ldsc-gpca:0.5.0 .
 docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 genomicsem ldsc --help
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 gpca --help
+docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 ldsc-gpca genomicsem ldsc --help
+docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 ldsc-gpca gpca --help
 ```
 
-The default command displays help. Subcommands such as `gpca` and `--help` are
-passed to `ldsc-gpca`. Explicit executables are run directly, so this also works:
+The default command displays help. The image uses `ENTRYPOINT []`, so include
+the executable `ldsc-gpca` before package subcommands. Old shorthand commands
+such as `IMAGE gpca --help` no longer work. Explicit executables run directly:
 
 ```bash
 docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 /bin/bash -c 'ldsc-gpca --version; bcftools --version'
 ```
 
-This shell-compatible entrypoint supports Nextflow task wrappers. See
+Tools are exposed through `PATH`, and the child LDSC environment is selected
+through `LDSC_GPCA_LDSC_PREFIX` and `CONDA_EXE`; no startup activation is needed.
+The image defaults to `USER root` for the intended Batch staging workflow.
+Root is not a universal Nextflow requirement and does not grant Google IAM
+permissions. For local bind mounts, use the UID/GID override below to avoid
+root-owned output files on Linux. Only run trusted images and commands.
+
+Nextflow can execute its task wrapper directly. See
 [Nextflow and Google Batch](examples/nextflow/README.md) for local tests,
 registry publication and cloud configuration. Rebuild older images before using it.
 
@@ -40,7 +48,7 @@ Mount a custom R script only if overriding `--source_path`. For example:
 docker run --rm --platform linux/amd64 \
   --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /absolute/path/to/project:/work -w /work \
-  ldsc-gpca:0.5.0 gpca \
+  ldsc-gpca:0.5.0 ldsc-gpca gpca \
   --input /work/selected_traits.csv \
   --python_ldsc /work/all_pairwise_python_ldsc.csv \
   --gpca_input_folder /work/gpca_inputs \
@@ -63,7 +71,29 @@ information are recorded inside `/opt/environments/`. Archive the built image
 digest and these records for reproducible analyses. A successful build checks
 software availability, not scientific correctness of an analysis dataset.
 
-## Verified local build
+## Empty-entrypoint build verification
+
+The Linux amd64 image was rebuilt successfully with `USER root`, no entrypoint,
+and default command `["ldsc-gpca", "--help"]`:
+`sha256:1b48272fd0f9a073ae9d408cbde8df364eab74096e666f176d04e1eb779963b0`.
+
+Without activation or an entrypoint override, checks passed for default help,
+all workflow help commands, Python dependencies, bcftools, R/GenomicSEM and the
+isolated LDSC runtime. Invalid CLI commands and a missing Conda executable were
+correctly rejected. An explicit non-root UID/GID also passed the LDSC runtime
+check, and runtime timezone detection returned `Etc/UTC`.
+
+Nextflow 26.04.6 ran the smoke and three-trait QC/PCA workflows locally with Docker.
+Manifest order, correlation/CTI matrices, eigenvalues and signed PC1 loadings
+matched independent NumPy calculations (numerical tolerance `1e-12` for PCA).
+A manifest containing an absent trait failed with exit status 1 as expected.
+GenomicSEM still reports upstream namespace warnings. No live Google Batch job,
+full real-data LDSC-to-GWAMA run or native arm64 build was tested.
+
+## Earlier build verification
+
+The results below describe earlier images, not verification of the current
+empty-entrypoint rebuild.
 
 The Nextflow-compatible rebuild passed on Linux amd64:
 `sha256:9fe79adbdae20a312bbed0f8407722c3ebbcf9f672258e2e6502ae19ca6c5521`.

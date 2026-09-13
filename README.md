@@ -60,13 +60,31 @@ of the main package's pandas 2.x dependencies.
 
 ### 3. Choose where to start
 
-- **Already have Python LDSC results?** Go to [GPCA and GWAMA](#run-gpca-and-gwama).
-- **Already have GenomicSEM LDSC RData?** Use `ldsc-gpca genomicsem gpca` in that section.
-- **Have only GWAS files?** Choose an [LDSC workflow](#choose-a-workflow), and
-  [prepare GPCA inputs](#prepare-per-trait-gpca-inputs) if needed.
+**To run GPCA followed by SNP-level GWAMA, both backends need three inputs:**
+a trait manifest CSV, LDSC results, and per-trait GWAMA summary-statistic files.
+An LDSC table or RData file alone does not contain the SNP-level data needed by GWAMA.
 
-Start with `--validate_only` to inspect LDSC QC and PCA before GWAMA. GWAMA itself
-needs per-variant input files, not just an LDSC matrix.
+- **Have Python LDSC results?** Use `ldsc-gpca gpca` with your manifest and complete
+  pairwise LDSC table. Start with the [Python LDSC QC/PCA example](#python-ldsc-qcpca-example),
+  then [run GWAMA](#run-snp-level-pc1-gwama-after-reviewing-qc) with your per-trait input files.
+- **Have GenomicSEM LDSC RData?** Use `ldsc-gpca genomicsem gpca` with your manifest
+  and `genomicPCA_LDSC.RData`. Start with the
+  [GenomicSEM QC/PCA example](#genomicsem-qcpca-example), then
+  [run GWAMA](#run-snp-level-pc1-gwama-after-reviewing-qc) with the same type of per-trait input files.
+- **Have GWAS files but no LDSC results yet?** First run
+  [Python LDSC](#run-python-ldsc) or [GenomicSEM LDSC](#run-genomicsem-ldsc).
+  Also [prepare the per-trait GPCA/GWAMA inputs](#prepare-per-trait-gpca-inputs)
+  before running GWAMA.
+
+**What are the GWAMA input files?** These are the tab-separated, per-trait files
+passed through `--gpca_input_folder`, with columns `SNPID,CHR,BP,EA,OA,EAF,N,Z,P`
+in that order. See [filenames and input requirements](#common-inputs).
+If you do not have them, use [the preparation step](#prepare-per-trait-gpca-inputs)
+with supported GWAS-VCF files; it creates the `gpca_inputs/` folder for either backend.
+
+**Only want to inspect LDSC QC and PCA first?** Add `--validate_only`.
+This needs only the manifest and LDSC results: it skips GWAMA and does not read
+or validate the per-variant GWAMA files.
 
 <details>
 <summary>No Conda yet, or “conda activate” does not work?</summary>
@@ -159,7 +177,7 @@ or [Docker Engine](https://docs.docker.com/engine/install/) on Linux. Then:
 git clone https://github.com/JIBINJOHNV/ldsc-gpca.git
 cd ldsc-gpca
 docker build --platform linux/amd64 -t ldsc-gpca:0.5.0 .
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 --help
+docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 ldsc-gpca --help
 ```
 
 The first build downloads substantial dependencies and takes several minutes.
@@ -175,7 +193,7 @@ require per-variant GWAMA inputs:
 docker run --rm --platform linux/amd64 \
   --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /absolute/path/to/data:/work -w /work \
-  ldsc-gpca:0.5.0 gpca \
+  ldsc-gpca:0.5.0 ldsc-gpca gpca \
   --input /work/selected_traits.csv \
   --python_ldsc /work/all_pairwise_python_ldsc.csv \
   --outdir /work/qc_results --validate_only
@@ -186,7 +204,11 @@ Replace the host folder and filenames. Results appear on your computer under
 for the required manifest and LDSC columns. All paths inside a manifest must also
 resolve inside the container.
 
-The same image runs `prepare`, `ldsc`, `gpca` and `genomicsem` commands.
+The image has an empty entrypoint: always include `ldsc-gpca` before `prepare`,
+`ldsc`, `gpca` or `genomicsem` when specifying a command after the image name.
+Running the image without a command displays help. Tools are on `PATH`; no
+activation script is needed. The image defaults to root for the Batch workflow;
+the local example above overrides this to avoid root-owned output files on Linux.
 For GWAMA, remove `--validate_only` and supply `--gpca_input_folder`.
 The bundled GWAMA source omits INFO: automatic export additionally requires a
 scientifically justified `--gwama-output-info` value. Do not invent one.
@@ -553,7 +575,7 @@ The bundled source omits INFO: automatic export requires a scientifically justif
 
 ### Start with QC/PCA only
 
-For Python LDSC:
+#### Python LDSC: QC/PCA example
 
 ```bash
 ldsc-gpca gpca \
@@ -576,7 +598,7 @@ including all self-pairs. Triangular and symmetric tables are accepted. Consiste
 opposite orientations are collapsed; conflicting duplicates stop. A single
 `ldsc.py --rg A,B,C` command supplies A–B and A–C, not B–C.
 
-For native GenomicSEM:
+#### GenomicSEM: QC/PCA example
 
 ```bash
 ldsc-gpca genomicsem gpca \

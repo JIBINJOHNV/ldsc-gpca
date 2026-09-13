@@ -12,14 +12,14 @@ COPY scripts/setup_environments.sh scripts/install_genomicsem.R ./scripts/
 COPY src/ ./src/
 # Includes import, R-package, executable and CLI checks; fails on any error.
 RUN bash scripts/setup_environments.sh --no-activate /opt/environments
-COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/ldsc-gpca-entrypoint
 ENV PATH="/opt/environments/main/bin:/opt/environments/conda/bin:${PATH}" \
     LDSC_GPCA_LDSC_PREFIX="/opt/environments/ldsc" \
     CONDA_EXE="/opt/environments/conda/bin/conda" \
     TZ="Etc/UTC"
 RUN apt-get update && apt-get install -y --no-install-recommends procps && apt-get clean \
-    && useradd --create-home --uid 10001 analysis && mkdir /work && chown analysis /work
-USER analysis
+    && mkdir /work
+# Nextflow supplies the task command; tools are available without activation.
+USER root
 WORKDIR /work
-ENTRYPOINT ["/usr/local/bin/ldsc-gpca-entrypoint"]
+ENTRYPOINT []
 CMD ["ldsc-gpca", "--help"]

@@ -6,6 +6,7 @@ process CHECK_IMAGE {
     path 'tools.txt'
     script:
     '''
+    set -euo pipefail
     {
       ldsc-gpca --version
       ldsc-gpca gpca --help
