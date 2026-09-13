@@ -28,79 +28,105 @@ establish that a dataset or analysis is suitable for publication.
 
 ## Install and activate
 
-### One installation command
+### 1. Install once
 
-Clone this repository using Git, then **source** the installer from Bash or zsh:
+With Conda already initialized in your terminal, run:
 
 ```bash
 git clone https://github.com/JIBINJOHNV/ldsc-gpca.git
 cd ldsc-gpca
-source scripts/setup_environments.sh
+bash scripts/setup_environments.sh --no-activate
 ```
 
-Keep the repository's YAML files and R installation helper alongside the Bash
-script: they are used automatically, not additional manual installation steps.
-You need network access. If Conda is missing, bootstrap also requires `curl` and
-`sha256sum` or macOS `shasum`. Git must already be available for the clone command.
+The installer installs and checks Python, R, GenomicSEM, bcftools and CBIIT LDSC.
+You do not need to install them separately. Keep the repository's YAML files and
+`scripts/` directory together. Git and internet access are required.
 
-The installer:
-
-1. Detects Linux x86_64/aarch64 or macOS Intel/Apple Silicon.
-2. Uses an existing Conda installation, or installs checksum-verified
-   [Miniforge 26.7.2-0](https://github.com/conda-forge/miniforge/releases/tag/26.7.2-0)
-   locally. It does not use sudo or edit shell startup files.
-3. Creates two isolated environments, using Mamba from that Conda installation
-   when available, otherwise Conda.
-4. Installs the package and pinned GenomicSEM source, checks tools and imports,
-   and records installed versions.
-5. Activates the main environment **in your current terminal**, only after success.
-
-| Environment, relative to the install root | Contains |
-| --- | --- |
-| `main/` | ldsc-gpca, bcftools, Python dependencies, R and GenomicSEM |
-| `ldsc/` | CBIIT LDSC and its older Python dependencies |
-
-These are separate environments, not inherited dependencies. Activate only `main`;
-the package launches LDSC in the other environment automatically. Two environments
-are necessary for the current pins: CBIIT requires pandas 1.5.0, whereas this
-package requires pandas 2.x.
-
-The default root is `<repository>/.environments`. To choose a different location:
+### 2. Activate whenever you open a terminal
 
 ```bash
-source scripts/setup_environments.sh /absolute/path/ldsc-gpca-envs
-```
-
-**Platform support is conditional.** Detecting the OS/CPU does not guarantee that
-all old dependency pins are available for it. The installer stops rather than
-relaxing pins or enabling emulation. Full installations on all supported platform
-branches have not been tested. Do not interpret the installer as an OS-independent
-binary distribution.
-
-### Use the environment again
-
-From the repository, after a successful default installation:
-
-```bash
-source .environments/activate.sh
+conda activate ldsc-gpca
 ldsc-gpca --help
 ```
 
-For a custom root, source `<install-root>/activate.sh`. Do not move environments
-after creation; recreate them at their new paths.
+**Only activate this one environment.** The package automatically launches Python
+LDSC in a separate environment named `ldsc-gpca-ldsc`. You never need to switch
+between them. The separation keeps LDSC's pandas 1.5.0 dependencies independent
+of the main package's pandas 2.x dependencies.
 
-For an unattended installation:
+### 3. Choose where to start
+
+- **Already have Python LDSC results?** Go to [GPCA and GWAMA](#run-gpca-and-gwama).
+- **Already have GenomicSEM LDSC RData?** Use `ldsc-gpca genomicsem gpca` in that section.
+- **Have only GWAS files?** Choose an [LDSC workflow](#choose-a-workflow), and
+  [prepare GPCA inputs](#prepare-per-trait-gpca-inputs) if needed.
+
+Start with `--validate_only` to inspect LDSC QC and PCA before GWAMA. GWAMA itself
+needs per-variant input files, not just an LDSC matrix.
+
+<details>
+<summary>No Conda yet, or “conda activate” does not work?</summary>
+
+The installer can download checksum-verified
+[Miniforge 26.7.2-0](https://github.com/conda-forge/miniforge/releases/tag/26.7.2-0)
+when Conda is absent. This requires `curl` and `sha256sum` or macOS `shasum`.
+It does not use sudo or edit your shell startup files.
+
+After installation, follow the exact Conda initialization command printed by
+the installer. For persistent setup, run its printed `conda init bash` command
+(or `conda init zsh` for zsh), then reopen your terminal. After that, use:
+
+```bash
+conda activate ldsc-gpca
+```
+
+If you already have Conda but activation is unavailable, initialize that Conda
+installation for your shell first. Do not mix multiple Conda installations.
+
+</details>
+
+<details>
+<summary>Existing installations, custom locations and installation records</summary>
+
+The named installer refuses to overwrite either existing environment. Inspect
+`conda env list` before reinstalling. If only the package code changed and
+dependencies are unchanged, update from the repository while the main environment
+is active:
+
+```bash
+conda activate ldsc-gpca
+python -m pip install .
+```
+
+This updates the Python package and bundled R source, not the separately installed
+R/Conda dependencies. Follow environment changes separately when upgrading.
+
+Named environments are placed in Conda's configured environment directories.
+Version records and an optional activation helper are saved under
+`<repository>/.environments/named/`. No `activate.sh` is needed for normal use.
+
+Older installations in `<repository>/.environments/main` are not renamed or moved.
+Their existing activation helper still works. To obtain the new named environments,
+run the installer without a custom root; this is a separate installation and uses
+additional disk space.
+
+For Docker or advanced custom-path installations, an explicit root preserves
+the prefix-based mode:
 
 ```bash
 bash scripts/setup_environments.sh --no-activate /absolute/path/ldsc-gpca-envs
 ```
 
-Running with `bash` without `--no-activate` opens a new activated Bash shell when
-attached to a terminal; `exit` returns to the previous shell. An executed script
-cannot activate its parent shell. Sourcing is the way to activate the current one.
-On failure, partial files are retained and activation is skipped. Existing
-environment targets are refused; use a fresh root or inspect/recover the partial
-installation manually. The installer does not delete existing environments.
+That mode uses `<root>/main` and `<root>/ldsc`, and activates through
+`source <root>/activate.sh` (not `conda activate ldsc-gpca`). Do not move
+Conda environments after creation.
+
+</details>
+
+**Platform limits:** Linux x86_64/aarch64 and macOS Intel/Apple Silicon are detected,
+but old dependency pins may not resolve on every platform. The installer stops
+rather than changing pins or enabling emulation. Linux amd64 Docker installation
+has been tested; a fresh native installation on every platform has not.
 
 ### What you still need to supply
 
@@ -705,7 +731,7 @@ is performed. Use `--postprocess-help` for this section's CLI options.
 | Problem | What to check |
 | --- | --- |
 | Installer cannot solve dependencies | OS/CPU support, network and pinned package availability. Do not silently replace pins; retain the error and partial installation for diagnosis. |
-| `ldsc-gpca` is not found | Source the successful installation's `activate.sh`. Installing from GitHub does not automatically update an already active environment. |
+| `ldsc-gpca` is not found | Run `conda activate ldsc-gpca`. For older/custom-prefix installations only, use their `activate.sh`. Installing from GitHub does not automatically update an existing environment. |
 | Child LDSC cannot launch | Check the saved prefix, `--ldsc-env` / `--ldsc-env-prefix`, and Conda executable. Preflight help must run successfully. |
 | Missing VCF fields | `prepare` and Python `ldsc` have different fixed schemas. A different field/ancestry needs appropriate input conversion, not relabelling without verification. |
 | Missing chromosome files | Split GWAMA expects 1–22 for each trait; choose `nosplit` during both preparation and analysis if that layout is appropriate. |

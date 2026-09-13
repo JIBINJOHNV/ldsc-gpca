@@ -12,19 +12,22 @@ fi
 if [ "$_ldsc_setup_sourced" = 1 ]; then
   bash "$_ldsc_setup_file" --no-activate "$@" || return $?
   case " ${*} " in *' --help '*|*' -h '*|*' --no-activate '*) return 0 ;; esac
-  _ldsc_setup_root=${1:-"$(cd "$(dirname "$_ldsc_setup_file")/.." && pwd)/.environments"}
+  _ldsc_setup_root=${1:-"$(cd "$(dirname "$_ldsc_setup_file")/.." && pwd)/.environments/named"}
   . "$_ldsc_setup_root/activate.sh"
   return $?
 fi
 set -euo pipefail
 activate=1
+named=1
 root=''
 for argument in "$@"; do
   case "$argument" in
     --help|-h)
-      echo 'Usage: source scripts/setup_environments.sh [ENV_ROOT]'
+      echo 'Usage: bash scripts/setup_environments.sh --no-activate'
+      echo 'Then: conda activate ldsc-gpca (initialize Conda in your shell first).'
       echo 'Or: bash scripts/setup_environments.sh [--no-activate] [ENV_ROOT]'
-      echo 'Default ENV_ROOT: <repository>/.environments; must be fresh.'
+      echo 'Default: named environments ldsc-gpca and ldsc-gpca-ldsc; records in <repository>/.environments/named.'
+      echo 'Advanced: an explicit ENV_ROOT keeps legacy prefix mode (ENV_ROOT/main and ENV_ROOT/ldsc).'
       echo 'Installs main + isolated LDSC, checks tools, and activates after success.'
       echo 'Linux x86_64/aarch64 and macOS Intel/Apple Silicon; subject to dependency availability.'
       echo 'Bootstraps checksum-verified Miniforge if Conda is absent. No sudo or shell-profile edits.'
@@ -34,11 +37,11 @@ for argument in "$@"; do
     --no-activate) activate=0 ;;
     -*) echo "Unknown option: $argument" >&2; exit 2 ;;
     *) if [[ -n "$root" ]]; then echo 'Expected at most one ENV_ROOT argument.' >&2; exit 2; fi
-       root=$argument ;;
+       root=$argument; named=0 ;;
   esac
 done
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-root=${root:-"$repo/.environments"}
+root=${root:-"$repo/.environments/named"}
 os=$(uname -s)
 cpu=$(uname -m)
 case "$os:$cpu" in
@@ -84,8 +87,21 @@ base=$("$conda_bin" info --base)
 manager=$conda_bin
 if [[ -x "$base/bin/mamba" ]]; then manager="$base/bin/mamba"; fi
 echo "Installing on $os/$cpu using $manager. Older pinned LDSC dependencies must resolve for this platform."
-"$manager" env create --prefix "$main_prefix" --file "$repo/environment.yml" --yes
-"$manager" env create --prefix "$ldsc_prefix" --file "$repo/environment.ldsc.yml" --yes
+if [[ $named == 1 ]]; then
+  # Refuse either existing name before creating anything; preserve user environments.
+  existing=$("$conda_bin" env list --json)
+  if ! printf '%s' "$existing" | "$base/bin/python" -c 'import json,os,sys; names={os.path.basename(p) for p in json.load(sys.stdin)["envs"]}; sys.exit(bool(names & {"ldsc-gpca","ldsc-gpca-ldsc"}))'; then
+    echo 'Could not verify fresh environment names, or ldsc-gpca/ldsc-gpca-ldsc already exists. Inspect conda env list; nothing was overwritten.' >&2
+    exit 2
+  fi
+  "$manager" env create --name ldsc-gpca --file "$repo/environment.yml" --yes
+  "$manager" env create --name ldsc-gpca-ldsc --file "$repo/environment.ldsc.yml" --yes
+  main_prefix=$("$conda_bin" run --name ldsc-gpca python -c 'import sys; print(sys.prefix)')
+  ldsc_prefix=$("$conda_bin" run --name ldsc-gpca-ldsc python -c 'import sys; print(sys.prefix)')
+else
+  "$manager" env create --prefix "$main_prefix" --file "$repo/environment.yml" --yes
+  "$manager" env create --prefix "$ldsc_prefix" --file "$repo/environment.ldsc.yml" --yes
+fi
 main_run() { "$conda_bin" run --no-capture-output --prefix "$main_prefix" "$@"; }
 child_run() { "$conda_bin" run --no-capture-output --prefix "$ldsc_prefix" "$@"; }
 main_run Rscript "$repo/scripts/install_genomicsem.R"
@@ -115,4 +131,11 @@ if [[ $activate == 1 && -t 0 && -t 1 ]]; then
   echo 'Opening an activated Bash shell. Type exit to return to your previous shell.'
   exec bash --rcfile "$root/activate.sh" -i
 fi
-printf 'Activate later with: source %q\n' "$root/activate.sh"
+if [[ $named == 1 ]]; then
+  echo 'Activate later with: conda activate ldsc-gpca'
+  echo 'The LDSC environment is launched internally; do not activate it yourself.'
+  printf 'If Conda is not initialized in this terminal, first run: source %q\n' "$base/etc/profile.d/conda.sh"
+  printf 'Optional persistent setup: %q init bash   (use zsh instead for zsh), then reopen your terminal.\n' "$conda_bin"
+else
+  printf 'Activate later with: source %q\n' "$root/activate.sh"
+fi
