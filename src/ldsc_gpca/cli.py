@@ -10,7 +10,7 @@ def main(argv=None):
         prog="ldsc-gpca", description="Python LDSC and R genomicPCA/GWAMA workflows.",
         epilog="""AVAILABLE WORKFLOWS
   prepare          VCF -> GPCA inputs; optional LDSC munging input tables.
-  ldsc             Run Python LDSC using Docker.
+  ldsc             Run CBIIT LDSC in an isolated Conda environment.
   gpca             Python-LDSC results -> PCA/GWAMA.
   genomicsem gpca  Existing GenomicSEM RData -> PCA/GWAMA.
   genomicsem ldsc  Native munge -> LDSC, or start from existing munged files.

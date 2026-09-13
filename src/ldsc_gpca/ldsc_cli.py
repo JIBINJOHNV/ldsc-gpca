@@ -11,15 +11,22 @@ from .extraction import run_vcf_to_table
 from .munging import parallel_munge_sumstats
 from .pairwise import parallel_ldsc_analysis
 from .results import compile_results, check_saved_filters
+from .ldsc_runtime import check_runtime
 
 # Define command-line arguments
-parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise Python LDSC from VCF summary statistics (Docker required).", epilog=LDSC_INPUT_HELP)
+parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise CBIIT Python LDSC using an isolated Conda environment; no Docker.", epilog=LDSC_INPUT_HELP)
 
 parser.add_argument('-output_folder', '--output_folder', metavar='DIRECTORY', help="Output directory; LDSC tables and logs are written below it.", required=True)
 parser.add_argument('-ld_ref_snp_file', '--ld_ref_snp_file', metavar='ALLELES.tsv', help="Whitespace-separated HapMap allele table with SNP,A1,A2 headers; passed to LDSC --merge-alleles.", required=True)
 parser.add_argument('-input_file', '--input_file', metavar='MANIFEST.csv', help="Comma-separated trait manifest; required headers and prevalence rules below.", required=True)
 parser.add_argument('-ld_ref', '--ld_ref', metavar='DIRECTORY', help="Chromosome LD-score reference directory (not an individual file).", required=True)
-parser.add_argument('-n_cores', '--n_cores', help="Number of parallel Docker containers", default=5, type=int)
+parser.add_argument('-n_cores', '--n_cores', help="Number of parallel local workers", default=5, type=int)
+runtime_group = parser.add_argument_group('Local tools and isolated LDSC environment')
+runtime_group.add_argument('--conda-executable', default=os.environ.get('CONDA_EXE', 'conda'), help='Conda executable name/path; default: CONDA_EXE when set, otherwise conda on PATH.')
+target = runtime_group.add_mutually_exclusive_group()
+target.add_argument('--ldsc-env', help='Child environment name. Default: ldsc-cbiit unless the setup script configured a prefix.')
+target.add_argument('--ldsc-env-prefix', help='Child environment directory; overrides LDSC_GPCA_LDSC_PREFIX saved by setup. Default: saved prefix, otherwise use --ldsc-env.')
+runtime_group.add_argument('--bcftools', default='bcftools', help='Local bcftools executable/path. Default: bcftools on PATH; not required with --ldsc_only.')
 
 filter_group = parser.add_argument_group('Variant filters')
 mhc = filter_group.add_mutually_exclusive_group()
@@ -107,6 +114,17 @@ def main(argv=None):
     num_refs = len(input_df[input_df['ref'] == 'yes'])
     if not num_refs:
         parser.error('At least one trait must have ref=yes')
+    runtime = dict(conda=args.conda_executable, environment=args.ldsc_env or 'ldsc-cbiit',
+                   prefix=None if args.ldsc_env else (args.ldsc_env_prefix or os.environ.get('LDSC_GPCA_LDSC_PREFIX')))
+    if runtime['prefix']:
+        runtime['prefix'] = os.path.abspath(runtime['prefix'])
+    try:
+        check_runtime(**runtime, bcftools=None if args.ldsc_only else args.bcftools)
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
+    os.makedirs(output_folder, exist_ok=True)
+    with open(os.path.join(output_folder, 'LDSC_Runtime.json'), 'w') as handle:
+        json.dump({**runtime, 'bcftools': args.bcftools, 'backend': 'CBIIT/ldsc'}, handle, indent=2)
     total_comparisons = num_refs * len(input_df)
     active_parallel = min(n_parallel, total_comparisons)
     batch_size = 1 if total_comparisons <= n_parallel else max(5, min(100, math.ceil(len(input_df) / (n_parallel / num_refs))))
@@ -116,11 +134,11 @@ def main(argv=None):
 
     if not args.ldsc_only:
         print("\n[1/4] Converting VCF to TSV...")
-        input_df = run_vcf_to_table(n_parallel, input_df, output_folder, filters)
+        input_df = run_vcf_to_table(n_parallel, input_df, output_folder, filters, args.bcftools)
 
         print("\n[2/4] Munging Summary Statistics...")
         valid_names = parallel_munge_sumstats(n_parallel, input_df, output_folder, snp_include_file, filters,
-                                             ldsc_input_folder=ldsc_input_folder, munge_input_folder=munge_input_folder)
+                                             ldsc_input_folder=ldsc_input_folder, munge_input_folder=munge_input_folder, runtime=runtime)
 
         removed_count = len(input_df) - len(valid_names)
         input_df = input_df[input_df['gwas_name'].isin(valid_names)].reset_index(drop=True)
@@ -161,7 +179,7 @@ def main(argv=None):
 
     if not input_df.empty:
         print("\n[3/4] Running LDSC Genetic Correlation...")
-        log_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, ldsc_input_folder, retries=args.ldsc_retries)
+        log_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, ldsc_input_folder, retries=args.ldsc_retries, runtime=runtime)
 
         print("\n[4/4] Compiling final results...")
         compile_results(output_folder, log_files, input_df)

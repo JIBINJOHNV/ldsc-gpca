@@ -7,56 +7,52 @@ import pandas as pd
 import polars as pl
 from .utils import DEFAULT_FILTERS, optional_prevalence
 
-def filter_commands(vcf_file, filters, query):
+def filter_commands(vcf_file, filters, query, bcftools='bcftools'):
     expression = "(ABS(INFO/AF - INFO/EUR) > {d} || INFO/EUR==\".\")".format(d=filters['max_af_difference'])
     maf = filters['maf_min']
-    first = ['/usr/bin/bcftools', 'view', vcf_file]
+    first = [bcftools, 'view', vcf_file]
     if filters['exclude_mhc']:
         first[2:2] = ['-t', f"^{filters['mhc_chr']}:{filters['mhc_start']}-{filters['mhc_end']}"]
     commands = [
         first,
-        ['/usr/bin/bcftools', 'view', '-e', expression],
-        ['/usr/bin/bcftools', 'view', '-i', f'FORMAT/SI >= {filters["info_min"]} && FORMAT/AF >= {maf} && FORMAT/AF[0:0] <= {1-maf}'],
+        [bcftools, 'view', '-e', expression],
+        [bcftools, 'view', '-i', f'FORMAT/SI >= {filters["info_min"]} && FORMAT/AF >= {maf} && FORMAT/AF[0:0] <= {1-maf}'],
     ]
     if filters['remove_palindrome']:
         lo, hi = filters['pal_lower'], filters['pal_upper']
         pal = '((REF=="A" && ALT=="T") || (REF=="T" && ALT=="A") || (REF=="C" && ALT=="G") || (REF=="G" && ALT=="C"))'
-        commands.append(['/usr/bin/bcftools', 'view', '-e', f'{pal} && FORMAT/AF[0:0] >= {lo} && FORMAT/AF[0:0] <= {hi}'])
-    commands.append(['/usr/bin/bcftools', 'query', '-f', query])
+        commands.append([bcftools, 'view', '-e', f'{pal} && FORMAT/AF[0:0] >= {lo} && FORMAT/AF[0:0] <= {hi}'])
+    commands.append([bcftools, 'query', '-f', query])
     return commands
 
-def munge_input_worker(sample_name, input_path, output_folder, vcf_file, filters=None):
+def munge_input_worker(sample_name, input_path, output_folder, vcf_file, filters=None, bcftools='bcftools'):
     munge_input_folder = os.path.join(output_folder, 'munge_input')
     os.makedirs(munge_input_folder, exist_ok=True)
     out_file = os.path.join(munge_input_folder, f"{sample_name}_mungeinput.tsv")
     filters = filters or DEFAULT_FILTERS
-    commands = filter_commands(vcf_file, filters, r'%CHROM\t%ID\t%POS\t%REF\t%ALT[\t%EZ\t%LP\t%AF\t%NEF]\n')
+    commands = filter_commands(vcf_file, filters, r'%CHROM\t%ID\t%POS\t%REF\t%ALT[\t%EZ\t%LP\t%AF\t%NEF]\n', bcftools)
     commands.append(['awk', '-F', '\t', '-v', 'OFS= ', r'{ pval = ($7 == "." || $7 == "") ? "NA" : 10^(-$7); print $1, $2, $3, $4, $5, $6, pval, $8, $9 }'])
-    docker_command = ['docker', 'run', '--rm', '-v', f'{output_folder}:{output_folder}',
-                      '-v', f'{input_path}:{input_path}', '--user', f'{os.getuid()}:{os.getgid()}',
-                      'jibinjv/ldsc:v3', 'bash', '-o', 'pipefail', '-c',
+    command = ['bash', '-o', 'pipefail', '-c',
                       ' | '.join(shlex.join(command) for command in commands)]
     try:
         with open(out_file, 'w') as handle:
             handle.write('CHROM ID POS REF ALT EZ P AF NEF\n')
             handle.flush()
-            subprocess.run(docker_command, check=True, stdout=handle, stderr=subprocess.PIPE)
+            subprocess.run(command, check=True, stdout=handle, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
         print(f"Error executing command for {sample_name}: {e.stderr.decode().strip()}")
         raise e
 
-def munge_input_worker_with_prevalence(sample_name, input_path, output_folder, vcf_file, sample_prevalence, filters=None):
+def munge_input_worker_with_prevalence(sample_name, input_path, output_folder, vcf_file, sample_prevalence, filters=None, bcftools='bcftools'):
     """Create TSV, add total N with Polars, and return sample prevalence."""
     folder = os.path.join(output_folder, 'munge_input')
     os.makedirs(folder, exist_ok=True)
     out_file = os.path.join(folder, f'{sample_name}_mungeinput.tsv')
     query = r'%CHROM\t%ID\t%POS\t%REF\t%ALT[\t%EZ\t%LP\t%AF\t%NEF\t%NC\t%NCO]\n'
     filters = filters or DEFAULT_FILTERS
-    commands = filter_commands(vcf_file, filters, query)
+    commands = filter_commands(vcf_file, filters, query, bcftools)
     commands.append(['awk', '-F', '\t', '-v', 'OFS=\t', r'{ $7 = ($7 == "." || $7 == "") ? "NA" : sprintf("%.17g", 10^(-$7)); print }'])
-    command = ['docker', 'run', '--rm', '-v', f'{output_folder}:{output_folder}',
-               '-v', f'{input_path}:{input_path}', '--user', f'{os.getuid()}:{os.getgid()}',
-               'jibinjv/ldsc:v3', 'bash', '-o', 'pipefail', '-c', ' | '.join(shlex.join(p) for p in commands)]
+    command = ['bash', '-o', 'pipefail', '-c', ' | '.join(shlex.join(p) for p in commands)]
     columns = ['CHROM', 'ID', 'POS', 'REF', 'ALT', 'EZ', 'P', 'AF', 'NEF', 'N_CASES', 'N_CONTROLS']
     with open(out_file, 'w') as handle:
         handle.write('\t'.join(columns) + '\n')
@@ -76,7 +72,7 @@ def munge_input_worker_with_prevalence(sample_name, input_path, output_folder, v
     return resolved
 
 # --- MAIN LOGIC ---
-def run_vcf_to_table(n_parallel, input_df, output_folder, filters=DEFAULT_FILTERS):
+def run_vcf_to_table(n_parallel, input_df, output_folder, filters=DEFAULT_FILTERS, bcftools='bcftools'):
     os.makedirs(output_folder, exist_ok=True)
     with concurrent.futures.ProcessPoolExecutor(max_workers=n_parallel) as executor:
         futures = {}
@@ -86,10 +82,10 @@ def run_vcf_to_table(n_parallel, input_df, output_folder, filters=DEFAULT_FILTER
             input_path = "/".join(vcf_file.split("/")[:-1])
             # Submit to the un-nested top-level function
             if pd.isna(row['pop_prevalence']):
-                future = executor.submit(munge_input_worker, sample_name, input_path, output_folder, vcf_file, filters)
+                future = executor.submit(munge_input_worker, sample_name, input_path, output_folder, vcf_file, filters, bcftools)
             else:
                 future = executor.submit(munge_input_worker_with_prevalence, sample_name, input_path,
-                                         output_folder, vcf_file, row['sample_prevalence'], filters)
+                                         output_folder, vcf_file, row['sample_prevalence'], filters, bcftools)
             futures[future] = row.name
         # CRITICAL: Checking results prints errors to your screen if a process crashes!
         for future in concurrent.futures.as_completed(futures):

@@ -2,6 +2,8 @@
 load_gpca_modules <- function(root, backend = c("python_ldsc", "genomicsem"),
                               envir = parent.frame()) {
   backend <- match.arg(backend)
+  assign("bundled_gwama_path", file.path(normalizePath(root, mustWork = TRUE),
+    "vendor", "N_weighted_GWAMA.function.1_2_6.R"), envir = envir)
   suppressPackageStartupMessages({
     library(argparse)
     library(data.table)

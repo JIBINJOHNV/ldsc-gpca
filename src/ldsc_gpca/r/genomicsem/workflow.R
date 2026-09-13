@@ -43,7 +43,8 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
       status <- data.frame(Chromosome = "not_run_validate_only", Success = NA,
         Output = NA_character_, Error = "GWAMA intentionally skipped by --validate_only")
     } else {
-      if (is.null(args$source_path) || is.null(args$gpca_input_folder)) stop("GWAMA requires --source_path and --gpca_input_folder.", call. = FALSE)
+      if (is.null(args$gpca_input_folder)) stop("GWAMA requires --gpca_input_folder.", call. = FALSE)
+      if (!file.exists(args$source_path)) stop("GWAMA function script not found: ", args$source_path, call. = FALSE)
       preflight_gwama_inputs(traits, args$gpca_input_folder, args$splitby_chr)
       fun <- load_modified_gwama(args$source_path)
       worker <- function(chr) {

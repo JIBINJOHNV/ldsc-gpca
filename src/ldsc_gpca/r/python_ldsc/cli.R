@@ -115,7 +115,7 @@ parse_command_line <- function() {
       "    A1/A2/p aliases are accepted for EA/OA/P.\n",
       "  Split files: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv\n",
       "  Whole-genome files: {traitname}_GenomicPCA_inputs.tsv\n",
-      "  --source_path: R source defining the already-modified GWAMA function.\n\n",
+      "  --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.\n\n",
       "REQUIRED MANIFEST COLUMN\n",
       "  traitname    Unique, non-empty trait identifier. Each row selects one\n",
       "               trait, and row order defines all analysis matrices.\n",
@@ -149,7 +149,7 @@ parse_command_line <- function() {
       "    --failed_ldsc_action drop_traits \\\n",
       "    --validate_only\n\n",
       "Run with GWAMA by additionally providing --gpca_input_folder and\n",
-      "--source_path, and omit --validate_only."
+      "an optional --source_path override, and omit --validate_only."
     )
   )
 
@@ -203,9 +203,9 @@ parse_command_line <- function() {
   )
   gwama_inputs$add_argument(
     "--source_path",
-    default = NULL,
+    default = bundled_gwama_path,
     metavar = "GWAMA_FUNCTION.R",
-    help = "R file defining the already-modified my_GWAMA() function."
+    help = "Optional custom modified GWAMA R source. Default: bundled N_weighted_GWAMA.function.1_2_6.R."
   )
   gwama_inputs$add_argument(
     "--splitby_chr",
@@ -436,7 +436,7 @@ validate_cli_paths <- function(args) {
       )
     }
     if (is.null(args$source_path) || !nzchar(args$source_path)) {
-      stop("--source_path is required unless --validate_only is used.", call. = FALSE)
+      stop("GWAMA source path is empty; omit --source_path to use the bundled function.", call. = FALSE)
     }
     if (!file.exists(args$source_path)) {
       stop(glue("GWAMA function script not found: {args$source_path}"), call. = FALSE)

@@ -1,0 +1,16 @@
+# Allowlist: do not send GWAS data, environments, credentials or Git history.
+**
+!Dockerfile
+!.dockerignore
+!environment.yml
+!environment.ldsc.yml
+!pyproject.toml
+!README.md
+!scripts/
+!scripts/setup_environments.sh
+!scripts/install_genomicsem.R
+!src/
+!src/**
+**/__pycache__/**
+**/*.pyc
+**/*.egg-info/**

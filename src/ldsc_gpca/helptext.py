@@ -80,7 +80,8 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
     filenames: {gwas_name}.sumstats.gz. Required sidecars must remain alongside.
 
 FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
-  Docker image: jibinjv/ldsc:v3. Host Docker must be available.
+  Local bcftools/Bash/awk extract variants; conda run launches isolated CBIIT LDSC.
+  Setup: bash scripts/setup_environments.sh; Docker is not used.
   Extraction expects INFO/AF, INFO/EUR and FORMAT/SI, AF, EZ, LP, NEF;
   population-prevalence traits additionally require FORMAT/NC and FORMAT/NCO.
   LD reference prefix: <ld_ref>/<CHR>.l2.ldscore.gz and associated M files;

@@ -1,0 +1,35 @@
+name: ldsc-gpca
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  - git
+  - bash
+  - gawk
+  - numpy=1.26.4
+  - pandas=2.2.3
+  - polars=0.20.31
+  - bcftools=1.21
+  - r-base=4.3
+  - r-argparse
+  - r-data.table
+  - r-glue
+  - r-remotes
+  - r-rcpp
+  - r-plyr
+  - r-e1071
+  - r-readr
+  - r-gdata
+  - r-lavaan
+  - r-doparallel
+  - r-foreach
+  - r-stringr
+  - r-matrix
+  - r-r.utils
+  - r-dplyr
+  - r-iterators
+# Run scripts/install_genomicsem.R after activation, then pip install .
+# This is a portable environment specification, NOT a complete dependency lock.

@@ -16,7 +16,7 @@ genomicsem_parser <- function() {
       "    SNPID,CHR,BP,EA,OA,EAF,N,Z,P (A1/A2/p aliases accepted for EA/OA/P).\n",
       "    Split: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv (chromosomes 1-22).\n",
       "    Whole genome: {traitname}_GenomicPCA_inputs.tsv.\n",
-      "  --source_path: R source defining already-modified my_GWAMA or multivariate_GWAMA.\n\n",
+      "  --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.\n\n",
       "AVAILABILITY\n",
       "  genomicsem ldsc runs native munge/LDSC or accepts existing munged files.\n",
       "  Both PCA matrix choices write all-PC variance and PC1 protein contributions.\n",
@@ -25,7 +25,7 @@ genomicsem_parser <- function() {
   p$add_argument("--ldsc_path", required = TRUE, metavar = "LDSC.RData", help = "Native LDSCoutput RData; required objects below. Required; no default.")
   p$add_argument("--outdir", required = TRUE, metavar = "DIRECTORY", help = "Output directory; use a fresh directory. Required; no default.")
   p$add_argument("--gpca_input_folder", metavar = "DIRECTORY", help = "Tab-separated GWAMA input files. Default: unset; package CLI prepares from VCF unless --validate_only.")
-  p$add_argument("--source_path", metavar = "GWAMA.R", help = "Modified GWAMA R source. Default: unset; required except with --validate_only.")
+  p$add_argument("--source_path", default = bundled_gwama_path, metavar = "GWAMA.R", help = "Optional custom modified GWAMA R source. Default: bundled N_weighted_GWAMA.function.1_2_6.R.")
   p$add_argument("--splitby_chr", choices = c("split", "nosplit"), default = "split", help = "Input naming mode. Default: split (chromosomes 1-22).")
   p$add_argument("--cores", type = "integer", default = 0L, help = "Chromosome workers. Default: 0 = auto; Windows runs sequentially.")
   p$add_argument("--validate_only", action = "store_true", default = FALSE, help = "Write QC and PCA diagnostics without running GWAMA. Default: false.")

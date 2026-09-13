@@ -28,8 +28,8 @@ optional arguments:
                         Tab-separated GWAMA input files. Default: unset;
                         package CLI prepares from VCF unless --validate_only.
   --source_path GWAMA.R
-                        Modified GWAMA R source. Default: unset; required
-                        except with --validate_only.
+                        Optional custom modified GWAMA R source. Default:
+                        bundled N_weighted_GWAMA.function.1_2_6.R.
   --splitby_chr {split,nosplit}
                         Input naming mode. Default: split (chromosomes 1-22).
   --cores CORES         Chromosome workers. Default: 0 = auto; Windows runs
@@ -70,7 +70,7 @@ INPUT FILE CONTRACT
     SNPID,CHR,BP,EA,OA,EAF,N,Z,P (A1/A2/p aliases accepted for EA/OA/P).
     Split: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv (chromosomes 1-22).
     Whole genome: {traitname}_GenomicPCA_inputs.tsv.
-  --source_path: R source defining already-modified my_GWAMA or multivariate_GWAMA.
+  --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.
 
 AVAILABILITY
   genomicsem ldsc runs native munge/LDSC or accepts existing munged files.

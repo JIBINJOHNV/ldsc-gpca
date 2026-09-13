@@ -1,0 +1,25 @@
+name: ldsc-cbiit
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pip
+  - setuptools
+  - wheel
+  - git
+  - bitarray=2.6.0
+  - nose=1.3.7
+  - numpy=1.23.3
+  - pandas=1.5.0
+  - pybedtools=0.9.1
+  - pysam=0.19.1
+  - python-dateutil=2.8.2
+  - pytz=2022.4
+  - scipy=1.9.2
+  - six=1.16.0
+  - pip:
+      - "ldsc @ git+https://github.com/CBIIT/ldsc.git@6c673952cee74bd5c57aef1555a03b1c015399a0"
+# Direct dependencies match the pinned ldsc39 commit's setup.py.
+# Builds/transitive dependencies are not locked; solve on the target platform.

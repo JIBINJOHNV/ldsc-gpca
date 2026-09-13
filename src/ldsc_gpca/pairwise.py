@@ -4,8 +4,9 @@ import shlex
 import math
 import concurrent.futures
 from .utils import run_command
+from .ldsc_runtime import ldsc_command
 
-def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1):
+def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None):
     if not isinstance(retries, int) or retries < 0:
         raise ValueError('LDSC retries must be a non-negative integer')
     os.makedirs(output_path, exist_ok=True)
@@ -17,16 +18,13 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
         prevalence_flags = []
         if any(value != 'nan' for value in p_prevalence.split(',')):
             prevalence_flags = ['--samp-prev', s_prevalence, '--pop-prev', p_prevalence]
-        docker_command = shlex.join([
-            'docker', 'run', '--rm', '--user', f'{os.getuid()}:{os.getgid()}',
-            '-v', f'{ldsc_input_path}:{ldsc_input_path}', '-v', f'{output_path}:{output_path}',
-            '-v', f'{ld_ref_dir}:{ld_ref_dir}', 'jibinjv/ldsc:v3', '/ldsc/ldsc.py',
+        command = shlex.join(ldsc_command('ldsc.py', **(runtime or {})) + [
             '--rg', f'{reference_sumstat},{target_files}', '--ref-ld-chr', ld_ref_dir,
             '--w-ld-chr', ld_ref_dir, *prevalence_flags, '--out', out_prefix])
         for attempt in range(1, retries + 2):
             label = f'LDSC_{ref_prefix}_batch_{part} attempt {attempt}/{retries + 1}'
             try:
-                run_command(docker_command, label, output_folder=os.path.dirname(os.path.abspath(output_path)))
+                run_command(command, label, output_folder=os.path.dirname(os.path.abspath(output_path)))
                 return out_prefix + '.log'
             except RuntimeError as error:
                 if attempt == retries + 1:

@@ -22,8 +22,8 @@ GWAMA inputs (not required with --validate_only):
                         Directory containing the nine-column per-trait GWAMA
                         input files.
   --source_path GWAMA_FUNCTION.R
-                        R file defining the already-modified my_GWAMA()
-                        function.
+                        Optional custom modified GWAMA R source. Default:
+                        bundled N_weighted_GWAMA.function.1_2_6.R.
   --splitby_chr {split,nosplit}
                         GWAMA input layout: 'split' uses chromosomes 1-22;
                         'nosplit' uses one whole-genome file per trait.
@@ -121,7 +121,7 @@ INPUT FILE FORMATS
     A1/A2/p aliases are accepted for EA/OA/P.
   Split files: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv
   Whole-genome files: {traitname}_GenomicPCA_inputs.tsv
-  --source_path: R source defining the already-modified GWAMA function.
+  --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.
 
 REQUIRED MANIFEST COLUMN
   traitname    Unique, non-empty trait identifier. Each row selects one
@@ -162,4 +162,4 @@ VALIDATION-ONLY EXAMPLE
     --validate_only
 
 Run with GWAMA by additionally providing --gpca_input_folder and
---source_path, and omit --validate_only.
+an optional --source_path override, and omit --validate_only.
