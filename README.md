@@ -65,6 +65,8 @@ environment internally; you do not switch between environments.
 
 The installer will not overwrite existing environments. If Conda is absent, it
 can install Miniforge and prints the shell-initialization steps to follow.
+It detects compatible Mamba arguments automatically. To use Conda explicitly,
+add `--manager conda` to the installation command.
 See [installation troubleshooting and updates](docs/REFERENCE.md#install-and-activate).
 
 Linux amd64 Docker installation has been tested. Native Linux/macOS platforms

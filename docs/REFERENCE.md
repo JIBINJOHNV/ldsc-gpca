@@ -72,6 +72,24 @@ installation for your shell first. Do not mix multiple Conda installations.
 <details>
 <summary>Existing installations, custom locations and installation records</summary>
 
+The default `--manager auto` checks Mamba's `env create` interface and falls back
+to Conda if that interface is unavailable. Older interfaces without `--yes`
+receive noninteractive confirmation through command-local environment variables;
+the installer does not change your Conda configuration or upgrade your base environment.
+You can explicitly select `--manager conda` or `--manager mamba`.
+
+If an older installer stopped with `unrecognized arguments: --yes`, update the
+repository and retry with Conda:
+
+```bash
+git pull --ff-only
+bash scripts/setup_environments.sh --no-activate --manager conda
+```
+
+Check `conda env list` first: retry directly only if neither target environment
+was created. A dependency-solving or installation failure is not automatically
+retried with a different manager; partial environments are preserved for inspection.
+
 The named installer refuses to overwrite either existing environment. Inspect
 `conda env list` before reinstalling. If only the package code changed and
 dependencies are unchanged, update from the repository while the main environment

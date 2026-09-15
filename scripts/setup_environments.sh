@@ -12,7 +12,16 @@ fi
 if [ "$_ldsc_setup_sourced" = 1 ]; then
   bash "$_ldsc_setup_file" --no-activate "$@" || return $?
   case " ${*} " in *' --help '*|*' -h '*|*' --no-activate '*) return 0 ;; esac
-  _ldsc_setup_root=${1:-"$(cd "$(dirname "$_ldsc_setup_file")/.." && pwd)/.environments/named"}
+  _ldsc_setup_root="$(cd "$(dirname "$_ldsc_setup_file")/.." && pwd)/.environments/named"
+  _ldsc_skip_value=0
+  for _ldsc_arg in "$@"; do
+    if [ "$_ldsc_skip_value" = 1 ]; then _ldsc_skip_value=0; continue; fi
+    case "$_ldsc_arg" in
+      --manager) _ldsc_skip_value=1 ;;
+      --*) ;;
+      *) _ldsc_setup_root=$_ldsc_arg ;;
+    esac
+  done
   . "$_ldsc_setup_root/activate.sh"
   return $?
 fi
@@ -20,12 +29,14 @@ set -euo pipefail
 activate=1
 named=1
 root=''
-for argument in "$@"; do
+manager_choice=auto
+while [[ $# -gt 0 ]]; do
+  argument=$1
   case "$argument" in
     --help|-h)
       echo 'Usage: bash scripts/setup_environments.sh --no-activate'
       echo 'Then: conda activate ldsc-gpca (initialize Conda in your shell first).'
-      echo 'Or: bash scripts/setup_environments.sh [--no-activate] [ENV_ROOT]'
+      echo 'Or: bash scripts/setup_environments.sh [--no-activate] [--manager {auto,conda,mamba}] [ENV_ROOT]'
       echo 'Default: named environments ldsc-gpca and ldsc-gpca-ldsc; records in <repository>/.environments/named.'
       echo 'Advanced: an explicit ENV_ROOT keeps legacy prefix mode (ENV_ROOT/main and ENV_ROOT/ldsc).'
       echo 'Installs main + isolated LDSC, checks tools, and activates after success.'
@@ -33,13 +44,19 @@ for argument in "$@"; do
       echo 'Bootstraps checksum-verified Miniforge if Conda is absent. No sudo or shell-profile edits.'
       echo 'Sourcing activates this Bash/zsh terminal; bash execution opens an activated Bash shell on a terminal.'
       echo '--no-activate: install/check only (also used automatically without a terminal).'
+      echo '--manager {auto,conda,mamba}: environment creator. Default: auto; prefer compatible Mamba, otherwise Conda.'
       exit 0 ;;
     --no-activate) activate=0 ;;
+    --manager)
+      [[ $# -ge 2 ]] || { echo '--manager requires auto, conda or mamba.' >&2; exit 2; }
+      manager_choice=$2; shift ;;
     -*) echo "Unknown option: $argument" >&2; exit 2 ;;
     *) if [[ -n "$root" ]]; then echo 'Expected at most one ENV_ROOT argument.' >&2; exit 2; fi
        root=$argument; named=0 ;;
   esac
+  shift
 done
+case "$manager_choice" in auto|conda|mamba) ;; *) echo '--manager must be auto, conda or mamba.' >&2; exit 2 ;; esac
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 root=${root:-"$repo/.environments/named"}
 os=$(uname -s)
@@ -84,8 +101,32 @@ fi
 conda_bin=$(command -v "$conda_bin")
 base=$("$conda_bin" info --base)
 [[ -f "$base/etc/profile.d/conda.sh" ]] || { echo 'Conda shell activation script is missing.' >&2; exit 2; }
+creation_help=''
+supports_creation() {
+  creation_help=$("$1" env create --help 2>&1) || return 1
+  [[ "$creation_help" == *--file* && "$creation_help" == *--name* && "$creation_help" == *--prefix* ]]
+}
 manager=$conda_bin
-if [[ -x "$base/bin/mamba" ]]; then manager="$base/bin/mamba"; fi
+if [[ "$manager_choice" != conda ]]; then
+  if [[ -x "$base/bin/mamba" ]] && supports_creation "$base/bin/mamba"; then
+    manager="$base/bin/mamba"
+  elif [[ "$manager_choice" == mamba ]]; then
+    echo 'Requested Mamba is absent or does not support env create with --file/--name/--prefix. Try --manager conda.' >&2
+    exit 2
+  else
+    echo 'Compatible Mamba not found; using Conda.'
+  fi
+fi
+if ! supports_creation "$manager"; then
+  echo "Unsupported environment creator: $manager. Need env create with --file/--name/--prefix; no environments created." >&2
+  exit 2
+fi
+# Older conda-env/Mamba parsers lack --yes. Scope confirmation settings to creation;
+# do not modify the user's .condarc or upgrade their base environment.
+create_environment() {
+  if [[ "$creation_help" == *--yes* ]]; then set -- "$@" --yes; fi
+  CONDA_ALWAYS_YES=true MAMBA_ALWAYS_YES=true "$manager" env create "$@"
+}
 echo "Installing on $os/$cpu using $manager. Older pinned LDSC dependencies must resolve for this platform."
 if [[ $named == 1 ]]; then
   # Refuse either existing name before creating anything; preserve user environments.
@@ -94,13 +135,13 @@ if [[ $named == 1 ]]; then
     echo 'Could not verify fresh environment names, or ldsc-gpca/ldsc-gpca-ldsc already exists. Inspect conda env list; nothing was overwritten.' >&2
     exit 2
   fi
-  "$manager" env create --name ldsc-gpca --file "$repo/environment.yml" --yes
-  "$manager" env create --name ldsc-gpca-ldsc --file "$repo/environment.ldsc.yml" --yes
+  create_environment --name ldsc-gpca --file "$repo/environment.yml"
+  create_environment --name ldsc-gpca-ldsc --file "$repo/environment.ldsc.yml"
   main_prefix=$("$conda_bin" run --name ldsc-gpca python -c 'import sys; print(sys.prefix)')
   ldsc_prefix=$("$conda_bin" run --name ldsc-gpca-ldsc python -c 'import sys; print(sys.prefix)')
 else
-  "$manager" env create --prefix "$main_prefix" --file "$repo/environment.yml" --yes
-  "$manager" env create --prefix "$ldsc_prefix" --file "$repo/environment.ldsc.yml" --yes
+  create_environment --prefix "$main_prefix" --file "$repo/environment.yml"
+  create_environment --prefix "$ldsc_prefix" --file "$repo/environment.ldsc.yml"
 fi
 main_run() { "$conda_bin" run --no-capture-output --prefix "$main_prefix" "$@"; }
 child_run() { "$conda_bin" run --no-capture-output --prefix "$ldsc_prefix" "$@"; }
