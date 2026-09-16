@@ -235,7 +235,7 @@ Its VCF schema differs from `prepare`: INFO fields `AF,EUR` and FORMAT fields
 population prevalence additionally need `NC,NCO`. This is an EUR-field-specific
 workflow, not a generic VCF reader. The flags do not provide ancestry/field mapping.
 
-Create `python_ldsc_traits.csv` (**CSV**; all five headers are required):
+Create `python_ldsc_traits.csv` (**CSV**; all five headers are required for VCF input):
 
 ```csv
 gwas_name,vcf_files,ref,pop_prevalence,sample_prevalence
@@ -254,6 +254,7 @@ ldsc-gpca ldsc \
   --output_folder /results/python_ldsc \
   --ld_ref_snp_file /references/hm3_alleles.tsv \
   --ld_ref /references/eur_ld_chr \
+  --chisq-max 80 \
   --n_cores 5 \
   --ldsc-retries 1
 ```
@@ -279,6 +280,27 @@ The median case fraction is an implementation rule; verify its suitability for
 cohort meta-analysis and variable per-SNP sample sizes. A population prevalence
 alone does not establish that the available count fields are scientifically appropriate.
 
+### Optional GenomicSEM-style chi-square filtering
+
+`--chisq-max FLOAT` independently retains `Z^2 <= FLOAT` in every munged trait
+after munging and before pairwise LDSC. It applies identically to VCF-generated
+inputs and `--ldsc_only` inputs. The default is disabled, preserving previous
+package behavior.
+
+The package writes filtered copies under
+`ldsc_input_chisq_filtered/{gwas_name}.sumstats.gz`; it never overwrites the VCF
+or source munged files. `LDSC_ChiSquare_Filter_Summary.csv` records per-trait
+before/removed/after counts and `LDSC_ChiSquare_Excluded_Variants.tsv.gz` records
+the excluded `gwas_name,SNP,Z,CHISQ` values. `LDSC_Runtime.json` records the rule
+and threshold.
+
+This is a GenomicSEM-compatible per-trait rule, not a pass-through to CBIIT
+LDSC's native `--rg --chisq-max`, which filters the cross-product using
+`Z1^2 * Z2^2 < threshold^2`. The package deliberately runs pairwise LDSC on the
+independently filtered copies without forwarding the native option. A fixed
+threshold such as `--chisq-max 80` is explicit and reproducible; this option does
+not implement GenomicSEM's automatic `max(80, 0.001*N)` threshold selection.
+
 The compiler uses the **target trait (`p2`)** for heritability scale labels. It
 writes both observed/liability column pairs, leaving unused entries empty. Its
 `h2_scale=NEF_unconverted` label does not prove ordinary observed-scale binary
@@ -297,6 +319,7 @@ treated as compatible observed/liability values merely because of a column name.
 | Maximum INFO AF versus EUR difference | `--max-af-difference 0.2` |
 | Extraction palindromic removal | Off; `--remove-palindrome` uses AF bounds 0.45–0.55 by default |
 | Munging palindromic removal | CBIIT removes all palindromic SNPs, independently of the extraction flag |
+| Per-trait chi-square filter, `--chisq-max` | Disabled; a supplied positive finite value keeps `Z^2 <= value` |
 | `--ldsc-retries` | `1`: initial command plus one retry |
 
 The P floor in **`prepare` does not apply to this extraction route**. Its existing
@@ -312,11 +335,31 @@ GPCA QC described below.
 
 `--ldsc_only --ldsc_input_folder /data/munged` reuses `{gwas_name}.sumstats.gz`
 and reruns **all** requested batches. It is not selective failed-batch resume.
-Filters are not reapplied: recorded mismatches fail, unknown legacy settings warn.
-Total-N traits require matching `.prevalence.json` sidecars and file hashes.
+Extraction and munging filters are not reapplied: recorded mismatches fail and
+unknown legacy settings warn. A requested `--chisq-max` is applied to separate
+filtered copies after this validation. Total-N traits require matching
+`.prevalence.json` sidecars and file hashes. In this mode, `vcf_files` may be
+omitted from the manifest; `gwas_name,ref,pop_prevalence,sample_prevalence`
+remain required. `--ld_ref_snp_file` is also unnecessary because no munging is
+performed; `--ld_ref` remains required for the LDSC regressions.
+
+```bash
+ldsc-gpca ldsc \
+  --input_file /data/python_ldsc_traits.csv \
+  --output_folder /results/python_ldsc \
+  --ld_ref /references/eur_ld_chr \
+  --ldsc_only \
+  --ldsc_input_folder /data/munged \
+  --chisq-max 80 \
+  --n_cores 5 \
+  --ldsc-retries 1
+```
 
 Outputs include `ldsc_results.csv`, `LDSC_Runtime.json`,
 `LDSC_Trait_Prevalence_Metadata.csv`, munged files/sidecars and logs.
+When `--chisq-max` is supplied, outputs also include
+`LDSC_ChiSquare_Filter_Summary.csv`, `LDSC_ChiSquare_Excluded_Variants.tsv.gz`,
+and `ldsc_input_chisq_filtered/`.
 Command failures are logged in `execution_errors.log`. Old output files are not
 deleted on failure; never mistake an older CSV for a successful new run.
 

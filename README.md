@@ -269,6 +269,12 @@ This is not a generic ancestry-independent GWAS-VCF reader.
 The CSV manifest requires `gwas_name,vcf_files,ref,pop_prevalence,sample_prevalence`.
 Set `ref=yes` for every selected trait to generate complete GPCA pair/self-pair coverage.
 
+Use `--chisq-max 80` to reproduce GenomicSEM-style extreme-statistic filtering:
+each munged trait is filtered independently to `Z^2 <= 80` immediately before
+pairwise LDSC. The original VCF and munged files are preserved. This option is
+also supported with `--ldsc_only`; it is intentionally not forwarded to native
+Python LDSC's different cross-product implementation.
+
 [Python LDSC command, manifest example, references and prevalence rules →](docs/REFERENCE.md#run-python-ldsc)
 
 ### Run GenomicSEM LDSC

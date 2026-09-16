@@ -8,7 +8,7 @@ from .helptext import HelpParser, LDSC_INPUT_HELP
 import pandas as pd
 from .utils import optional_prevalence, is_valid_gz
 from .extraction import run_vcf_to_table
-from .munging import parallel_munge_sumstats
+from .munging import filter_munged_sumstats, parallel_munge_sumstats
 from .pairwise import parallel_ldsc_analysis
 from .results import compile_results, check_saved_filters
 from .ldsc_runtime import check_runtime
@@ -17,7 +17,7 @@ from .ldsc_runtime import check_runtime
 parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise CBIIT Python LDSC using an isolated Conda environment; no Docker.", epilog=LDSC_INPUT_HELP)
 
 parser.add_argument('-output_folder', '--output_folder', metavar='DIRECTORY', help="Output directory; LDSC tables and logs are written below it.", required=True)
-parser.add_argument('-ld_ref_snp_file', '--ld_ref_snp_file', metavar='ALLELES.tsv', help="Whitespace-separated HapMap allele table with SNP,A1,A2 headers; passed to LDSC --merge-alleles.", required=True)
+parser.add_argument('-ld_ref_snp_file', '--ld_ref_snp_file', metavar='ALLELES.tsv', help="Whitespace-separated HapMap allele table with SNP,A1,A2 headers; passed to LDSC --merge-alleles. Required unless --ldsc_only is used.")
 parser.add_argument('-input_file', '--input_file', metavar='MANIFEST.csv', help="Comma-separated trait manifest; required headers and prevalence rules below.", required=True)
 parser.add_argument('-ld_ref', '--ld_ref', metavar='DIRECTORY', help="Chromosome LD-score reference directory (not an individual file).", required=True)
 parser.add_argument('-n_cores', '--n_cores', help="Number of parallel local workers", default=5, type=int)
@@ -54,9 +54,14 @@ filter_group.add_argument('--paliandromaf_lower', type=float, default=0.45,
                           help='Lower AF bound for palindromic removal. Default: 0.45.')
 filter_group.add_argument('--paliandromaf_upper', type=float, default=0.55,
                           help='Upper AF bound for palindromic removal. Default: 0.55.')
+filter_group.add_argument(
+    '--chisq-max', type=float, default=None, metavar='FLOAT',
+    help='Independently keep variants with Z^2 <= FLOAT in each munged trait before pairwise LDSC. '
+         'Applies to VCF and --ldsc_only workflows; does not use native LDSC cross-product filtering. '
+         'Default: disabled.')
 
 # Flags for LDSC-only execution
-parser.add_argument('--ldsc_only', action='store_true', help="Reuse existing munged files; filters are NOT reapplied. Recorded filter settings must match, otherwise rerun without this flag. Total-N traits require .prevalence.json; legacy NEF files are accepted with a provenance warning.")
+parser.add_argument('--ldsc_only', action='store_true', help="Reuse existing munged files; extraction/munging filters are NOT reapplied. --chisq-max is applied to separate copies when supplied. Total-N traits require .prevalence.json; legacy NEF files are accepted with a provenance warning.")
 parser.add_argument('-ldsc_input_folder', '--ldsc_input_folder', help="Path to pre-munged sumstats.gz files.", default=None)
 parser.add_argument('--ldsc-retries', type=int, default=1,
                     help='Additional attempts per failed pairwise LDSC command. Default: 1 (2 total attempts); 0 disables retries. Successful batches are not repeated. Result-validation failures are not retried.')
@@ -66,14 +71,18 @@ def main(argv=None):
         parser.print_help()
         return 0
     args = parser.parse_args(argv)
+    if not args.ldsc_only and not args.ld_ref_snp_file:
+        parser.error('--ld_ref_snp_file is required unless --ldsc_only is used')
     output_folder = os.path.abspath(args.output_folder)
-    snp_include_file = os.path.abspath(args.ld_ref_snp_file)
+    snp_include_file = os.path.abspath(args.ld_ref_snp_file) if args.ld_ref_snp_file else None
     ld_ref_dir = os.path.abspath(args.ld_ref) + os.sep
     n_parallel = args.n_cores
     if n_parallel < 1:
         parser.error('--n_cores must be positive')
     if args.ldsc_retries < 0:
         parser.error('--ldsc-retries must be >= 0')
+    if args.chisq_max is not None and (not math.isfinite(args.chisq_max) or args.chisq_max <= 0):
+        parser.error('--chisq-max must be a positive finite number')
     if args.mhc_start < 1 or args.mhc_end < args.mhc_start:
         parser.error('--mhc_start must be positive and --mhc_end must be >= --mhc_start')
     if not 0 <= args.info_min <= 1 or not 0 < args.maf_min < 0.5:
@@ -93,7 +102,10 @@ def main(argv=None):
         'pal_lower': args.paliandromaf_lower, 'pal_upper': args.paliandromaf_upper,
     }
     input_df = pd.read_csv(args.input_file)
-    for column in ['gwas_name', 'vcf_files', 'ref', 'pop_prevalence', 'sample_prevalence']:
+    required_columns = ['gwas_name', 'ref', 'pop_prevalence', 'sample_prevalence']
+    if not args.ldsc_only:
+        required_columns.append('vcf_files')
+    for column in required_columns:
         if column not in input_df:
             parser.error(f'Manifest is missing {column}')
     if input_df['gwas_name'].isna().any() or input_df['gwas_name'].duplicated().any():
@@ -124,7 +136,18 @@ def main(argv=None):
         parser.error(str(error))
     os.makedirs(output_folder, exist_ok=True)
     with open(os.path.join(output_folder, 'LDSC_Runtime.json'), 'w') as handle:
-        json.dump({**runtime, 'bcftools': args.bcftools, 'backend': 'CBIIT/ldsc'}, handle, indent=2)
+        json.dump({
+            **runtime,
+            'bcftools': args.bcftools,
+            'backend': 'CBIIT/ldsc',
+            'chisq_filter': {
+                'enabled': args.chisq_max is not None,
+                'threshold': args.chisq_max,
+                'mode': 'per_trait_genomicsem',
+                'keep_rule': 'Z^2 <= threshold',
+                'native_ldsc_chisq_max_forwarded': False,
+            },
+        }, handle, indent=2)
     total_comparisons = num_refs * len(input_df)
     active_parallel = min(n_parallel, total_comparisons)
     batch_size = 1 if total_comparisons <= n_parallel else max(5, min(100, math.ceil(len(input_df) / (n_parallel / num_refs))))
@@ -177,9 +200,15 @@ def main(argv=None):
         os.makedirs(output_folder, exist_ok=True)
         input_df.to_csv(os.path.join(output_folder, 'LDSC_Trait_Prevalence_Metadata.csv'), index=False)
 
+    analysis_input_folder = ldsc_input_folder
+    if args.chisq_max is not None and not input_df.empty:
+        print(f"\n[filter] Applying independent per-trait Z^2 <= {args.chisq_max:g} filtering...")
+        analysis_input_folder = filter_munged_sumstats(
+            n_parallel, input_df, ldsc_input_folder, output_folder, args.chisq_max)
+
     if not input_df.empty:
         print("\n[3/4] Running LDSC Genetic Correlation...")
-        log_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, ldsc_input_folder, retries=args.ldsc_retries, runtime=runtime)
+        log_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder, retries=args.ldsc_retries, runtime=runtime)
 
         print("\n[4/4] Compiling final results...")
         compile_results(output_folder, log_files, input_df)

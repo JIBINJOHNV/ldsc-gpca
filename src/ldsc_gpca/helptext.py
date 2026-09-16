@@ -65,19 +65,24 @@ OUTPUTS AND FIXED INPUT CONTRACT
 """
 
 LDSC_INPUT_HELP = """INPUT FILE CONTRACT
-  --input_file: comma-separated CSV, headers:
+  --input_file: comma-separated CSV. VCF workflow headers:
     gwas_name,vcf_files,ref,pop_prevalence,sample_prevalence
-  Names must be unique/non-empty. Use absolute VCF paths.
+  With --ldsc_only, vcf_files is optional; all other headers remain required.
+  Names must be unique/non-empty. Use absolute VCF paths when VCFs are processed.
   ref=yes selects an LDSC reference trait; ref=no leaves it as a target.
   Use ref=yes for every trait to generate complete GPCA pairwise coverage.
   Prevalence columns must exist; blank/NA values are allowed.
   Population prevalence absent: use NEF; sample prevalence is not used.
   Population prevalence supplied: use NC+NCO; derive missing sample prevalence.
   --ld_ref_snp_file: whitespace-separated HapMap allele table with headers
-    SNP,A1,A2 (tabs or spaces). Passed to standard LDSC --merge-alleles.
+    SNP,A1,A2 (tabs or spaces). Passed to standard LDSC --merge-alleles;
+    required for VCF/munging runs and not required with --ldsc_only.
   --ld_ref: directory of chromosome reference files; see FIXED CONTRACT below.
   --ldsc_input_folder: .sumstats.gz directory used with --ldsc_only;
     filenames: {gwas_name}.sumstats.gz. Required sidecars must remain alongside.
+  --chisq-max: optional positive threshold applied independently to each munged
+    trait as Z^2 <= threshold before pairwise LDSC. Original files are unchanged.
+    This is not forwarded to native LDSC's cross-product --chisq-max behavior.
 
 FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
   Local bcftools/Bash/awk extract variants; conda run launches isolated CBIIT LDSC.
