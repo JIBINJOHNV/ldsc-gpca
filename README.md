@@ -275,6 +275,17 @@ pairwise LDSC. The original VCF and munged files are preserved. This option is
 also supported with `--ldsc_only`; it is intentionally not forwarded to native
 Python LDSC's different cross-product implementation.
 
+Advanced users can invoke the pinned upstream console scripts directly:
+
+```bash
+ldsc-gpca ldsc.py --help
+ldsc-gpca munge_sumstats.py --help
+```
+
+Everything following the script name is passed through unchanged. These raw
+commands bypass manifest checks, managed per-trait filtering, retries, provenance
+and result compilation; raw `ldsc.py --rg --chisq-max` retains native LDSC semantics.
+
 [Python LDSC command, manifest example, references and prevalence rules →](docs/REFERENCE.md#run-python-ldsc)
 
 ### Run GenomicSEM LDSC

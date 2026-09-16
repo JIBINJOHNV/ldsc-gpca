@@ -11,19 +11,25 @@ def main(argv=None):
         epilog="""AVAILABLE WORKFLOWS
   prepare          VCF -> GPCA inputs; optional LDSC munging input tables.
   ldsc             Run CBIIT LDSC in an isolated Conda environment.
+  ldsc.py          Run the raw pinned CBIIT ldsc.py command.
+  munge_sumstats.py Run the raw pinned CBIIT munge_sumstats.py command.
   gpca             Python-LDSC results -> PCA/GWAMA.
   genomicsem gpca  Existing GenomicSEM RData -> PCA/GWAMA.
   genomicsem ldsc  Native munge -> LDSC, or start from existing munged files.
 
 NOTES
   GenomicSEM munging is included in genomicsem ldsc, not a standalone command.
+  Raw .py passthrough commands bypass package validation, filtering and provenance.
   GWAMA postprocessing runs automatically; postprocess is not a top-level command.
 
 Use ldsc-gpca <command> --help for required columns, separators, defaults and choices.
 An empty command also displays help; no input files are opened for help.""")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("command", choices=["prepare", "ldsc", "gpca", "genomicsem"], nargs="?",
-                        help="prepare: VCF to input tables; ldsc: Python LDSC; gpca: Python-LDSC GPCA; genomicsem: native GenomicSEM workflow")
+    parser.add_argument("command", choices=["prepare", "ldsc", "ldsc.py", "munge_sumstats.py", "gpca", "genomicsem"], nargs="?",
+                        help="Managed workflows or raw pinned CBIIT LDSC script passthrough")
+    if argv and argv[0] in ("ldsc.py", "munge_sumstats.py"):
+        from .ldsc_runtime import run_ldsc_script
+        return run_ldsc_script(argv[0], argv[1:])
     if argv and argv[0] == "genomicsem":
         from .genomicsem import main as run
         return run(argv[1:])

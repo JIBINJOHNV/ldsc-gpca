@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ldsc-gpca"
-version = "0.5.1"
+version = "0.5.2"
 description = "Python LDSC and R genomicPCA/GWAMA workflows through one CLI"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"

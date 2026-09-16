@@ -369,6 +369,37 @@ saved `LDSC_GPCA_LDSC_PREFIX`; without a saved prefix the fallback is `ldsc-cbii
 `--conda-executable` defaults to `CONDA_EXE` or `conda` on PATH.
 `--bcftools` defaults to `bcftools` on PATH and is not needed with `--ldsc_only`.
 
+### Raw CBIIT script passthrough
+
+The installed command can invoke the exact pinned CBIIT console scripts without
+the managed pipeline:
+
+```bash
+ldsc-gpca munge_sumstats.py \
+  --sumstats /data/trait.tsv.gz \
+  --merge-alleles /references/hm3_alleles.tsv \
+  --out /results/trait
+```
+
+```bash
+ldsc-gpca ldsc.py \
+  --rg /results/trait1.sumstats.gz,/results/trait2.sumstats.gz \
+  --ref-ld-chr /references/eur_ld_chr/ \
+  --w-ld-chr /references/eur_ld_chr/ \
+  --out /results/trait1_trait2
+```
+
+All arguments after `ldsc.py` or `munge_sumstats.py` are passed through unchanged,
+and the upstream exit status is returned. `--help` therefore displays the native
+script help. The launcher uses `CONDA_EXE` when set, then `conda`; it uses
+`LDSC_GPCA_LDSC_PREFIX` when set, otherwise `LDSC_GPCA_LDSC_ENV`, and finally the
+legacy environment name `ldsc-cbiit`.
+
+Raw passthrough intentionally performs no package manifest validation, VCF
+extraction, GenomicSEM-style per-trait filtering, retries, completeness checks,
+provenance recording or result compilation. In particular, raw
+`ldsc-gpca ldsc.py --rg ... --chisq-max 80` uses native LDSC's cross-product rule.
+
 ## Run GenomicSEM LDSC
 
 This is an integrated command, not an external prerequisite you must script
