@@ -91,6 +91,8 @@ FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
   population-prevalence traits additionally require FORMAT/NC and FORMAT/NCO.
   LD reference prefix: <ld_ref>/<CHR>.l2.ldscore.gz and associated M files;
   the same directory is currently used for reference and regression weights.
+  Each LDSC batch exports .results.csv directly from its in-memory estimates.
+  Compilation reads each CSV once; human-readable logs are not parsed.
   This is an EUR-field-specific extraction schema, not a generic GWAS-VCF reader.
   Threshold options below do not change field names or ancestry.
 """

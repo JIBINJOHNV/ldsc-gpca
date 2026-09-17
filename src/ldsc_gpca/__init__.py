@@ -1,3 +1,3 @@
 """Python LDSC and genomicPCA/GWAMA command-line tools."""
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"

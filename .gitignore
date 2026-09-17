@@ -8,7 +8,13 @@ dist/
 .DS_Store
 .pytest_cache/
 backups/
-tests/
+tests/*
+!tests/test_results_precision.py
+!tests/test_ldsc_export.py
+!tests/test_ldsc_export_integration.py
+!tests/test_results_csv.py
+!tests/test_ldsc_runtime.py
+!tests/RESULT_EXPORT_VALIDATION.md
 .github/
 VALIDATION.md
 # Legacy launchers retained locally; installed commands use src/ldsc_gpca.

@@ -4,7 +4,8 @@ import shlex
 import math
 import concurrent.futures
 from .utils import run_command
-from .ldsc_runtime import ldsc_command
+from .ldsc_runtime import ldsc_regression_command
+from .ldsc_export import RESULT_SUFFIX
 
 def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None):
     if not isinstance(retries, int) or retries < 0:
@@ -18,14 +19,14 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
         prevalence_flags = []
         if any(value != 'nan' for value in p_prevalence.split(',')):
             prevalence_flags = ['--samp-prev', s_prevalence, '--pop-prev', p_prevalence]
-        command = shlex.join(ldsc_command('ldsc.py', **(runtime or {})) + [
+        command = shlex.join(ldsc_regression_command(**(runtime or {})) + [
             '--rg', f'{reference_sumstat},{target_files}', '--ref-ld-chr', ld_ref_dir,
             '--w-ld-chr', ld_ref_dir, *prevalence_flags, '--out', out_prefix])
         for attempt in range(1, retries + 2):
             label = f'LDSC_{ref_prefix}_batch_{part} attempt {attempt}/{retries + 1}'
             try:
                 run_command(command, label, output_folder=os.path.dirname(os.path.abspath(output_path)))
-                return out_prefix + '.log'
+                return out_prefix + RESULT_SUFFIX
             except RuntimeError as error:
                 if attempt == retries + 1:
                     raise RuntimeError(f'{label}: retries exhausted; see execution_errors.log') from error

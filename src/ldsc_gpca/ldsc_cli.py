@@ -12,6 +12,7 @@ from .munging import filter_munged_sumstats, parallel_munge_sumstats
 from .pairwise import parallel_ldsc_analysis
 from .results import compile_results, check_saved_filters
 from .ldsc_runtime import check_runtime
+from .ldsc_export import FLOAT_FORMAT
 
 # Define command-line arguments
 parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise CBIIT Python LDSC using an isolated Conda environment; no Docker.", epilog=LDSC_INPUT_HELP)
@@ -140,6 +141,12 @@ def main(argv=None):
             **runtime,
             'bcftools': args.bcftools,
             'backend': 'CBIIT/ldsc',
+            'result_export': {
+                'format': 'csv',
+                'float_format': FLOAT_FORMAT,
+                'source': 'native_in_memory_result_table',
+                'log_parsing': False,
+            },
             'chisq_filter': {
                 'enabled': args.chisq_max is not None,
                 'threshold': args.chisq_max,
@@ -208,10 +215,10 @@ def main(argv=None):
 
     if not input_df.empty:
         print("\n[3/4] Running LDSC Genetic Correlation...")
-        log_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder, retries=args.ldsc_retries, runtime=runtime)
+        result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder, retries=args.ldsc_retries, runtime=runtime)
 
         print("\n[4/4] Compiling final results...")
-        compile_results(output_folder, log_files, input_df)
+        compile_results(output_folder, result_files, input_df)
 
         print(f"\nSUCCESS: Results saved to {output_folder}/ldsc_results.csv")
     else:

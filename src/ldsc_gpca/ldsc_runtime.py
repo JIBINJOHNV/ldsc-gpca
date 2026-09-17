@@ -13,6 +13,12 @@ def ldsc_command(script, *, conda='conda', environment='ldsc-cbiit', prefix=None
     return [conda, 'run', '--no-capture-output', *target, script]
 
 
+def ldsc_regression_command(**runtime):
+    """Run native LDSC with an in-process, precision-preserving result export."""
+    exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ldsc_export.py')
+    return ldsc_command('python', **runtime) + [exporter]
+
+
 def run_ldsc_script(script, arguments, *, conda=None, environment=None, prefix=None):
     """Run an allow-listed CBIIT LDSC console script with unchanged arguments."""
     if script not in RAW_LDSC_SCRIPTS:
@@ -36,7 +42,9 @@ def check_runtime(*, conda='conda', environment='ldsc-cbiit', prefix=None, bcfto
             if not shutil.which(tool):
                 raise ValueError(f'Required extraction executable not found: {tool}')
     for script in ('ldsc.py', 'munge_sumstats.py'):
-        result = subprocess.run(ldsc_command(script, conda=conda, environment=environment, prefix=prefix) + ['--help'],
+        command = (ldsc_regression_command(conda=conda, environment=environment, prefix=prefix)
+                   if script == 'ldsc.py' else ldsc_command(script, conda=conda, environment=environment, prefix=prefix))
+        result = subprocess.run(command + ['--help'],
                                 capture_output=True, text=True)
         if result.returncode:
             raise ValueError(f'{script} failed in the LDSC environment. Run scripts/setup_environments.sh.\n{result.stderr}')

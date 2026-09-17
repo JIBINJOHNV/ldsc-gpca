@@ -137,6 +137,20 @@ in the LDSC file are allowed.
 | Python | Complete pairwise table, including self-pairs; CSV, TSV or whitespace-delimited, `.gz` accepted. [Required columns](docs/REFERENCE.md#python-ldsc-qcpca-example) |
 | GenomicSEM | Binary RData containing `LDSCoutput` with `S,V,I,S_Stand,V_Stand`. Use the final `genomicPCA_LDSC.RData`, not the preliminary raw object. |
 
+Managed Python LDSC runs export each batch directly from its native in-memory
+result table to `<batch>.results.csv` using `%.17g` numerical formatting.
+The compiler reads each CSV once; readable logs are retained for troubleshooting
+but never parsed in the normal workflow. No extra regression jobs or estimate
+recomputation are performed. All correlation, heritability and intercept fields
+retain their available floating-point precision. Missing or invalid numerical
+exports stop compilation instead of falling back to rounded log tables.
+
+For old runs only, explicitly passing `.log` files to `compile_results()`
+retains detailed-log recovery. This preserves printed precision, not every digit
+of the original estimates. No SE is imputed. Existing PCA/GWAMA outputs are not
+automatically regenerated. Raw `ldsc-gpca ldsc.py` remains unchanged and does
+not use the managed numerical exporter.
+
 For GWAMA, both backends additionally require **tab-separated** per-trait files
 with these nine columns, in this order:
 

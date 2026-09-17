@@ -357,6 +357,24 @@ ldsc-gpca ldsc \
 
 Outputs include `ldsc_results.csv`, `LDSC_Runtime.json`,
 `LDSC_Trait_Prevalence_Metadata.csv`, munged files/sidecars and logs.
+Each managed LDSC batch also writes `ldsc_results/<batch>.results.csv` directly
+from the native result DataFrame with `%.17g` formatting, before readable-log
+rounding. The existing LDSC process performs this export; there is no second
+regression job and no reconstruction of SEs, p-values or heritabilities.
+The compiler reads each numerical CSV once and does not open the readable logs.
+Missing/invalid exports stop the run rather than falling back to log parsing.
+Both the original batch exports and the compiled CSV preserve numerical precision.
+`LDSC_Runtime.json` records this output contract.
+
+The installed package supplies a standalone exporter executed by the existing
+isolated LDSC Python runtime. The hook observes only the native result-table
+rendering, restores its temporary hooks even on failure, and leaves regression,
+filtering, liability conversion and dependency files unchanged. No LDSC
+environment reinstall or source patch is needed. Raw script passthrough below
+intentionally remains native and does not perform this managed export.
+
+Explicit `.log` inputs to the Python `compile_results()` API remain supported
+for one-time legacy recovery; passing a missing CSV never triggers that path.
 When `--chisq-max` is supplied, outputs also include
 `LDSC_ChiSquare_Filter_Summary.csv`, `LDSC_ChiSquare_Excluded_Variants.tsv.gz`,
 and `ldsc_input_chisq_filtered/`.
