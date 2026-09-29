@@ -6,14 +6,14 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
     parser$print_help()
     return(invisible(NULL))
   }
-  args <- tryCatch(parser$parse_args(arguments), error = function(e) {
+  args <- tryCatch(parser$parse_args(check_gpca_cli_options(arguments)), error = function(e) {
     parser$print_help()
     stop(e)
   })
   for (name in c("h2_z_warn_threshold", "matrix_eigen_tolerance"))
     if (!is.finite(args[[name]]) || args[[name]] < 0 || (name == "matrix_eigen_tolerance" && args[[name]] == 0))
       stop(paste("Invalid", name), call. = FALSE)
-  if (is.na(args$cores) || args$cores < 0L) stop("--cores must be non-negative.", call. = FALSE)
+  if (is.na(args$n_cores) || args$n_cores < 0L) stop("--n_cores must be non-negative.", call. = FALSE)
   dir.create(args$outdir, recursive = TRUE, showWarnings = FALSE)
   if (!dir.exists(args$outdir)) stop("Cannot create output directory.", call. = FALSE)
   if (file.exists(file.path(args$outdir, "GenomicSEM_QC_Events.csv")))
@@ -21,7 +21,7 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
   audit <- new_genomicsem_audit(args$outdir)
   on.exit(write_genomicsem_audit(audit), add = TRUE)
   withCallingHandlers(tryCatch({
-    manifest <- fread(args$input, data.table = FALSE)
+    manifest <- read_gpca_manifest(args$input)
     if (!"traitname" %in% names(manifest)) stop("Manifest requires traitname.", call. = FALSE)
     traits <- as.character(manifest$traitname)
     if (length(traits) < 2L || anyNA(traits) || any(!nzchar(trimws(traits))) || anyDuplicated(traits))
@@ -29,7 +29,7 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
     audit$traits <- traits
     # Isolated load: the RData cannot replace CLI arguments or helper functions.
     env <- new.env(parent = emptyenv())
-    loaded <- load(args$ldsc_path, envir = env)
+    loaded <- load(args$ldsc_results, envir = env)
     if (!"LDSCoutput" %in% loaded) stop("RData must contain LDSCoutput.", call. = FALSE)
     x <- qc_genomicsem(env$LDSCoutput, traits, args, audit)
     traits <- colnames(x$S)
@@ -56,7 +56,7 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
         result$warnings <- warnings
         result
       }
-      cores <- args$cores
+      cores <- args$n_cores
       if (cores == 0L) {
         cores <- parallel::detectCores(logical = FALSE)
         cores <- if (is.na(cores)) 1L else max(1L, cores - 1L)

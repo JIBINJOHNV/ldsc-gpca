@@ -73,6 +73,52 @@ Linux amd64 Docker installation has been tested. Native Linux/macOS platforms
 are detected, but the pinned dependencies have not been verified on every platform.
 Installing with `pip` alone does not install the R, bcftools or LDSC dependencies.
 
+## CPU workers and numerical threads
+
+Use `--n_cores` for worker counts in `ldsc`, `gpca`, `genomicsem gpca`,
+`genomicsem ldsc`, and standalone `prepare`.
+
+| Command | Default `--n_cores` | Scope |
+| --- | --- | --- |
+| `ldsc` | `5` | Local extraction, munging and pairwise LDSC workers |
+| `gpca` / `genomicsem gpca` | `0` (automatic) | Chromosome-split GWAMA, at most 22 workers; whole-genome mode is sequential |
+| `genomicsem ldsc` | `1` | Munging only; native LDSC remains sequential |
+| `prepare` | `4` | VCF preparation workers |
+
+For GPCA's optional automatic VCF preparation, `--prepare_workers` remains a
+separate setting (default `4`); `--n_cores` controls the later GWAMA stage.
+GPCA permits `0` for automatic selection; the other commands require at least `1`.
+Windows GPCA runs chromosomes sequentially.
+
+The `ldsc-gpca` launcher (also `python -m ldsc_gpca`) defaults these environment
+variables to `1` **before** importing numerical libraries or launching children:
+
+```text
+OPENBLAS_NUM_THREADS
+OMP_NUM_THREADS
+MKL_NUM_THREADS
+VECLIB_MAXIMUM_THREADS
+NUMEXPR_NUM_THREADS
+```
+
+Existing environment values are preserved, including values supplied by your
+job environment. Normal analysis startup reports the configured values to stderr;
+capture stderr with stdout if retaining a combined run log. Child Python and R
+processes inherit the environment, although Conda activation hooks or numerical
+libraries can override it. These values are configuration, not a measurement of
+live threads. They do not change the GWAMA source, analysis worker count, or
+statistical formulas. Large worker counts can still be limited by RAM and I/O.
+
+The defaults avoid nested numerical threading when many analysis workers run
+concurrently, following [GenomicSEM's performance guidance](https://github.com/GenomicSEM/GenomicSEM#parallel-performance-on-linux).
+No shell `export` lines are needed when these variables are unset. To override a
+default, set the corresponding environment variable before starting the package.
+For example, `OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 ldsc-gpca gpca ...`
+requests two OpenBLAS threads per worker. OpenMP builds use `OMP_NUM_THREADS`;
+other builds use `OPENBLAS_NUM_THREADS`. Benchmark before increasing these settings.
+These defaults apply to the package CLI, not standalone `Rscript` execution or
+Python API imports after numerical libraries have already initialized.
+
 ## Docker: install and run without host Conda
 
 Install and start [Docker Desktop](https://docs.docker.com/desktop/) or
@@ -81,8 +127,8 @@ Install and start [Docker Desktop](https://docs.docker.com/desktop/) or
 ```bash
 git clone https://github.com/JIBINJOHNV/ldsc-gpca.git
 cd ldsc-gpca
-docker build --platform linux/amd64 -t ldsc-gpca:0.5.0 .
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 ldsc-gpca --help
+docker build --platform linux/amd64 -t ldsc-gpca:0.6.0 .
+docker run --rm --platform linux/amd64 ldsc-gpca:0.6.0 ldsc-gpca --help
 ```
 
 The image is **not published to a registry**; build it locally. Apple Silicon uses
@@ -94,9 +140,9 @@ To run the Python-LDSC QC/PCA example with files from your computer:
 docker run --rm --platform linux/amd64 \
   --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /absolute/path/to/data:/work -w /work \
-  ldsc-gpca:0.5.0 ldsc-gpca gpca \
+  ldsc-gpca:0.6.0 ldsc-gpca gpca \
   --input /work/selected_traits.csv \
-  --python_ldsc /work/ldsc_results.csv \
+  --ldsc_results /work/ldsc_results.csv \
   --outdir /work/qc_results --validate_only
 ```
 
@@ -176,7 +222,7 @@ Run **one** of the following, according to your LDSC backend.
 ```bash
 ldsc-gpca gpca \
   --input /data/selected_traits.csv \
-  --python_ldsc /results/python_ldsc/ldsc_results.csv \
+  --ldsc_results /results/python_ldsc/ldsc_results.csv \
   --outdir /results/python_gpca_qc \
   --validate_only
 ```
@@ -186,7 +232,7 @@ ldsc-gpca gpca \
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /data/selected_traits.csv \
-  --ldsc_path /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
+  --ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
   --outdir /results/genomicsem_gpca_qc \
   --validate_only
 ```
@@ -200,7 +246,7 @@ The modified GWAMA v1.2.6 R function is bundled; no `--source_path` is needed.
 Use a new output directory and omit `--validate_only`.
 
 **Resolve export metadata first:** the bundled GWAMA function does not output INFO.
-Automatic export therefore needs a scientifically justified `--gwama-output-info`
+Automatic export therefore needs a scientifically justified `--gwama_output_info`
 value; otherwise the command fails at export after GWAMA completes. This value is
 user-supplied metadata, not an estimated INFO score. Do not invent one to make a run pass.
 
@@ -212,11 +258,11 @@ The shell guard deliberately stops if it is unset. See the [export policy](docs/
 ```bash
 ldsc-gpca gpca \
   --input /data/selected_traits.csv \
-  --python_ldsc /results/python_ldsc/ldsc_results.csv \
+  --ldsc_results /results/python_ldsc/ldsc_results.csv \
   --gpca_input_folder /results/prepared/gpca_inputs \
   --outdir /results/python_gpca_gwama \
-  --dataset-id cluster1 \
-  --gwama-output-info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
+  --dataset_id cluster1 \
+  --gwama_output_info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
 ```
 
 **From GenomicSEM LDSC:**
@@ -224,11 +270,11 @@ ldsc-gpca gpca \
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /data/selected_traits.csv \
-  --ldsc_path /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
+  --ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
   --gpca_input_folder /results/prepared/gpca_inputs \
   --outdir /results/genomicsem_gpca_gwama \
-  --dataset-id cluster1 \
-  --gwama-output-info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
+  --dataset_id cluster1 \
+  --gwama_output_info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
 ```
 
 Both default to correlation PCA, tutorial PC1 orientation and chromosome-split
@@ -261,17 +307,32 @@ reports. It uses `EA=ALT`, `OA=REF`, `N=NEF` and `Z=ES/SE`; verify your N conven
 It does not harmonise alleles, lift over coordinates or apply MHC/INFO-score filters.
 Split mode requires retained variants on all 22 autosomes for every trait.
 
-Optional `--write-munge-inputs --hapmap-file FILE` also writes **unmunged**
+Optional `--write_munge_inputs --hm3 FILE` also writes **unmunged**
 HapMap-selected tables. This is SNP selection, not allele alignment or LDSC.
 See [preparation formats, QC and options](docs/REFERENCE.md#prepare-per-trait-gpca-inputs).
 
 GPCA can also prepare VCFs automatically when `--gpca_input_folder` is omitted
-and its manifest includes `vcf_files`. Use `--prepare-help` for those options.
+and its manifest includes `vcf_files`. Use `--prepare_help` for those options.
 
 ## Generate LDSC results
 
 Skip this section if you already have valid LDSC results. Choose **one backend**;
 neither LDSC command automatically runs GPCA or creates the nine-column GWAMA inputs.
+
+### One consistent interface (v0.6.0)
+
+Managed commands use `--input`, `--outdir`, `--n_cores`, `--hm3`, `--ld_ref`,
+`--ld_weights`, `--munged_dir` and `--ldsc_results` wherever applicable.
+Multiword options use underscores, including `--dataset_id` and
+`--gwama_output_n_eff`. Each setting has one accepted name.
+
+Manifests use `traitname`, `sample_prevalence`, `population_prevalence`,
+`sumstats_file` (unmunged) and `munged_file` (already munged), with `vcf_files`,
+`ref` and optional `N` where required. This is a breaking interface update:
+previous option/header spellings are rejected. Update scripts and manifests
+before running v0.6.0. Variant-table headers and original GWAMA code are unchanged.
+
+See [the interface specification and manifest examples](docs/NAMING.md).
 
 ### Run Python LDSC
 
@@ -280,10 +341,10 @@ Its fixed schema requires INFO `AF,EUR` and FORMAT `SI,AF,EZ,LP,NEF`;
 binary traits with population prevalence also need `NC,NCO`.
 This is not a generic ancestry-independent GWAS-VCF reader.
 
-The CSV manifest requires `gwas_name,vcf_files,ref,pop_prevalence,sample_prevalence`.
+The CSV manifest requires `traitname,vcf_files,ref,population_prevalence,sample_prevalence`.
 Set `ref=yes` for every selected trait to generate complete GPCA pair/self-pair coverage.
 
-Use `--chisq-max 80` to reproduce GenomicSEM-style extreme-statistic filtering:
+Use `--chisq_max 80` to reproduce GenomicSEM-style extreme-statistic filtering:
 each munged trait is filtered independently to `Z^2 <= 80` immediately before
 pairwise LDSC. The original VCF and munged files are preserved. This option is
 also supported with `--ldsc_only`; it is intentionally not forwarded to native
@@ -305,11 +366,11 @@ and result compilation; raw `ldsc.py --rg --chisq-max` retains native LDSC seman
 ### Run GenomicSEM LDSC
 
 Use `ldsc-gpca genomicsem ldsc` for GWAS tables → native munging → LDSC.
-The default CSV manifest requires `traitname,munge_inputs,sampleprevalence,populationprevalence`.
+The default CSV manifest requires `traitname,sumstats_file,sample_prevalence,population_prevalence`.
 For quantitative traits use blank/NA prevalence entries; binary liability conversion
 requires both valid sample and population prevalence.
 
-Already munged? Use `--munge-output DIRECTORY` or `--munged-input` to skip munging.
+Already munged? Use `--munged_dir DIRECTORY` or `--munged_input` to skip munging.
 The final outputs include `genomicPCA_LDSC.RData` and the retained `Selected_Traits.csv`.
 
 [GenomicSEM commands, table columns, references and existing-munged-file options →](docs/REFERENCE.md#run-genomicsem-ldsc)
@@ -330,7 +391,7 @@ PC1 contribution is the squared eigenvector coefficient, expressed as a percenta
 it is not a causal contribution. Negative eigenvalues make raw variance percentages
 non-standard. See [definitions and audit files](docs/REFERENCE.md#find-and-interpret-the-outputs).
 
-After successful GWAMA **and export**, `--dataset-id cluster1` produces:
+After successful GWAMA **and export**, `--dataset_id cluster1` produces:
 
 ```text
 outdir/
@@ -369,8 +430,8 @@ ldsc-gpca genomicsem gpca --help
 ```
 
 Help lists required columns, separators, defaults and choices. For either GPCA
-backend, `--prepare-help` and `--postprocess-help` show the additional option groups.
-Copy flag names exactly: the CLI uses both underscores and hyphens.
+backend, `--prepare_help` and `--postprocess_help` show the additional option groups.
+Copy flag names exactly: managed multiword options use underscores.
 
 Keep the repository commit, image digest/environment records, commands, manifests,
 reference checksums and QC/removal reports. Environment YAMLs are specifications,

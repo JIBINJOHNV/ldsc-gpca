@@ -8,7 +8,7 @@ gpsca_main <- function() {
     "--- Reading Python LDSC estimates for {length(manifest_trait_order)} manifest traits ---"
   ))
   selected_ldsc <- read_python_ldsc_selected(
-    args$python_ldsc,
+    args$ldsc_results,
     manifest_trait_order,
     args$ldsc_chunk_size,
     heritability_scale = args$heritability_scale,
@@ -214,10 +214,10 @@ gpsca_main <- function() {
   if (args$splitby_chr == "split") {
     physical_cores <- detectCores(logical = FALSE)
     if (is.na(physical_cores) || physical_cores < 1L) physical_cores <- 1L
-    worker_count <- if (args$cores == 0L) {
+    worker_count <- if (args$n_cores == 0L) {
       min(22L, max(1L, physical_cores - 1L))
     } else {
-      min(22L, args$cores)
+      min(22L, args$n_cores)
     }
 
     message(glue("--- Running chromosomes 1-22 with {worker_count} worker(s) ---"))

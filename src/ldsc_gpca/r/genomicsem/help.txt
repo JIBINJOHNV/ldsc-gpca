@@ -1,9 +1,9 @@
-usage: ldsc-gpca genomicsem gpca [-h] --input MANIFEST.csv --ldsc_path
-                                 LDSC.RData --outdir DIRECTORY
+usage: ldsc-gpca genomicsem gpca [-h] --input MANIFEST.csv
+                                 --ldsc_results LDSC.RData --outdir DIRECTORY
                                  [--gpca_input_folder DIRECTORY]
                                  [--source_path GWAMA.R]
                                  [--splitby_chr {split,nosplit}]
-                                 [--cores CORES] [--validate_only]
+                                 [--n_cores N_CORES] [--validate_only]
                                  [--allow_missing_traits]
                                  [--failed_ldsc_action {error,drop_traits}]
                                  [--h2_z_warn_threshold H2_Z_WARN_THRESHOLD]
@@ -15,11 +15,11 @@ usage: ldsc-gpca genomicsem gpca [-h] --input MANIFEST.csv --ldsc_path
 
 GPCA/GWAMA from GenomicSEM LDSCoutput RData. Strict QC is the default. Warnings, removals and errors are saved in GenomicSEM_QC_Events.csv.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --input MANIFEST.csv  Comma-separated manifest; required header traitname.
                         Required; no default.
-  --ldsc_path LDSC.RData
+  --ldsc_results LDSC.RData
                         Native LDSCoutput RData; required objects below.
                         Required; no default.
   --outdir DIRECTORY    Output directory; use a fresh directory. Required; no
@@ -32,7 +32,7 @@ optional arguments:
                         bundled N_weighted_GWAMA.function.1_2_6.R.
   --splitby_chr {split,nosplit}
                         Input naming mode. Default: split (chromosomes 1-22).
-  --cores CORES         Chromosome workers. Default: 0 = auto; Windows runs
+  --n_cores N_CORES     Chromosome workers. Default: 0 = auto; Windows runs
                         sequentially.
   --validate_only       Write QC and PCA diagnostics without running GWAMA.
                         Default: false.
@@ -64,7 +64,7 @@ INPUT FILE CONTRACT
   --input: comma-separated CSV with unique, non-empty traitname header.
     Manifest row order defines matrix, loading and GWAMA input order.
     Package auto-preparation also requires vcf_files if the input folder is omitted.
-  --ldsc_path: binary RData containing LDSCoutput, with S,V,I,S_Stand,V_Stand.
+  --ldsc_results: binary RData containing LDSCoutput, with S,V,I,S_Stand,V_Stand.
     This is NOT a delimited table. Generate it upstream with stand=TRUE.
   --gpca_input_folder: tab-separated TSV files; exact column order:
     SNPID,CHR,BP,EA,OA,EAF,N,Z,P (A1/A2/p aliases accepted for EA/OA/P).

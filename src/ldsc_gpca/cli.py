@@ -2,10 +2,15 @@
 import sys
 from . import __version__
 from .helptext import HelpParser
+from .threads import configure_numerical_threads
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    # Keep numerical imports inside the dispatch branches, after these defaults.
+    help_flags = {'--help', '-h', '--version', '--prepare_help', '--postprocess_help'}
+    has_workflow_args = len(argv) > (2 if argv[:1] == ['genomicsem'] else 1)
+    configure_numerical_threads(report=has_workflow_args and not help_flags.intersection(argv))
     parser = HelpParser(
         prog="ldsc-gpca", description="Python LDSC and R genomicPCA/GWAMA workflows.",
         epilog="""AVAILABLE WORKFLOWS
@@ -18,6 +23,8 @@ def main(argv=None):
   genomicsem ldsc  Native munge -> LDSC, or start from existing munged files.
 
 NOTES
+  Numerical libraries default to one thread per worker; existing environment
+  settings are preserved. Use --n_cores to choose analysis workers.
   GenomicSEM munging is included in genomicsem ldsc, not a standalone command.
   Raw .py passthrough commands bypass package validation, filtering and provenance.
   GWAMA postprocessing runs automatically; postprocess is not a top-level command.

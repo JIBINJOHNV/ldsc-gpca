@@ -14,35 +14,38 @@ import tempfile
 import polars as pl
 from .postprocess import filename_component
 from .helptext import HelpParser, PREPARE_INPUT_HELP
+from .interfaces import read_manifest
 
 ID_CHOICES = ('chr_pos_ref_alt', 'vcf_id')
 RAW_COLUMNS = ['SNP', 'CHR', 'POS', 'A1', 'A2', 'eaf_A1', 'beta', 'se', 'LP', 'N']
 QUERY = r'%ID\t%CHROM\t%POS\t%ALT\t%REF[\t%AF\t%ES\t%SE\t%LP\t%NEF]\n'
 
 
-def add_prepare_options(parser):
+def add_prepare_options(parser, *, standalone=False):
     group = parser.add_argument_group('VCF input preparation')
-    group.add_argument('--p-min', type=float, default=1e-300,
+    group.add_argument('--p_min', type=float, default=1e-300,
                        help='Floor for P calculated from valid LP; smaller values are retained and adjusted. Default: 1e-300.')
-    group.add_argument('--gpca-id-source', choices=ID_CHOICES, default='chr_pos_ref_alt',
+    group.add_argument('--gpca_id_source', choices=ID_CHOICES, default='chr_pos_ref_alt',
                        help='GPCA SNPID values. Default: chr_pos_ref_alt.')
-    group.add_argument('--write-munge-inputs', action='store_true',
+    group.add_argument('--write_munge_inputs', action='store_true',
                        help='Also write HapMap-filtered LDSC munging inputs. Default: GPCA files only; does not run munging.')
-    group.add_argument('--hapmap-file', help='Tab-delimited file with a SNP header. Required only with --write-munge-inputs.')
-    group.add_argument('--munge-id-source', choices=ID_CHOICES, default='vcf_id',
+    group.add_argument('--hm3', dest='hapmap_file', help='Tab-delimited file with a SNP header. Required only with --write_munge_inputs.')
+    group.add_argument('--munge_id_source', choices=ID_CHOICES, default='vcf_id',
                        help='Munging SNP values; must match HapMap identifiers. Default: vcf_id (usually rsIDs).')
-    group.add_argument('--prepare-workers', type=int, default=4,
+    worker_flag = '--n_cores' if standalone else '--prepare_workers'
+    group.add_argument(worker_flag, dest='prepare_workers', type=int, default=4,
                        help='Parallel VCF preparation workers. Default: 4.')
     group.add_argument('--bcftools', default='bcftools', help='Local bcftools executable or path. Default: bcftools on PATH.')
 
 
 def manifest_inputs(path):
     path = Path(path).resolve()
-    frame = pl.read_csv(path, schema_overrides={'traitname': pl.String, 'vcf_files': pl.String})
-    if not {'traitname', 'vcf_files'}.issubset(frame.columns) or frame.is_empty():
+    columns, manifest_rows = read_manifest(path)
+    if not {'traitname', 'vcf_files'}.issubset(columns) or not manifest_rows:
         raise ValueError('Preparation requires a non-empty manifest with traitname and vcf_files columns')
     rows, seen = [], set()
-    for name, vcf in frame.select('traitname', 'vcf_files').iter_rows():
+    for row in manifest_rows:
+        name, vcf = row['traitname'], row['vcf_files']
         name = filename_component((name or '').strip())
         if name in seen:
             raise ValueError(f'Duplicate traitname: {name}')
@@ -74,7 +77,7 @@ def extract_table(vcf, executable, temporary):
 def validate_and_transform(frame, p_min=1e-300, gpca_id_source='chr_pos_ref_alt'):
     """Filter bad rows, retaining internal row indices solely for original-record audits."""
     if not math.isfinite(p_min) or not 0 < p_min < 1:
-        raise ValueError('--p-min must be finite and strictly between 0 and 1')
+        raise ValueError('--p_min must be finite and strictly between 0 and 1')
     original_rows = frame.height
     frame = frame.with_row_index('_row')
     frame = frame.with_columns(pl.col('CHR').str.replace(r'(?i)^chr', '').cast(pl.Int64, strict=False))
@@ -201,7 +204,7 @@ def prepare_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source, mun
     if hm3 is not None:
         munge = frame.with_columns(selected_id(munge_id_source).alias('SNP')).join(hm3, on='SNP', how='semi')
         if munge.is_empty():
-            raise ValueError('No identifiers matched the HapMap SNP list; check --munge-id-source and --hapmap-file')
+            raise ValueError('No identifiers matched the HapMap SNP list; check --munge_id_source and --hm3')
         validate_ids(munge, 'SNP')
         munge.select(['SNP','CHR','POS','A1','A2','eaf_A1','beta','se','N','p']).write_csv(
             stage/'munge_inputs'/f'{name}_munge_inputs.txt', separator=' ')
@@ -215,13 +218,13 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
                    write_munge_inputs=False, hapmap_file=None, munge_id_source='vcf_id',
                    prepare_workers=4, bcftools='bcftools', p_min=1e-300):
     if not math.isfinite(p_min) or not 0 < p_min < 1:
-        raise ValueError('--p-min must be finite and strictly between 0 and 1')
+        raise ValueError('--p_min must be finite and strictly between 0 and 1')
     if splitby_chr not in ('split','nosplit') or gpca_id_source not in ID_CHOICES or munge_id_source not in ID_CHOICES:
         raise ValueError('Invalid layout or identifier source')
     if not isinstance(prepare_workers, int) or prepare_workers < 1:
-        raise ValueError('--prepare-workers must be a positive integer')
+        raise ValueError('VCF preparation workers (--n_cores for prepare; --prepare_workers within gpca) must be a positive integer')
     if write_munge_inputs != bool(hapmap_file):
-        raise ValueError('--write-munge-inputs and --hapmap-file must be supplied together')
+        raise ValueError('--write_munge_inputs and --hm3 must be supplied together')
     executable = shutil.which(bcftools)
     if not executable:
         raise ValueError(f'Local bcftools executable not found: {bcftools}')
@@ -313,7 +316,7 @@ def main(argv=None):
     parser.add_argument('--input', required=True, help='CSV with traitname and vcf_files. Relative VCF paths resolve beside this manifest.')
     parser.add_argument('--outdir', required=True, help='Output directory; creates gpca_inputs and optionally munge_inputs.')
     parser.add_argument('--splitby_chr', choices=['split','nosplit'], default='split', help='Default: split (requires all chromosomes 1–22 per trait).')
-    add_prepare_options(parser)
+    add_prepare_options(parser, standalone=True)
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
         parser.print_help()

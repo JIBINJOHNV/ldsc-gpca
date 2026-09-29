@@ -3,6 +3,7 @@ import argparse
 from importlib.resources import files
 import sys
 import os
+from .interfaces import validate_option_spelling, reject_conflicting_options
 
 
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -24,6 +25,11 @@ class HelpParser(argparse.ArgumentParser):
         kwargs.setdefault('formatter_class', HelpFormatter)
         kwargs.setdefault('allow_abbrev', False)
         super().__init__(*args, **kwargs)
+
+    def parse_known_args(self, args=None, namespace=None):
+        validate_option_spelling(self, args)
+        reject_conflicting_options(self, args)
+        return super().parse_known_args(args, namespace)
 
     def error(self, message):
         self.print_help(sys.stderr)
@@ -53,8 +59,8 @@ PREPARE_INPUT_HELP = """INPUT FILE CONTRACT
   traitname: unique, non-empty identifier; vcf_files: one single-sample VCF per row.
   Relative VCF paths resolve beside the manifest. Plain VCF and .vcf.gz accepted.
   Required VCF FORMAT fields: AF, ES, SE, LP, NEF. LP means -log10(P).
-  --hapmap-file: tab-separated text with SNP header; required only with
-  --write-munge-inputs. Identifier selection only; no allele alignment.
+  --hm3: tab-separated text with SNP header; required only with
+  --write_munge_inputs. Identifier selection only; no allele alignment.
 
 OUTPUTS AND FIXED INPUT CONTRACT
   GPCA output is tab-separated: SNPID,CHR,BP,EA,OA,EAF,N,Z,P (in that order).
@@ -65,8 +71,8 @@ OUTPUTS AND FIXED INPUT CONTRACT
 """
 
 LDSC_INPUT_HELP = """INPUT FILE CONTRACT
-  --input_file: comma-separated CSV. VCF workflow headers:
-    gwas_name,vcf_files,ref,pop_prevalence,sample_prevalence
+  --input: comma-separated CSV. VCF workflow headers:
+    traitname,vcf_files,ref,population_prevalence,sample_prevalence
   With --ldsc_only, vcf_files is optional; all other headers remain required.
   Names must be unique/non-empty. Use absolute VCF paths when VCFs are processed.
   ref=yes selects an LDSC reference trait; ref=no leaves it as a target.
@@ -74,13 +80,13 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
   Prevalence columns must exist; blank/NA values are allowed.
   Population prevalence absent: use NEF; sample prevalence is not used.
   Population prevalence supplied: use NC+NCO; derive missing sample prevalence.
-  --ld_ref_snp_file: whitespace-separated HapMap allele table with headers
+  --hm3: whitespace-separated HapMap allele table with headers
     SNP,A1,A2 (tabs or spaces). Passed to standard LDSC --merge-alleles;
     required for VCF/munging runs and not required with --ldsc_only.
   --ld_ref: directory of chromosome reference files; see FIXED CONTRACT below.
-  --ldsc_input_folder: .sumstats.gz directory used with --ldsc_only;
-    filenames: {gwas_name}.sumstats.gz. Required sidecars must remain alongside.
-  --chisq-max: optional positive threshold applied independently to each munged
+  --munged_dir: .sumstats.gz directory used with --ldsc_only;
+    filenames: {traitname}.sumstats.gz. Required sidecars must remain alongside.
+  --chisq_max: optional positive threshold applied independently to each munged
     trait as Z^2 <= threshold before pairwise LDSC. Original files are unchanged.
     This is not forwarded to native LDSC's cross-product --chisq-max behavior.
 
@@ -90,7 +96,7 @@ FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
   Extraction expects INFO/AF, INFO/EUR and FORMAT/SI, AF, EZ, LP, NEF;
   population-prevalence traits additionally require FORMAT/NC and FORMAT/NCO.
   LD reference prefix: <ld_ref>/<CHR>.l2.ldscore.gz and associated M files;
-  the same directory is currently used for reference and regression weights.
+  weights default to --ld_ref; --ld_weights can select a separate directory.
   Each LDSC batch exports .results.csv directly from its in-memory estimates.
   Compilation reads each CSV once; human-readable logs are not parsed.
   This is an EUR-field-specific extraction schema, not a generic GWAS-VCF reader.

@@ -119,6 +119,31 @@ print('Exact native estimates preserved; readable rendering unchanged.')
             self.assertTrue(compiled[["se", "h2_obs_se", "h2_int_se", "gcov_int_se"]].gt(0).all().all())
             print("Real LDSC: three batches, nine pairs; positive tiny self-pair SEs preserved.")
 
+@unittest.skipUnless(PREFIX and shutil.which(CONDA), "requires an explicit usable LDSC runtime")
+class SeparateWeightsTests(unittest.TestCase):
+    def test_separate_weights_preserve_estimates_when_contents_match(self):
+        # Distinct paths, identical LD-score contents: regression estimates must agree.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, reference, metadata = make_fixture(root)
+            weights = root / 'separate_weights'
+            weights.mkdir()
+            for score in reference.glob('*.l2.ldscore.gz'):
+                shutil.copy2(score, weights / score.name)
+            baseline = pairwise.parallel_ldsc_analysis(
+                3, 100, str(root/'default'), str(reference)+os.sep, metadata, str(source),
+                retries=0, runtime={'conda':CONDA, 'prefix':PREFIX})
+            with patch.object(pairwise, 'run_command', wraps=pairwise.run_command) as commands:
+                explicit = pairwise.parallel_ldsc_analysis(
+                    3, 100, str(root/'separate'), str(reference)+os.sep, metadata, str(source),
+                    retries=0, runtime={'conda':CONDA, 'prefix':PREFIX}, ld_weights_dir=str(weights)+os.sep)
+            for old, new in zip(baseline, explicit):
+                pd.testing.assert_frame_equal(pd.read_csv(old, float_precision='round_trip'),
+                                              pd.read_csv(new, float_precision='round_trip'))
+            self.assertEqual(commands.call_count, 3)
+            for call in commands.call_args_list:
+                self.assertIn(str(weights), call.args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

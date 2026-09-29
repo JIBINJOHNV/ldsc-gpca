@@ -97,7 +97,7 @@ parse_command_line <- function() {
     prog = "ldsc-gpca gpca",
     add_help = FALSE,
     usage = paste(
-      "%(prog)s --input MANIFEST.csv --python_ldsc LDSC.csv[.gz]",
+      "%(prog)s --input MANIFEST.csv --ldsc_results LDSC.csv[.gz]",
       "--outdir DIRECTORY [options]"
     ),
     description = paste0(
@@ -105,6 +105,7 @@ parse_command_line <- function() {
       "using a complete pairwise results table produced by Python ldsc.py."
     ),
     formatter_class = "argparse.RawDescriptionHelpFormatter",
+    allow_abbrev = FALSE,
     epilog = paste0(
       "INPUT FILE FORMATS\n",
       "  Manifest: comma-separated CSV with a header row.\n",
@@ -144,7 +145,7 @@ parse_command_line <- function() {
       "VALIDATION-ONLY EXAMPLE\n",
       "  Rscript gpsca_gwama_python_ldsc.r \\\n",
       "    --input selected_traits.csv \\\n",
-      "    --python_ldsc all_pairwise_ldsc.csv.gz \\\n",
+      "    --ldsc_results all_pairwise_ldsc.csv.gz \\\n",
       "    --outdir validation_results \\\n",
       "    --failed_ldsc_action drop_traits \\\n",
       "    --validate_only\n\n",
@@ -180,7 +181,7 @@ parse_command_line <- function() {
     )
   )
   required_inputs$add_argument(
-    "--python_ldsc",
+    "--ldsc_results",
     required = TRUE,
     metavar = "LDSC.csv[.gz]",
     help = paste(
@@ -238,7 +239,7 @@ parse_command_line <- function() {
   )
 
   qc_thresholds$add_argument(
-    "--duplicate_tolerance", "--tolerance",
+    "--duplicate_tolerance",
     dest = "duplicate_tolerance",
     type = "double",
     metavar = "FLOAT",
@@ -372,7 +373,8 @@ parse_command_line <- function() {
     help = "Run LDSC QC and PCA and write audit files, but do not run GWAMA."
   )
   execution$add_argument(
-    "--cores",
+    "--n_cores",
+    dest = "n_cores",
     type = "integer",
     metavar = "N",
     default = 0L,
@@ -410,7 +412,7 @@ parse_command_line <- function() {
     quit(save = "no", status = 0L, runLast = FALSE)
   }
 
-  tryCatch(parser$parse_args(raw_arguments), error = function(e) {
+  tryCatch(parser$parse_args(check_gpca_cli_options(raw_arguments)), error = function(e) {
     parser$print_help()
     stop(e)
   })
@@ -422,8 +424,8 @@ validate_cli_paths <- function(args) {
   if (!file.exists(args$input)) {
     stop(glue("Trait manifest not found: {args$input}"), call. = FALSE)
   }
-  if (!file.exists(args$python_ldsc)) {
-    stop(glue("Python LDSC results not found: {args$python_ldsc}"), call. = FALSE)
+  if (!file.exists(args$ldsc_results)) {
+    stop(glue("Python LDSC results not found: {args$ldsc_results}"), call. = FALSE)
   }
   if (!isTRUE(args$validate_only)) {
     if (is.null(args$gpca_input_folder) || !nzchar(args$gpca_input_folder)) {
@@ -491,8 +493,8 @@ validate_cli_paths <- function(args) {
   if (is.na(args$ldsc_chunk_size) || args$ldsc_chunk_size < 1L) {
     stop("--ldsc_chunk_size must be a positive integer.", call. = FALSE)
   }
-  if (is.na(args$cores) || args$cores < 0L) {
-    stop("--cores must be zero or a positive integer.", call. = FALSE)
+  if (is.na(args$n_cores) || args$n_cores < 0L) {
+    stop("--n_cores must be zero or a positive integer.", call. = FALSE)
   }
 
   dir.create(args$outdir, recursive = TRUE, showWarnings = FALSE)

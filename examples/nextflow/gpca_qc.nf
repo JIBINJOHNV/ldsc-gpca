@@ -11,13 +11,13 @@ process GPCA_QC {
     """
     ldsc-gpca gpca \\
       --input '${manifest}' \\
-      --python_ldsc '${ldsc}' \\
+      --ldsc_results '${ldsc}' \\
       --outdir qc --validate_only
     """
 }
 
 workflow {
-    if (!params.manifest || !params.ldsc)
-        error 'Supply --manifest MANIFEST.csv and --ldsc PAIRWISE.csv[.gz] (local paths or gs:// URLs).'
-    GPCA_QC(file(params.manifest, checkIfExists: true), file(params.ldsc, checkIfExists: true))
+    if (!params.input || !params.ldsc_results)
+        error 'Supply --input MANIFEST.csv and --ldsc_results PAIRWISE.csv[.gz] (local paths or gs:// URLs).'
+    GPCA_QC(file(params.input, checkIfExists: true), file(params.ldsc_results, checkIfExists: true))
 }

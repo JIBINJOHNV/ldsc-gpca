@@ -181,19 +181,19 @@ appropriate: preparation does not infer total sample size or perform liability c
 | Option | Default | Other choice / meaning |
 | --- | --- | --- |
 | `--splitby_chr` | `split` | `nosplit`: one file per trait |
-| `--gpca-id-source` | `chr_pos_ref_alt` | `vcf_id`: use existing VCF ID |
-| `--prepare-workers` | `4` | Lower this when each trait uses substantial memory |
+| `--gpca_id_source` | `chr_pos_ref_alt` | `vcf_id`: use existing VCF ID |
+| `--n_cores` | `4` | Standalone preparation workers; lower this when each trait uses substantial memory |
 | `--bcftools` | `bcftools` on PATH | Executable path |
-| `--p-min` | `1e-300` | Positive P floor below 1; adjustments are audited |
-| `--write-munge-inputs` | Off | Also export unmunged HapMap-selected tables |
-| `--hapmap-file` | Unset | Required with `--write-munge-inputs`; TSV with `SNP` header |
-| `--munge-id-source` | `vcf_id` | `chr_pos_ref_alt`; must match the HapMap identifiers |
+| `--p_min` | `1e-300` | Positive P floor below 1; adjustments are audited |
+| `--write_munge_inputs` | Off | Also export unmunged HapMap-selected tables |
+| `--hm3` | Unset | Required with `--write_munge_inputs`; TSV with `SNP` header |
+| `--munge_id_source` | `vcf_id` | `chr_pos_ref_alt`; must match the HapMap identifiers |
 
 `chr_pos_ref_alt` constructs `CHR_POS_REF_ALT` after chromosome/position
 normalization. `vcf_id` does not look up rsIDs. GPCA and munging identifier choices
 are independent. A standard rsID list needs rsIDs in the VCF ID field.
 
-To export optional munging tables, add `--write-munge-inputs --hapmap-file
+To export optional munging tables, add `--write_munge_inputs --hm3
 /references/hm3_snps.tsv` to the command. This is **SNP selection only**, not allele
 alignment. Extra allele columns in this list are ignored. GPCA outputs are not
 restricted to HapMap. Zero HapMap matches stops the optional export.
@@ -227,6 +227,9 @@ their union. Source VCFs are not changed. If any trait fails, prepared tables ar
 not published; audit reports describe the failure. Unextractable traits have
 unknown counts, not invented zeros. Use a fresh output directory to retry.
 
+See [the single interface specification](NAMING.md) for all managed commands
+and manifest headers. Variant-table headers remain unchanged.
+
 ## Run Python LDSC
 
 This route uses **local bcftools plus CBIIT LDSC in the isolated environment**.
@@ -238,34 +241,34 @@ workflow, not a generic VCF reader. The flags do not provide ancestry/field mapp
 Create `python_ldsc_traits.csv` (**CSV**; all five headers are required for VCF input):
 
 ```csv
-gwas_name,vcf_files,ref,pop_prevalence,sample_prevalence
+traitname,vcf_files,ref,population_prevalence,sample_prevalence
 protein1,/data/protein1.vcf.gz,yes,NA,NA
 protein2,/data/protein2.vcf.gz,yes,NA,NA
 ```
 
 Use absolute VCF paths. `ref=yes` requests that trait against every listed trait,
 including itself. Set it for **every trait** when you need complete GPCA coverage;
-`ref=no` leaves a trait as a target only. The later GPCA manifest uses `traitname`,
-not `gwas_name`; the identifier values must match.
+`ref=no` leaves a trait as a target only. The same `traitname` identifiers and manifest
+can be used for GPCA; GPCA preserves the selected manifest row order.
 
 ```bash
 ldsc-gpca ldsc \
-  --input_file /data/python_ldsc_traits.csv \
-  --output_folder /results/python_ldsc \
-  --ld_ref_snp_file /references/hm3_alleles.tsv \
+  --input /data/python_ldsc_traits.csv \
+  --outdir /results/python_ldsc \
+  --hm3 /references/hm3_alleles.tsv \
   --ld_ref /references/eur_ld_chr \
-  --chisq-max 80 \
+  --chisq_max 80 \
   --n_cores 5 \
-  --ldsc-retries 1
+  --ldsc_retries 1
 ```
 
-`--ld_ref_snp_file` must have **whitespace-separated `SNP,A1,A2` headers**, unlike
+`--hm3` must have **whitespace-separated `SNP,A1,A2` headers**, unlike
 the SNP-only preparation list. CBIIT munging checks allele compatibility with this
 reference; do not equate this with whole-workflow harmonisation of your GWAMA files.
 `--ld_ref` is a directory with chromosome `.l2.ldscore.gz` and associated M files.
-This wrapper currently uses the **same directory for LD references and weights**;
-it has no separate Python weight-directory flag. Ensure these files are appropriate
-for both uses and for the study ancestry.
+Regression weights default to `--ld_ref`. Supply `--ld_weights /references/weights`
+to use a separate directory. Both paths are recorded in `LDSC_Runtime.json`.
+Use files appropriate for each role and the study ancestry.
 
 ### Sample-size and prevalence rules
 
@@ -282,7 +285,7 @@ alone does not establish that the available count fields are scientifically appr
 
 ### Optional GenomicSEM-style chi-square filtering
 
-`--chisq-max FLOAT` independently retains `Z^2 <= FLOAT` in every munged trait
+`--chisq_max FLOAT` independently retains `Z^2 <= FLOAT` in every munged trait
 after munging and before pairwise LDSC. It applies identically to VCF-generated
 inputs and `--ldsc_only` inputs. The default is disabled, preserving previous
 package behavior.
@@ -298,7 +301,7 @@ This is a GenomicSEM-compatible per-trait rule, not a pass-through to CBIIT
 LDSC's native `--rg --chisq-max`, which filters the cross-product using
 `Z1^2 * Z2^2 < threshold^2`. The package deliberately runs pairwise LDSC on the
 independently filtered copies without forwarding the native option. A fixed
-threshold such as `--chisq-max 80` is explicit and reproducible; this option does
+threshold such as `--chisq_max 80` is explicit and reproducible; this option does
 not implement GenomicSEM's automatic `max(80, 0.001*N)` threshold selection.
 
 The compiler uses the **target trait (`p2`)** for heritability scale labels. It
@@ -312,15 +315,15 @@ treated as compatible observed/liability values merely because of a column name.
 | Setting | Default |
 | --- | --- |
 | Local workers, `--n_cores` | `5` |
-| MHC exclusion | Off; enable with `--exclude-mhc` |
+| MHC exclusion | Off; enable with `--exclude_mhc` |
 | MHC interval if enabled | Chromosome 6, 25,000,000–35,000,000 |
-| Extraction SI / MAF thresholds | `--info-min 0.7`, `--maf-min 0.01` |
-| Additional munging MAF threshold | `--munge-maf-min 0.005` |
-| Maximum INFO AF versus EUR difference | `--max-af-difference 0.2` |
-| Extraction palindromic removal | Off; `--remove-palindrome` uses AF bounds 0.45–0.55 by default |
+| Extraction SI / MAF thresholds | `--info_min 0.7`, `--maf_min 0.01` |
+| Additional munging MAF threshold | `--munge_maf_min 0.005` |
+| Maximum INFO AF versus EUR difference | `--max_af_difference 0.2` |
+| Extraction palindromic removal | Off; `--remove_palindrome` uses AF bounds 0.45–0.55 by default |
 | Munging palindromic removal | CBIIT removes all palindromic SNPs, independently of the extraction flag |
-| Per-trait chi-square filter, `--chisq-max` | Disabled; a supplied positive finite value keeps `Z^2 <= value` |
-| `--ldsc-retries` | `1`: initial command plus one retry |
+| Per-trait chi-square filter, `--chisq_max` | Disabled; a supplied positive finite value keeps `Z^2 <= value` |
+| `--ldsc_retries` | `1`: initial command plus one retry |
 
 The P floor in **`prepare` does not apply to this extraction route**. Its existing
 LP-to-P transformation can underflow for extreme values; P=0 is rejected during
@@ -333,26 +336,26 @@ Extraction failure stops the run; handled munging failures remove affected trait
 Compilation requires all requested comparisons and finite rg, but is not the full
 GPCA QC described below.
 
-`--ldsc_only --ldsc_input_folder /data/munged` reuses `{gwas_name}.sumstats.gz`
+`--ldsc_only --munged_dir /data/munged` reuses `{gwas_name}.sumstats.gz`
 and reruns **all** requested batches. It is not selective failed-batch resume.
 Extraction and munging filters are not reapplied: recorded mismatches fail and
-unknown legacy settings warn. A requested `--chisq-max` is applied to separate
+unknown legacy settings warn. A requested `--chisq_max` is applied to separate
 filtered copies after this validation. Total-N traits require matching
 `.prevalence.json` sidecars and file hashes. In this mode, `vcf_files` may be
-omitted from the manifest; `gwas_name,ref,pop_prevalence,sample_prevalence`
-remain required. `--ld_ref_snp_file` is also unnecessary because no munging is
+omitted from the manifest; `traitname,ref,population_prevalence,sample_prevalence`
+remain required. `--hm3` is also unnecessary because no munging is
 performed; `--ld_ref` remains required for the LDSC regressions.
 
 ```bash
 ldsc-gpca ldsc \
-  --input_file /data/python_ldsc_traits.csv \
-  --output_folder /results/python_ldsc \
+  --input /data/python_ldsc_traits.csv \
+  --outdir /results/python_ldsc \
   --ld_ref /references/eur_ld_chr \
   --ldsc_only \
-  --ldsc_input_folder /data/munged \
-  --chisq-max 80 \
+  --munged_dir /data/munged \
+  --chisq_max 80 \
   --n_cores 5 \
-  --ldsc-retries 1
+  --ldsc_retries 1
 ```
 
 Outputs include `ldsc_results.csv`, `LDSC_Runtime.json`,
@@ -375,16 +378,16 @@ intentionally remains native and does not perform this managed export.
 
 Explicit `.log` inputs to the Python `compile_results()` API remain supported
 for one-time legacy recovery; passing a missing CSV never triggers that path.
-When `--chisq-max` is supplied, outputs also include
+When `--chisq_max` is supplied, outputs also include
 `LDSC_ChiSquare_Filter_Summary.csv`, `LDSC_ChiSquare_Excluded_Variants.tsv.gz`,
 and `ldsc_input_chisq_filtered/`.
 Command failures are logged in `execution_errors.log`. Old output files are not
 deleted on failure; never mistake an older CSV for a successful new run.
 
-For separately managed environments, use `--ldsc-env NAME` or
-`--ldsc-env-prefix DIRECTORY` (mutually exclusive). An explicit name overrides the
+For separately managed environments, use `--ldsc_env NAME` or
+`--ldsc_env_prefix DIRECTORY` (mutually exclusive). An explicit name overrides the
 saved `LDSC_GPCA_LDSC_PREFIX`; without a saved prefix the fallback is `ldsc-cbiit`.
-`--conda-executable` defaults to `CONDA_EXE` or `conda` on PATH.
+`--conda_executable` defaults to `CONDA_EXE` or `conda` on PATH.
 `--bcftools` defaults to `bcftools` on PATH and is not needed with `--ldsc_only`.
 
 ### Raw CBIIT script passthrough
@@ -426,7 +429,7 @@ yourself. It runs local R/GenomicSEM and does not call Python LDSC or GWAMA.
 Default input manifest (**CSV**):
 
 ```csv
-traitname,munge_inputs,sampleprevalence,populationprevalence
+traitname,sumstats_file,sample_prevalence,population_prevalence
 protein1,/data/protein1.txt,NA,NA
 disease1,/data/disease1.txt,0.2,0.05
 ```
@@ -434,19 +437,19 @@ disease1,/data/disease1.txt,0.2,0.05
 | Input | Required format |
 | --- | --- |
 | Manifest | At least two unique trait names; no whitespace/path separators. Relative file paths resolve beside the manifest. |
-| `munge_inputs` files | Whitespace-separated GWAS tables: `SNP,A1,A2,P`, signed effect `BETA` or `Z`, and `N`; positive manifest `N` can supply a per-trait constant instead. |
+| `sumstats_file` files | Whitespace-separated GWAS tables: `SNP,A1,A2,P`, signed effect `BETA` or `Z`, and `N`; positive manifest `N` can supply a per-trait constant instead. |
 | `--hm3` | Whitespace-separated reference with `SNP,A1,A2`; native munging aligns effects to reference allele order. |
-| `--ld` | Directory with `<CHR>.l2.ldscore.gz` and `<CHR>.l2.M_5_50`. |
-| `--wld` | Optional separate directory of chromosome `.l2.ldscore.gz` regression weights; defaults to `--ld`. |
+| `--ld_ref` | Directory with `<CHR>.l2.ldscore.gz` and `<CHR>.l2.M_5_50`. |
+| `--ld_weights` | Optional separate directory of chromosome `.l2.ldscore.gz` regression weights; defaults to `--ld_ref`. |
 
 ```bash
 ldsc-gpca genomicsem ldsc \
   --input /data/genomicsem_traits.csv \
   --hm3 /references/hm3_alleles.tsv \
-  --ld /references/eur_ld_chr \
-  --wld /references/eur_weights_chr \
+  --ld_ref /references/eur_ld_chr \
+  --ld_weights /references/eur_weights_chr \
   --outdir /results/genomicsem_ldsc \
-  --cores 4
+  --n_cores 4
 ```
 
 For quantitative traits, both prevalence entries should be blank/NA; for binary
@@ -458,25 +461,25 @@ inspect its logs rather than assuming every input N field is passed through unch
 
 To skip munging, add **one** of the following and omit `--hm3`:
 
-- `--munge-output /data/munged`: the manifest needs
-  `traitname,sampleprevalence,populationprevalence`; the directory must contain
+- `--munged_dir /data/munged`: the manifest needs
+  `traitname,sample_prevalence,population_prevalence`; the directory must contain
   exactly one `{traitname}.sumstats.gz` or `{traitname}.sumstats` for each trait.
-- `--munged-input`: put explicit file paths in a `traits` manifest column instead
-  of `munge_inputs`.
+- `--munged_input`: put explicit file paths in a `munged_file` manifest column instead
+  of `sumstats_file`.
 
 Existing munged files must be tab-separated with `SNP,A1,A2,N,Z` headers; order may
-vary. `prepare --write-munge-inputs` produces **unmunged** tables, not these files.
+vary. `prepare --write_munge_inputs` produces **unmunged** tables, not these files.
 Native munging interprets recognized columns; check that interpretation and N/allele
 conventions if using preparation exports as its inputs.
 
 | Option | Default / choices |
 | --- | --- |
-| `--cores` | `1`; munging workers, not parallel LDSC |
-| `--info-filter`, `--maf-filter` | `0.9`, `0.01`; filtering depends on recognized fields |
+| `--n_cores` | `1`; munging workers, not parallel LDSC |
+| `--info_filter`, `--maf_filter` | `0.9`, `0.01`; filtering depends on recognized fields |
 | `--chromosomes` | `22`; reads chromosomes 1 through the supplied value, allowed 1–22 |
-| `--n-blocks` | `200`; GenomicSEM may override this for >18 traits |
-| `--chisq-max` | Unset; uses GenomicSEM's automatic rule |
-| `--invalid-h2-action` | `drop`; alternative `error` for non-positive/non-finite raw h2 |
+| `--n_blocks` | `200`; GenomicSEM may override this for >18 traits |
+| `--chisq_max` | Unset; uses GenomicSEM's automatic rule |
+| `--invalid_h2_action` | `drop`; alternative `error` for non-positive/non-finite raw h2 |
 | `--rscript` | `Rscript` on PATH |
 
 The wrapper runs `stand=FALSE`, audits raw h2, then reruns `stand=TRUE` on retained
@@ -534,7 +537,7 @@ Here the argument named `h2` receives **PC1 loadings**, not SNP heritabilities.
 The bundled weighting was checked against the tutorial and synthetic calculations.
 This is not validation of every inherited output formula or of custom sources.
 The bundled source omits INFO: automatic export requires a scientifically justified
-`--gwama-output-info` override; otherwise it stops after GWAMA. No INFO value is invented.
+`--gwama_output_info` override; otherwise it stops after GWAMA. No INFO value is invented.
 
 ### Start with QC/PCA only
 
@@ -543,7 +546,7 @@ The bundled source omits INFO: automatic export requires a scientifically justif
 ```bash
 ldsc-gpca gpca \
   --input /data/selected_traits.csv \
-  --python_ldsc /results/python_ldsc/ldsc_results.csv \
+  --ldsc_results /results/python_ldsc/ldsc_results.csv \
   --outdir /results/python_gpca_qc \
   --validate_only
 ```
@@ -566,7 +569,7 @@ opposite orientations are collapsed; conflicting duplicates stop. A single
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /results/genomicsem_ldsc/Selected_Traits.csv \
-  --ldsc_path /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
+  --ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
   --outdir /results/genomicsem_gpca_qc \
   --validate_only
 ```
@@ -588,21 +591,21 @@ INFO score. See [the export policy](#automatic-gwama-export).
 ```bash
 ldsc-gpca gpca \
   --input /data/selected_traits.csv \
-  --python_ldsc /results/python_ldsc/ldsc_results.csv \
+  --ldsc_results /results/python_ldsc/ldsc_results.csv \
   --gpca_input_folder /results/prepared/gpca_inputs \
   --outdir /results/python_gpca_gwama \
-  --dataset-id cluster1 \
-  --gwama-output-info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
+  --dataset_id cluster1 \
+  --gwama_output_info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
 ```
 
-For native results, use `ldsc-gpca genomicsem gpca` and replace `--python_ldsc`
-with `--ldsc_path /results/genomicsem_ldsc/genomicPCA_LDSC.RData`; the other options
+For native results, use `ldsc-gpca genomicsem gpca` and replace `--ldsc_results`
+with `--ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData`; the other options
 are shared. Both backends default to correlation PCA, tutorial PC1 orientation,
-split input and `--cores 0` (automatic chromosome-worker selection).
+split input and `--n_cores 0` (automatic chromosome-worker selection).
 
 If GPCA files are absent, omit `--gpca_input_folder` and include `vcf_files` in
 the GPCA manifest. The same preparation module runs first and writes
-`<outdir>/gpca_inputs/`. Its options are shown by `--prepare-help`. All original
+`<outdir>/gpca_inputs/`. Its options are shown by `--prepare_help`. All original
 manifest traits must prepare successfully before R starts. With an existing folder,
 non-default preparation settings are rejected. To reuse prepared files after an
 R failure, explicitly supply that folder next time.
@@ -742,7 +745,7 @@ Validation-only runs skip export.
 | `{name}_GPCA_inputs.txt.gz` | `<outdir>/harmonisation_input/` |
 | `{name}_postprocess.json` | `--outdir`; sources, row count and overrides |
 
-`--dataset-id` supplies `{name}`; by default it is the output folder name. Both
+`--dataset_id` supplies `{name}`; by default it is the output folder name. Both
 compressed tables are tab-separated. The combined table is sorted by chromosome
 and position and adds `count_question,count_plus,count_minus` from `Direction`.
 The selected-column summary contains:
@@ -757,9 +760,9 @@ does not align alleles or convert genome builds.
 
 | Export option | Default | Scope |
 | --- | --- | --- |
-| `--gwama-output-n-eff` | Preserve reported N_eff | Optional finite positive constant in the selected summary only |
-| `--gwama-output-info` | Preserve reported INFO | Optional finite constant in `[0,1]` in the selected summary only |
-| `--archive-chromosomes` | Off; keep originals | Move current-run source files/logs to `chromosome_wise/` after saving outputs |
+| `--gwama_output_n_eff` | Preserve reported N_eff | Optional finite positive constant in the selected summary only |
+| `--gwama_output_info` | Preserve reported INFO | Optional finite constant in `[0,1]` in the selected summary only |
+| `--archive_chromosomes` | Off; keep originals | Move current-run source files/logs to `chromosome_wise/` after saving outputs |
 
 Do not supply a universal N_eff or INFO constant simply to make a run pass. Without
 an override the corresponding source column must exist; an explicit override can
@@ -776,7 +779,7 @@ scientific validation.
 
 Existing export/archive paths are refused. Archive failure can leave saved outputs
 and some moved originals; it is reported as an error. No automatic export retry
-is performed. Use `--postprocess-help` for this section's CLI options.
+is performed. Use `--postprocess_help` for this section's CLI options.
 
 ## Troubleshooting and limitations
 
@@ -784,7 +787,7 @@ is performed. Use `--postprocess-help` for this section's CLI options.
 | --- | --- |
 | Installer cannot solve dependencies | OS/CPU support, network and pinned package availability. Do not silently replace pins; retain the error and partial installation for diagnosis. |
 | `ldsc-gpca` is not found | Run `conda activate ldsc-gpca`. For older/custom-prefix installations only, use their `activate.sh`. Installing from GitHub does not automatically update an existing environment. |
-| Child LDSC cannot launch | Check the saved prefix, `--ldsc-env` / `--ldsc-env-prefix`, and Conda executable. Preflight help must run successfully. |
+| Child LDSC cannot launch | Check the saved prefix, `--ldsc_env` / `--ldsc_env_prefix`, and Conda executable. Preflight help must run successfully. |
 | Missing VCF fields | `prepare` and Python `ldsc` have different fixed schemas. A different field/ancestry needs appropriate input conversion, not relabelling without verification. |
 | Missing chromosome files | Split GWAMA expects 1–22 for each trait; choose `nosplit` during both preparation and analysis if that layout is appropriate. |
 | Missing/invalid LDSC pairs | Review upstream logs and complete pair coverage. Retries do not repair negative h2 or missing estimates; opt-in trait removal changes the analysis. |
@@ -845,3 +848,9 @@ from its parsers; parser changes need regenerated help and parity tests.
 
 No redistribution license has been selected for this repository. Public availability
 does not itself grant an open-source license. Third-party software retains its own licenses.
+
+## CPU worker naming and thread defaults
+
+See [CPU workers and numerical threads](../README.md#cpu-workers-and-numerical-threads)
+for the shared `--n_cores` option, the single accepted spelling, per-command worker
+limits, and the five numerical thread environment defaults applied by the launcher.

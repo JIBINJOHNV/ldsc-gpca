@@ -22,7 +22,7 @@ From the repository root, build the image as described in the main README, then:
 
 ```bash
 nextflow run examples/nextflow/smoke.nf -profile local \
-  --image ldsc-gpca:0.5.0 --outdir nf-smoke
+  --image ldsc-gpca:0.6.0 --outdir nf-smoke
 ```
 
 Success produces `nf-smoke/tools.txt`. The local profile requires a running Docker
@@ -40,8 +40,8 @@ This is a Linux filesystem identity, not Google IAM. Avoid running untrusted ima
 
 ```bash
 nextflow run examples/nextflow/gpca_qc.nf -profile local \
-  --manifest /absolute/path/selected_traits.csv \
-  --ldsc /absolute/path/all_pairwise_python_ldsc.csv.gz \
+  --input /absolute/path/selected_traits.csv \
+  --ldsc_results /absolute/path/all_pairwise_python_ldsc.csv.gz \
   --outdir nf-qc
 ```
 
@@ -67,8 +67,8 @@ GCP_REPOSITORY=analysis-images
 gcloud artifacts repositories create "$GCP_REPOSITORY" \
   --repository-format=docker --location="$GCP_REGION" --project="$GCP_PROJECT"
 gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev"
-IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$GCP_REPOSITORY/ldsc-gpca:0.5.0"
-docker tag ldsc-gpca:0.5.0 "$IMAGE"
+IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$GCP_REPOSITORY/ldsc-gpca:0.6.0"
+docker tag ldsc-gpca:0.6.0 "$IMAGE"
 docker push "$IMAGE"
 ```
 
@@ -110,15 +110,15 @@ Google plugin and cloud data-transfer helpers require the relevant network acces
 The analysis image itself does not need a Docker daemon or embedded credentials.
 
 After smoke succeeds, replace `smoke.nf` with `gpca_qc.nf` and add
-`--manifest gs://YOUR_BUCKET/inputs/selected_traits.csv` and
-`--ldsc gs://YOUR_BUCKET/inputs/all_pairwise_python_ldsc.csv.gz`.
+`--input gs://YOUR_BUCKET/inputs/selected_traits.csv` and
+`--ldsc_results gs://YOUR_BUCKET/inputs/all_pairwise_python_ldsc.csv.gz`.
 Set a separate output prefix for each analysis. Use `-resume` to reuse successful
 tasks; it does not correct invalid scientific inputs.
 
 For your own GWAMA/preparation processes, declare every file or directory as a
 Nextflow `path` input and pass the staged paths to `ldsc-gpca`. Merely embedding
 `gs://` strings in a manifest does not stage the referenced VCFs. Limit package
-parallelism (e.g. GWAMA `--cores`) to `task.cpus`. Do not call `conda activate`
+parallelism (e.g. GWAMA `--n_cores`) to `task.cpus`. Do not call `conda activate`
 or nest `docker run` inside a process script.
 
 ## Validation boundary

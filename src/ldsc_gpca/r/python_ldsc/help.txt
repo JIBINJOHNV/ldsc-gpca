@@ -1,9 +1,9 @@
-usage: ldsc-gpca gpca --input MANIFEST.csv --python_ldsc LDSC.csv[.gz] --outdir DIRECTORY [options]
+usage: ldsc-gpca gpca --input MANIFEST.csv --ldsc_results LDSC.csv[.gz] --outdir DIRECTORY [options]
 
 Build genomic-PC1 weights and run the modified Fuertjes GWAMA method
 using a complete pairwise results table produced by Python ldsc.py.
 
-optional arguments:
+options:
   -h, --help            Show this help message and exit.
 
 Required inputs:
@@ -11,7 +11,7 @@ Required inputs:
                         other manifest columns are required; extra columns are
                         ignored. Trait names must be unique/non-empty, and row
                         order defines matrix and GWAMA order.
-  --python_ldsc LDSC.csv[.gz]
+  --ldsc_results LDSC.csv[.gz]
                         Complete pairwise Python LDSC table in CSV/TSV format;
                         gzip is accepted. Required columns are listed below.
   --outdir DIRECTORY    Directory for QC audit files, matrices, weights, and
@@ -41,7 +41,7 @@ Trait and failed-result handling:
                         Default: error.
 
 QC comparison thresholds:
-  --duplicate_tolerance FLOAT, --tolerance FLOAT
+  --duplicate_tolerance FLOAT
                         Maximum absolute difference between duplicate
                         orientations for rg, SE, p, and intercept estimates.
                         Default: 0.001.
@@ -103,7 +103,7 @@ Diagnostic warning/error controls:
 Execution and performance:
   --validate_only       Run LDSC QC and PCA and write audit files, but do not
                         run GWAMA.
-  --cores N             Workers for chromosome-split GWAMA. 0 selects up to 22
+  --n_cores N           Workers for chromosome-split GWAMA. 0 selects up to 22
                         based on available physical cores. Default: 0.
   --ldsc_chunk_size N   Number of LDSC rows read per streaming chunk. Default:
                         250000.
@@ -156,7 +156,7 @@ IMPORTANT DEFAULTS
 VALIDATION-ONLY EXAMPLE
   Rscript gpsca_gwama_python_ldsc.r \
     --input selected_traits.csv \
-    --python_ldsc all_pairwise_ldsc.csv.gz \
+    --ldsc_results all_pairwise_ldsc.csv.gz \
     --outdir validation_results \
     --failed_ldsc_action drop_traits \
     --validate_only

@@ -7,7 +7,7 @@ from .utils import run_command
 from .ldsc_runtime import ldsc_regression_command
 from .ldsc_export import RESULT_SUFFIX
 
-def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None):
+def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None, ld_weights_dir=None):
     if not isinstance(retries, int) or retries < 0:
         raise ValueError('LDSC retries must be a non-negative integer')
     os.makedirs(output_path, exist_ok=True)
@@ -21,7 +21,7 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
             prevalence_flags = ['--samp-prev', s_prevalence, '--pop-prev', p_prevalence]
         command = shlex.join(ldsc_regression_command(**(runtime or {})) + [
             '--rg', f'{reference_sumstat},{target_files}', '--ref-ld-chr', ld_ref_dir,
-            '--w-ld-chr', ld_ref_dir, *prevalence_flags, '--out', out_prefix])
+            '--w-ld-chr', ld_weights_dir if ld_weights_dir is not None else ld_ref_dir, *prevalence_flags, '--out', out_prefix])
         for attempt in range(1, retries + 2):
             label = f'LDSC_{ref_prefix}_batch_{part} attempt {attempt}/{retries + 1}'
             try:

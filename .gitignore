@@ -15,6 +15,8 @@ tests/*
 !tests/test_results_csv.py
 !tests/test_ldsc_runtime.py
 !tests/RESULT_EXPORT_VALIDATION.md
+!tests/test_threads_and_workers.py
+!tests/THREADS_VALIDATION.md
 .github/
 VALIDATION.md
 # Legacy launchers retained locally; installed commands use src/ldsc_gpca.
@@ -34,3 +36,7 @@ VALIDATION.md
 .env
 .env.*
 results/
+
+!tests/test_interface_aliases.py
+!tests/test_interface_aliases.R
+!tests/INTERFACE_VALIDATION.md
