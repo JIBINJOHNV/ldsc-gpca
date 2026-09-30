@@ -13,6 +13,7 @@ dependencies:
   - pandas=2.2.3
   - polars=0.20.31
   - bcftools=1.21
+  - pigz=2.8
   - r-base=4.3
   - r-argparse
   - r-data.table

@@ -40,3 +40,5 @@ results/
 !tests/test_interface_aliases.py
 !tests/test_interface_aliases.R
 !tests/INTERFACE_VALIDATION.md
+!tests/test_postprocess.py
+!tests/POSTPROCESS_VALIDATION.md

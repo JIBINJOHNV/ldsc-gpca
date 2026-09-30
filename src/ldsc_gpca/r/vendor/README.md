@@ -11,5 +11,5 @@ Both GPCA backends use this file by default; `--source_path` overrides it.
 Do not mistake the argument `h2` or the inherited log wording for actual
 heritabilities. The source does not output INFO. Automatic export retains
 its existing missing-INFO error policy; a scientifically justified explicit
-`--gwama-output-info` override is needed with this source. No INFO value is
+`--gwama_output_info` override is needed with this source. No INFO value is
 invented by bundling it. The inherited N_eff/BETA/SE formulas are unchanged.

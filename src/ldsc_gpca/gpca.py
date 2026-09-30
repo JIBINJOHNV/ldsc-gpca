@@ -13,10 +13,11 @@ def postprocess_parser(r_script='gpsca_gwama_python_ldsc.r', *, include_prepare=
     prog = 'ldsc-gpca genomicsem gpca' if r_script == 'gpsca_gwama_v2.r' else 'ldsc-gpca gpca'
     parser = HelpParser(prog=prog, add_help=False, usage=usage,
                         description='Automatic GWAMA export options. Summary output: <outdir>/harmonisation_input/.',
-                        epilog='These options apply after a successful GWAMA run; --validate_only skips export.')
+                        epilog='These options apply after a successful GWAMA run; --validate_only skips export. --n_cores controls concurrent chromosome reads, the default shared Polars pool, and pigz compression workers. Existing POLARS_MAX_THREADS is respected.')
     parser.add_argument('--dataset_id', help='Dataset identifier used as the output filename prefix. Default: name of the --outdir folder.')
     parser.add_argument('--gwama_output_n_eff', dest='n_eff', type=float, help='Override N_eff only in the exported GWAMA selected-column summary (e.g. 330000), not LDSC/GPCA calculations. Default: preserve reported values.')
     parser.add_argument('--gwama_output_info', dest='info_value', type=float, help='Override INFO only in the exported GWAMA selected-column summary (e.g. 0.9), not variant filtering or LDSC/GPCA calculations. Default: preserve reported values.')
+    parser.add_argument('--gzip_level', type=int, choices=range(1, 10), default=1, help='Final export gzip compression level: 1 is fastest, 9 gives smaller files. Default: 1. Uses pigz with --n_cores workers when installed; otherwise single-worker Python gzip.')
     parser.add_argument('--archive_chromosomes', action='store_true', help='Move current-run source results/logs to outdir/chromosome_wise after saving outputs. Default: keep originals.')
     parser.add_argument('--postprocess_help', action='store_true', help='Show these options without requiring R.')
     if include_prepare:
@@ -50,6 +51,8 @@ def show_gpca_help(r_script, argv, *, section='main', file=None):
 
 def main(argv=None, *, r_script='gpsca_gwama_python_ldsc.r'):
     argv = list(sys.argv[1:] if argv is None else argv)
+    from .threads import configure_gpca_table_threads
+    configure_gpca_table_threads(argv)
     parser = postprocess_parser(r_script, include_prepare=True)
     def argument_error(message):
         prep_flags = {flag for action in preparation_help_parser(r_script)._actions for flag in action.option_strings}
@@ -123,7 +126,8 @@ def main(argv=None, *, r_script='gpsca_gwama_python_ldsc.r'):
     try:
         process_gwama_results(outdir, harmonised_output, name=opts.dataset_id,
                              n_eff=opts.n_eff, info_value=opts.info_value,
-                             archive=opts.archive_chromosomes, previous_files=previous)
+                             archive=opts.archive_chromosomes, previous_files=previous,
+                             n_cores=inputs.n_cores or 0, gzip_level=opts.gzip_level)
     except (OSError, ValueError) as error:
         print(f'ERROR: GWAMA post-processing failed: {error}', file=sys.stderr)
         return 1

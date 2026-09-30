@@ -493,8 +493,9 @@ Important outputs:
 
 - `genomicPCA_LDSC.RData`: final `LDSCoutput` for `genomicsem gpca`.
 - `genomicPCA_LDSC_raw.RData`: preliminary object; **do not use it as GPCA input**.
-- `Selected_Traits.csv`: retained trait order; usable as the GPCA manifest with
-  existing GPCA files. Add `vcf_files` if automatic preparation is needed.
+- `Selected_Traits.csv`: retained traits plus native audit fields. Extract its
+  `traitname` column to a clean CSV before GPCA; see the [tested handoff command](../README.md#genomicsem-ldsc-outputs).
+  Add `vcf_files` to the clean manifest if automatic preparation is needed.
 - `GenomicSEM_LDSC_Trait_QC.csv`, `GenomicSEM_LDSC_Events.csv`,
   `Resolved_Manifest.csv`, native logs and `sessionInfo.txt`.
 - `munge_output/`: newly munged files in default mode.
@@ -566,9 +567,12 @@ opposite orientations are collapsed; conflicting duplicates stop. A single
 
 #### GenomicSEM: QC/PCA example
 
+First create the clean `Selected_Traits_for_GPCA.csv` manifest using the
+[retained-trait handoff](../README.md#genomicsem-ldsc-outputs).
+
 ```bash
 ldsc-gpca genomicsem gpca \
-  --input /results/genomicsem_ldsc/Selected_Traits.csv \
+  --input /results/genomicsem_ldsc/Selected_Traits_for_GPCA.csv \
   --ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
   --outdir /results/genomicsem_gpca_qc \
   --validate_only
@@ -762,7 +766,62 @@ does not align alleles or convert genome builds.
 | --- | --- | --- |
 | `--gwama_output_n_eff` | Preserve reported N_eff | Optional finite positive constant in the selected summary only |
 | `--gwama_output_info` | Preserve reported INFO | Optional finite constant in `[0,1]` in the selected summary only |
+| `--gzip_level` | `1` | Compression of both final exports; integers 1–9, with 1 fastest and 9 smallest |
 | `--archive_chromosomes` | Off; keep originals | Move current-run source files/logs to `chromosome_wise/` after saving outputs |
+
+From v0.6.2, Polars reads chromosome files concurrently with up to
+`min(resolved --n_cores, number_of_files)` readers. Each reader uses one CSV parser thread;
+all table operations share one Polars pool. Files are placed back in run-status
+order before concatenation, so completion order never determines equal-position
+tie order. Direction counts, concatenation, sorting and TSV formatting use Polars.
+Source columns are read as strings; tiny p-values, leading zeros and numeric
+precision are retained. Only chromosome/position sort keys are converted to numbers.
+Normal integer positions use Polars; unusual decimal/scientific position strings
+use the previous pandas parsing rules for these two keys only. The small run-status
+CSV also continues to use pandas. Malformed empty/duplicate column headers now fail
+explicitly rather than being renamed by the parser.
+
+`--n_cores` sets reader and pigz worker counts and defaults the shared Polars pool
+before imports. An existing `POLARS_MAX_THREADS` environment setting is respected;
+an already initialized pool in a Python API caller cannot be resized. With
+`--n_cores 0` or no explicit value, export selects up to 22 available logical CPUs
+(respecting CPU affinity where available). R's GWAMA auto worker selection is
+unchanged. Reader concurrency is capped by the number of input files; a single
+whole-genome input uses one reader. The two exports are written one after the other.
+Polars formatting and pigz compression can overlap, so the worker setting is not
+a hard process-wide thread limit. More readers may not help shared/slow storage;
+measure before increasing concurrent jobs on the same machine.
+
+Export streams each table directly to `pigz` if it is on PATH. Without pigz, the
+fallback is single-worker Python gzip at the same compression level. Concurrent
+Polars reading and table processing still operate without pigz. Both compression
+backends preserve the same table contents and stage outputs before publication.
+
+New Conda/Docker environments include pigz 2.8. For existing environments:
+
+```bash
+conda activate ldsc-gpca
+conda install -c conda-forge pigz=2.8
+python -m pip install --no-deps --force-reinstall /path/to/updated/ldsc-gpca
+```
+
+The exporter logs per-file reading/counting, sorting and each output write, and
+records `table_engine`, `read_workers`, `csv_threads_per_file`, `polars_threads`,
+`compression` and `timings_seconds` in `{name}_postprocess.json`. Concatenation and
+summary selection share Polars column buffers where possible, and sorting is skipped
+when numeric chromosome/position keys are already ordered. The complete table still
+resides in memory; concurrent reads also need decompression/parser buffers. Constants are assigned
+in memory before the summary is written; they do not trigger a separate file rewrite.
+
+Compression level 1 can produce larger `.gz` files than the previous level 9.
+Use `--gzip_level 9` when compact storage is the priority. Compression is lossless;
+source numerical strings, missing-value spellings, variant headers, tie order and
+override scope are preserved. No plain-text intermediate TSV is written to disk.
+See the [Python gzip documentation](https://docs.python.org/3.10/library/gzip.html)
+and [pigz manual](https://zlib.net/pigz/pigz.pdf) for compression levels and threads.
+String parsing and pool controls follow the installed-version documentation for
+[Polars read_csv](https://docs.pola.rs/api/python/version/0.20/reference/api/polars.read_csv.html)
+and [thread_pool_size](https://docs.pola.rs/api/python/version/0.20/reference/api/polars.thread_pool_size.html).
 
 Do not supply a universal N_eff or INFO constant simply to make a run pass. Without
 an override the corresponding source column must exist; an explicit override can

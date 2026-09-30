@@ -28,9 +28,12 @@ unchanged, including the pre-existing GWAMA variant-column handling.
 | `--dataset_id` | GWAMA export filename prefix |
 | `--gwama_output_n_eff` | Exported effective sample-size override |
 | `--gwama_output_info` | Exported INFO override |
+| `--gzip_level` | Final-export gzip compression, 1–9; default 1 from v0.6.1 |
 | `--prepare_workers` | Separate preparation-stage workers inside GPCA only |
 
-Standalone `prepare` uses `--n_cores`; GPCA's `--n_cores` controls GWAMA and
+Standalone `prepare` uses `--n_cores`; GPCA's `--n_cores` controls GWAMA,
+concurrent chromosome reads, the default shared Polars thread pool (from v0.6.2),
+and final-export pigz compression workers when pigz is installed;
 `--prepare_workers` controls its earlier optional VCF preparation stage. These are
 separate settings. Other managed options use the same underscore spelling; see
 `--help`, `--prepare_help`, or `--postprocess_help` for the complete list.
