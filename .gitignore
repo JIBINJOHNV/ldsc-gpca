@@ -46,3 +46,5 @@ results/
 !tests/test_failure_handling.R
 !tests/FAILURE_HANDLING_VALIDATION.md
 !tests/test_restart.py
+!tests/test_ldsc_drop_traits.py
+!tests/test_ldsc_drop_traits.R

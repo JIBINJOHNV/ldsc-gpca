@@ -69,9 +69,9 @@ def trait_status(frame, pairs, trait_order):
         involved = pairs[(pairs.p1 == trait) | (pairs.p2 == trait)]
         record = {'Manifest_Order': position, 'Trait': trait,
                   'Self_Status': ('not_requested' if self_qc.empty else
-                                  'failed_estimate' if self_qc.Status.eq('failed_estimate').any() else 'valid'),
+                                  'failed_estimate' if self_qc.Status.ne('valid').any() else 'valid'),
                   'Self_Reason': '; '.join(dict.fromkeys(self_qc.Reason[self_qc.Reason.ne('')])),
-                  'Failed_Pair_Rows': int(involved.Status.eq('failed_estimate').sum())}
+                  'Failed_Pair_Rows': int(involved.Status.ne('valid').sum())}
         for col in ('h2_obs', 'h2_obs_se', 'h2_liab', 'h2_liab_se', 'h2_int', 'h2_int_se'):
             record[col] = self_rows[col].iloc[0] if len(self_rows) else float('nan')
         records.append(record)

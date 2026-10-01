@@ -1,0 +1,12 @@
+args <- commandArgs(trailingOnly = TRUE)
+source(file.path(args[1], "src/ldsc_gpca/r/gpsca_gwama_python_ldsc.r"))
+traits <- read_trait_manifest(file.path(args[2], "original_manifest.csv"))
+rows <- read_python_ldsc_selected(file.path(args[2], "ldsc_results_diagnostic.csv"), traits)
+selection <- suppressWarnings(resolve_incomplete_ldsc_traits(rows, traits, "drop_traits"))
+retained <- read_trait_manifest(file.path(args[2], "LDSC_Retained_Traits.csv"))
+stopifnot(identical(selection$trait_order, retained))
+compiled <- read_python_ldsc_selected(file.path(args[2], "ldsc_results.csv"), retained)
+validated <- suppressWarnings(canonicalize_and_validate_ldsc(compiled, retained))
+stopifnot(identical(rownames(validated$S_Stand), retained),
+          identical(rownames(validated$I), retained))
+cat("Python LDSC selection matches existing R policy; retained matrices validate\n")

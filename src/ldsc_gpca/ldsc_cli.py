@@ -9,7 +9,7 @@ import pandas as pd
 from .utils import optional_prevalence, is_valid_gz
 from .extraction import run_vcf_to_table
 from .munging import filter_munged_sumstats, parallel_munge_sumstats
-from .pairwise import parallel_ldsc_analysis
+from .pairwise import parallel_ldsc_analysis, LDSCBatchFailures
 from .results import compile_results, check_saved_filters, prepare_compilation_outputs
 from .ldsc_runtime import check_runtime
 from .ldsc_export import FLOAT_FORMAT
@@ -67,8 +67,8 @@ parser.add_argument('--restart', action='store_true',
                     help='Reuse completed LDSC batches in the same outdir only when checkpointed input contents, parameters, runtime and result integrity match. Recompute unverified, changed or incomplete batches. Default: disabled. Extraction/munging is skipped only with --ldsc_only.')
 parser.add_argument('--ldsc_retries', type=int, default=1,
                     help='Additional attempts per failed pairwise LDSC command or malformed/incomplete export. Default: 1 (2 total attempts); 0 disables retries. Numerical estimation failures are not retried.')
-parser.add_argument('--result_failure_action', choices=('error', 'report'), default='error',
-                    help='Handling of unestimable/invalid numerical LDSC results. Both modes save diagnostic estimates and pair/trait status. error stops; report completes collection with ldsc_results_diagnostic.csv. Structural errors still stop. Trait exclusion is a separate genomicPCA policy.')
+parser.add_argument('--result_failure_action', choices=('error', 'report', 'drop_traits'), default='error',
+                    help='Handling of failed LDSC results. All modes save diagnostics. error stops; report preserves failures in ldsc_results_diagnostic.csv; drop_traits excludes failed traits and writes a complete retained subset to ldsc_results.csv plus LDSC_Retained_Traits.csv and LDSC_Dropped_Traits.csv. drop_traits requires ref=yes for all traits and at least two retained traits. Structural errors and conflicting estimates still stop.')
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
@@ -115,7 +115,8 @@ def main(argv=None):
     missing = canonical_required - set(columns)
     if missing:
         parser.error('Manifest is missing ' + ', '.join(sorted(missing)))
-    input_df = pd.DataFrame(rows, columns=columns).drop(
+    source_manifest = pd.DataFrame(rows, columns=columns)
+    input_df = source_manifest.drop(
         columns=['gwas_name', 'pop_prevalence'], errors='ignore').rename(columns={
         'traitname': 'gwas_name', 'population_prevalence': 'pop_prevalence'})
     required_columns = ['gwas_name', 'ref', 'pop_prevalence', 'sample_prevalence']
@@ -143,6 +144,8 @@ def main(argv=None):
     num_refs = len(input_df[input_df['ref'] == 'yes'])
     if not num_refs:
         parser.error('At least one trait must have ref=yes')
+    if args.result_failure_action == 'drop_traits' and num_refs != len(input_df):
+        parser.error('--result_failure_action drop_traits requires ref=yes for every trait')
     runtime = dict(conda=args.conda_executable, environment=args.ldsc_env or 'ldsc-cbiit',
                    prefix=None if args.ldsc_env else (args.ldsc_env_prefix or os.environ.get('LDSC_GPCA_LDSC_PREFIX')))
     if runtime['prefix']:
@@ -236,13 +239,22 @@ def main(argv=None):
     if not input_df.empty:
         prepare_compilation_outputs(output_folder, args.result_failure_action)
         print("\n[3/4] Running LDSC Genetic Correlation...")
-        result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder,
-            retries=args.ldsc_retries, runtime=runtime, ld_weights_dir=ld_weights_dir,
-            restart=args.restart, checkpoint_parameters={'filters': filters, 'chisq_max': args.chisq_max})
+        execution_failures = None
+        try:
+            result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder,
+                retries=args.ldsc_retries, runtime=runtime, ld_weights_dir=ld_weights_dir,
+                restart=args.restart, checkpoint_parameters={'filters': filters, 'chisq_max': args.chisq_max})
+        except LDSCBatchFailures as error:
+            if args.result_failure_action != 'drop_traits' or not error.can_exclude:
+                raise
+            result_files, execution_failures = error.result_files, error.failed_pairs
+            print('WARNING: Some LDSC batches exhausted execution retries. '
+                  'Continuing with completed results and audited trait selection; see LDSC_Batch_Status.csv.')
 
         print("\n[4/4] Compiling final results...")
         result_path = compile_results(output_folder, result_files, input_df,
-                                      result_failure_action=args.result_failure_action)
+                                      result_failure_action=args.result_failure_action,
+                                      input_manifest=source_manifest, execution_failures=execution_failures)
         print(f"\nLDSC result collection complete: {result_path}")
     else:
         raise RuntimeError('No valid traits left to analyze')

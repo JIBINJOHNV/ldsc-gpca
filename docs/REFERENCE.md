@@ -330,14 +330,21 @@ LP-to-P transformation can underflow for extreme values; P=0 is rejected during
 LDSC munging. Review logs for resulting exclusions.
 
 Retries rerun identical failed commands; they do not repair data or statistical
-problems. Exhausted retries stop before compilation. Already submitted jobs finish
-before exit. Pair-level failures detected during result validation are **not retried**.
+problems. Exhausted retries stop before compilation in `error`/`report` modes.
+With `--result_failure_action drop_traits`, successfully completed batches can
+continue into audited subset selection after execution failures. Malformed
+exports and contradictory estimates still fail. Numerical estimation failures
+are **not retried**; missing or incomplete exports receive bounded retries.
 Extraction failure stops the run; handled munging failures remove affected traits.
-Compilation requires all requested comparisons and finite rg, but is not the full
-GPCA QC described below.
+`drop_traits` requires `ref=yes` for all traits, usable self-pairs, and a complete
+set of unordered comparisons among at least two retained traits. It writes
+`ldsc_results.csv`, `LDSC_Retained_Traits.csv` and `LDSC_Dropped_Traits.csv`, while
+preserving all observed estimates in `ldsc_results_diagnostic.csv`. Use the
+retained manifest downstream. Selection does not replace the full GPCA QC below.
 
-`--ldsc_only --munged_dir /data/munged` reuses `{gwas_name}.sumstats.gz`
-and reruns **all** requested batches. It is not selective failed-batch resume.
+`--ldsc_only --munged_dir /data/munged` reuses `{traitname}.sumstats.gz`.
+Add `--restart` to reuse completed batches with verified matching checkpoints;
+without it, all requested batches rerun.
 Extraction and munging filters are not reapplied: recorded mismatches fail and
 unknown legacy settings warn. A requested `--chisq_max` is applied to separate
 filtered copies after this validation. Total-N traits require matching

@@ -125,3 +125,57 @@ and the pinned
 [CBIIT LDSC reference parser](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldscore/parse.py).
 Restart relies on the existing numerical reader and exact required batch
 coverage, and does not change regression, PCA or GWAMA calculations.
+
+## LDSC-stage trait exclusion (2026-10-01)
+
+The LDSC command now accepts `--result_failure_action drop_traits`. Its Python
+selection helper matches the existing R heuristic without requiring R to run
+LDSC. Every manifest trait must have `ref=yes`; at least two traits with usable
+self estimates and complete unordered pair coverage must remain. Outputs include
+the retained manifest and an ordered exclusion report. Extra manifest columns
+and the original trait order are preserved.
+
+All 14 tests in `test_ldsc_drop_traits.py` passed. The full suite then ran
+131 tests in 194.502 seconds: 128 passed and the same three optional fresh-native
+LDSC tests were skipped. The R parity test exercised seven selection scenarios
+and strict matrix validation. Expected and observed behavior agreed:
+
+- A failed self estimate excludes only that trait; every retained numerical
+  estimate is unchanged. Healthy traits, low positive h2/SE and finite rg outside
+  [-1,1] remain eligible, with the existing diagnostic warnings.
+- Missing self-pairs, missing unordered pairs, failed-pair degree and both
+  tie-breaks produce the same retained order as the existing R implementation.
+  One valid observed orientation covers a missing opposite orientation.
+- Consistent duplicate estimates are accepted. Conflicting estimates, including
+  finite-versus-missing conflicts, remain fatal even if exclusion could hide
+  them. Absolute duplicate tolerances match R, including for large z values.
+- Zero successful batches, all traits failing or fewer than two retained traits
+  save diagnostic/exclusion reports and fail without publishing a success CSV.
+  Malformed numeric fields, unknown traits and unsupported reference manifests
+  remain errors. Mixed observed/liability scales select the appropriate h2 Z.
+- CLI tests use real filtering, scheduling and compilation with simulated native
+  commands. Recoverable execution failures are retried, then missing comparisons
+  are audited before selection. Malformed numerical exports remain fatal.
+- Restart reuses all completed numerical-failure fixtures without launching a
+  regression. In an execution-failure fixture it retries the five failed batches
+  and reuses the four completed batches. Previous retained manifests are archived
+  before recompilation, so stale selections cannot masquerade as current output.
+
+The saved 19-trait biological run was replayed through the new LDSC policy using
+its 76 existing numerical exports. It excluded only
+`AMDHD2_Q9Y303_OID30366_v1_Cardiometabolic_II`, retained 18 traits and wrote all
+324 directed retained rows. The diagnostic CSV preserved all 361 original rows,
+including the 37 missing correlations. An exact DataFrame comparison confirmed
+that the selected estimates equal the corresponding diagnostic rows.
+
+Strict R `--validate_only`, using the new retained manifest and result file with
+the default error policy, passed. The correlation matrix, CTI matrix and PC1
+weights exactly matched the earlier R-stage trait-removal outputs. Existing
+low-h2-Z, out-of-range-rg and negative-eigenvalue warnings remained visible.
+Original biological inputs and R/GWAMA implementation files were unchanged.
+
+This validates saved native outputs, the selection policy, restart behavior and
+the real R handoff. A fresh native regression and full biological GWAMA run were
+not executed. The heuristic does not guarantee the largest possible subset, and
+a failed batch is recorded as an unavailable comparison rather than evidence of
+a biological defect in a trait.

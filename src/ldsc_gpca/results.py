@@ -7,6 +7,7 @@ import uuid
 import pandas as pd
 from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, write_results_csv
 from .result_qc import result_status, trait_status
+from .trait_selection import select_complete_traits
 
 
 def _trait_name(path):
@@ -164,7 +165,8 @@ def prepare_compilation_outputs(output_folder, result_failure_action='error'):
     # A failed rerun must never leave a previous success at the advertised path.
     # Retain old outputs for recovery rather than deleting them.
     for filename in ('ldsc_results.csv', 'ldsc_results_diagnostic.csv',
-                     'LDSC_Pair_Status.csv', 'LDSC_Trait_Status.csv'):
+                     'LDSC_Pair_Status.csv', 'LDSC_Trait_Status.csv',
+                     'LDSC_Retained_Traits.csv', 'LDSC_Dropped_Traits.csv'):
         path = os.path.join(output_folder, filename)
         if os.path.exists(path):
             os.replace(path, path + '.previous-' + uuid.uuid4().hex)
@@ -173,13 +175,15 @@ def prepare_compilation_outputs(output_folder, result_failure_action='error'):
                                     'Result_File': '', 'Failed_Rows': ''}]), status_path)
 
 
-def compile_results(output_folder, log_files, trait_metadata, *, result_failure_action='error'):
-    if result_failure_action not in ('error', 'report'):
-        raise ValueError('result_failure_action must be error or report')
+def compile_results(output_folder, log_files, trait_metadata, *, result_failure_action='error',
+                    input_manifest=None, execution_failures=None):
+    if result_failure_action not in ('error', 'report', 'drop_traits'):
+        raise ValueError('result_failure_action must be error, report or drop_traits')
     prepare_compilation_outputs(output_folder, result_failure_action)
     try:
         return _compile_results(output_folder, log_files, trait_metadata,
-                                result_failure_action=result_failure_action)
+                                result_failure_action=result_failure_action,
+                                input_manifest=input_manifest, execution_failures=execution_failures)
     except EstimationFailure:
         raise
     except (RuntimeError, ValueError, OSError) as error:
@@ -189,16 +193,58 @@ def compile_results(output_folder, log_files, trait_metadata, *, result_failure_
         raise
 
 
-def _compile_results(output_folder, log_files, trait_metadata, *, result_failure_action):
+def _publish_retained_results(output_folder, frame, pairs, metadata, input_manifest):
+    retained, excluded = select_complete_traits(frame, pairs, metadata.gwas_name)
+    if input_manifest is None:
+        input_manifest = metadata.rename(columns={'gwas_name': 'traitname',
+                                                  'pop_prevalence': 'population_prevalence'}).copy()
+        if 'sample_prevalence' not in input_manifest:
+            input_manifest['sample_prevalence'] = float('nan')
+    selected_manifest = input_manifest[input_manifest.traitname.isin(retained)].copy()
+    if selected_manifest.traitname.tolist() != retained:
+        raise RuntimeError('Retained manifest does not match LDSC trait names/order')
+    manifest_path = os.path.join(output_folder, 'LDSC_Retained_Traits.csv')
+    write_results_csv(selected_manifest, manifest_path)
+    write_results_csv(excluded, os.path.join(output_folder, 'LDSC_Dropped_Traits.csv'))
+    traits = trait_status(frame, pairs, metadata.gwas_name)
+    traits['Retained'] = traits.Trait.isin(retained)
+    traits['Exclusion_Reason'] = traits.Trait.map(excluded.set_index('Trait').Reason).fillna('')
+    write_results_csv(traits, os.path.join(output_folder, 'LDSC_Trait_Status.csv'))
+    status = {'Status': 'compiled_with_trait_exclusions' if len(excluded) else 'compiled',
+              'Action': 'drop_traits', 'Result_File': '',
+              'Failed_Rows': int(pairs.Status.ne('valid').sum()),
+              'Retained_Traits': len(retained), 'Excluded_Traits': len(excluded),
+              'Retained_Manifest': manifest_path}
+    status_path = os.path.join(output_folder, 'LDSC_Compilation_Status.csv')
+    if len(retained) < 2:
+        status['Status'] = 'insufficient_traits'
+        status['Error'] = f'Trait removal leaves {len(retained)} trait(s); at least two are required.'
+        write_results_csv(pd.DataFrame([status]), status_path)
+        raise EstimationFailure(status['Error'] + ' Exclusion and diagnostic reports were saved.')
+    selected = frame[frame.p1.isin(retained) & frame.p2.isin(retained)].copy()
+    output = os.path.join(output_folder, 'ldsc_results.csv')
+    write_results_csv(selected, output)
+    status['Result_File'] = output
+    write_results_csv(pd.DataFrame([status]), status_path)
+    print(f'  -> Trait selection: retained {len(retained)}, excluded {len(excluded)}. '
+          f'Use {manifest_path} with {output} for genomicPCA.')
+    if pairs.Warning.ne('').any():
+        print('WARNING: LDSC diagnostic warnings recorded in LDSC_Pair_Status.csv.')
+    return output
+
+
+def _compile_results(output_folder, log_files, trait_metadata, *, result_failure_action,
+                     input_manifest=None, execution_failures=None):
     """Compile fresh numerical CSVs; explicitly supplied .log paths retain legacy support.
 
     The historical log_files parameter name is retained for API compatibility.
     Structural failures remain fatal. Estimation failures are always audited;
-    opt-in report mode exposes their diagnostic table to downstream trait QC.
+    report preserves them and drop_traits selects a complete subset immediately.
     """
-    if result_failure_action not in ('error', 'report'):
-        raise ValueError('result_failure_action must be error or report')
-    if not log_files:
+    dropping = result_failure_action == 'drop_traits'
+    if dropping and not trait_metadata.ref.eq('yes').all():
+        raise RuntimeError('drop_traits requires ref=yes for every trait so self-pair QC is available')
+    if not log_files and not dropping:
         raise RuntimeError('No correlation results found in current LDSC outputs')
     print(f"  -> Reading {len(log_files)} LDSC result files...")
     frames, statuses = [], []
@@ -211,8 +257,10 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
             status = frame.attrs.pop('pair_status')
         frames.append(frame)
         statuses.append(status)
-    df = pd.concat(frames, ignore_index=True)
-    pairs = pd.concat(statuses, ignore_index=True)
+    df = (pd.concat(frames, ignore_index=True) if frames else
+          pd.DataFrame(columns=list(BASE_RESULT_COLUMNS) + [c for pair in HERITABILITY_COLUMNS for c in pair]))
+    pairs = (pd.concat(statuses, ignore_index=True) if statuses else
+             pd.DataFrame(columns=['p1', 'p2', 'Source_File', 'Source_Row', 'Status', 'Reason', 'Warning']))
     for column in ['p1', 'p2']:
         df[column] = df[column].apply(_trait_name)
         pairs[column] = pairs[column].apply(_trait_name)
@@ -220,8 +268,15 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
     expected = {(ref, target) for ref in trait_metadata.loc[trait_metadata['ref'] == 'yes', 'gwas_name']
                 for target in trait_metadata['gwas_name']}
     actual = set(zip(df['p1'], df['p2']))
-    if expected != actual:
+    if actual - expected or (expected - actual and not dropping):
         raise RuntimeError(f'LDSC comparison mismatch: missing={sorted(expected - actual)}; unexpected={sorted(actual - expected)}')
+    if dropping and expected - actual:
+        missing = pd.DataFrame([{'p1': a, 'p2': b, 'Source_File': '', 'Source_Row': float('nan'),
+            'Status': 'missing_result', 'Warning': '',
+            'Reason': 'Missing requested LDSC comparison' +
+                      (': ' + execution_failures[(a, b)] if execution_failures and (a, b) in execution_failures else '')}
+            for a, b in sorted(expected - actual)])
+        pairs = pd.concat([pairs, missing], ignore_index=True)
     prevalence = trait_metadata.set_index('gwas_name')['pop_prevalence']
     # Preserve the historical scale mapping; no estimates are recomputed.
     for name in ['h2_obs', 'h2_obs_se', 'h2_liab', 'h2_liab_se']:
@@ -236,12 +291,14 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
     for table in (df, pairs):
         table.sort_values(['p1', 'p2'], key=lambda x: x.map(order), kind='stable', inplace=True)
         table.reset_index(drop=True, inplace=True)
-    failed = pairs.Status.eq('failed_estimate')
+    failed = pairs.Status.ne('valid')
     diagnostic = os.path.join(output_folder, 'ldsc_results_diagnostic.csv')
     write_results_csv(df, diagnostic)
     write_results_csv(pairs, os.path.join(output_folder, 'LDSC_Pair_Status.csv'))
     write_results_csv(trait_status(df, pairs, trait_metadata.gwas_name),
                       os.path.join(output_folder, 'LDSC_Trait_Status.csv'))
+    if dropping:
+        return _publish_retained_results(output_folder, df, pairs, trait_metadata, input_manifest)
     output = diagnostic if failed.any() else os.path.join(output_folder, 'ldsc_results.csv')
     if not failed.any():
         write_results_csv(df, output)
@@ -256,7 +313,7 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
         message = (f'{int(failed.sum())} LDSC result row(s) failed QC: {detail}. '
                    f'All estimates and source locations saved in {diagnostic} and LDSC_Pair_Status.csv. '
                    'No estimates were imputed. Use --result_failure_action report for result collection; '
-                   'genomicPCA remains strict unless --failed_ldsc_action drop_traits is explicitly selected.')
+                   'use --result_failure_action drop_traits to exclude failed traits during LDSC collection.')
         if result_failure_action == 'error':
             raise EstimationFailure(message)
         print('WARNING: ' + message)

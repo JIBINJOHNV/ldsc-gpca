@@ -369,8 +369,9 @@ other completed jobs. Results are recompiled and QC is reapplied in manifest ord
 
 Completed numerical estimation failures (for example, missing rg from negative
 h2) remain recorded and can be reused; restarting does not make those estimates
-valid. `--result_failure_action` still controls collection, and genomicPCA trait
-removal remains a separate explicit choice. Changing that collection policy or
+valid. `--result_failure_action drop_traits` can exclude unusable traits during
+LDSC collection. GenomicPCA also retains its separate trait-removal option.
+Changing the collection policy or
 retry count does not invalidate otherwise matching regression results.
 
 **Older outputs without these checkpoints rerun once**, even when their names
@@ -399,7 +400,7 @@ directory. The batch status report is updated as each job finishes, with
 | `--ld_weights DIRECTORY` | Same as `--ld_ref` | Regression weights directory. |
 | `--hm3 FILE` | Unset | Required unless `--ldsc_only`; HapMap `SNP,A1,A2` reference. |
 | `--n_cores INTEGER` | `5` | Concurrent local extraction, munging and LDSC workers; integer ≥1. |
-| `--result_failure_action {error,report}` | `error` | Save numerical failure diagnostics, then stop (`error`) or finish diagnostic collection (`report`). This does not authorize trait removal. |
+| `--result_failure_action {error,report,drop_traits}` | `error` | Stop on numerical failures (`error`), preserve failures for inspection (`report`), or exclude failed traits and publish a complete retained subset (`drop_traits`). All modes retain diagnostics. |
 | `--ldsc_only` | Off | Skip extraction/munging and reuse munged files. |
 | `--restart` | Off | Reuse completed batches with matching input/parameter/runtime checkpoints; rerun unverified or changed batches. |
 | `--munged_dir DIRECTORY` | `<outdir>/ldsc_input` | Existing munged input directory in reuse mode. Leave unset for ordinary VCF runs. |
@@ -434,10 +435,12 @@ LP can underflow to P=0 here and be removed by munging; inspect its logs.
 
 | Output under `--outdir` | Purpose |
 | --- | --- |
-| `ldsc_results.csv` | Written only when all requested rows pass compilation QC; full GPCA matrix validation is still required. |
+| `ldsc_results.csv` | Compiled estimates; in `drop_traits` mode contains only the retained complete subset. Full GPCA matrix validation is still required. |
 | `ldsc_results_diagnostic.csv` | All compiled estimates, including missing values; suitable for explicit downstream failure handling, not automatic approval for analysis. |
 | `LDSC_Pair_Status.csv`, `LDSC_Trait_Status.csv` | Numerical failures/warnings, exact trait names, manifest order and source file/row provenance. |
-| `LDSC_Compilation_Status.csv` | `compiled`, `estimation_failures`, `structural_failure`, or `incomplete`; action and result path. |
+| `LDSC_Compilation_Status.csv` | `compiled`, `compiled_with_trait_exclusions`, `estimation_failures`, `insufficient_traits`, `structural_failure`, or `incomplete`; action, result path and selection counts when applicable. |
+| `LDSC_Retained_Traits.csv` | In `drop_traits` mode, the retained manifest in original order, with required headers and source annotations. Use this manifest for downstream genomicPCA. |
+| `LDSC_Dropped_Traits.csv` | Excluded traits, reasons, exclusion order, failed-pair counts and self-h2 diagnostics. Written even when fewer than two traits remain. |
 | `ldsc_results/LDSC_Batch_Status.csv` | Completed, reused, failed and pending jobs; restart reasons and execution errors. |
 | `ldsc_results/*.results.csv.checkpoint.json` | Per-batch completion, request provenance and numerical-output checksum, used by `--restart`. |
 | `ldsc_results/` | Per-batch `.results.csv` numerical exports and readable logs. |
@@ -455,10 +458,64 @@ before readable-log rounding. Compilation reads each numerical CSV once; it
 does not reconstruct estimates from logs. Missing/malformed exports fail.
 Numerical estimation failures follow the explicit policy below.
 Extraction failure stops; handled munging failures remove affected traits.
-Exhausted command retries stop before compilation. Check retained traits and
+Exhausted command retries stop before compilation in `error`/`report` modes.
+`drop_traits` can continue from successful batches and audit missing comparisons.
+Malformed result exports, conflicting estimates, runtime setup failures and
+input/provenance errors still stop. Check retained traits and
 logs before using the results: compilation is not the full GPCA QC check.
 
 ### Handling failed LDSC estimates in future runs
+
+To remove failed traits within the **LDSC command** and continue with the
+remaining set, use:
+
+```bash
+ldsc-gpca ldsc \
+  --input "${python_csv}" \
+  --ldsc_only \
+  --munged_dir "${munge_dir}/" \
+  --ld_ref "${ld_ref}/" \
+  --outdir "${out_folder}/" \
+  --n_cores 50 \
+  --ldsc_retries 1 \
+  --chisq_max 80 \
+  --restart \
+  --result_failure_action drop_traits
+```
+
+Set `ref=yes` for every trait so each has a self-pair. The command removes
+traits with missing/invalid self estimates first, then resolves remaining
+unusable pairs by highest failed-pair count, lower self-h2 Z and later manifest
+position, matching the existing R selection policy. This deterministic heuristic
+does not guarantee the largest possible subset. Low positive h2/SE or finite rg
+outside [-1,1] are warnings, not automatic reasons to remove a trait.
+
+At least two traits, usable self estimates and every unordered pair must remain.
+One valid orientation can cover an absent opposite orientation. Conflicting
+observed orientations remain fatal, using the existing absolute duplicate
+tolerances (0.001 for rg/SE/p/intercepts, 0.01 for z, with a 1e-12 comparison
+epsilon). An exhausted execution failure is recorded as an unavailable
+comparison, not evidence of a biological defect in a trait.
+The original observed estimates stay in `ldsc_results_diagnostic.csv`, with
+missing-comparison reasons in `LDSC_Pair_Status.csv`. No estimate is filled in,
+clipped or repaired. Failed batches can be retried with `--restart`; completed
+matching batches remain reusable, including after changing the selection policy.
+
+On success, use **both** `LDSC_Retained_Traits.csv` and `ldsc_results.csv`
+downstream, so excluded traits are not requested again:
+
+```bash
+ldsc-gpca gpca \
+  --input "${out_folder}/LDSC_Retained_Traits.csv" \
+  --ldsc_results "${out_folder}/ldsc_results.csv" \
+  --outdir "${out_folder}/gpca_validation" \
+  --validate_only
+```
+
+This runs the usual strict matrix checks on the selected set. LDSC selection
+does not bypass positive-definiteness or other genomicPCA/GWAMA requirements.
+If fewer than two traits remain, selection reports are saved and the command
+fails without publishing `ldsc_results.csv`.
 
 A non-positive heritability or missing correlation is an estimation outcome,
 not a reason to discard valid results from other pairs. Strict behavior remains
@@ -470,7 +527,7 @@ Malformed numeric text, missing columns/files and trait-name/coverage mismatches
 still fail in report mode. Missing, malformed, incomplete or unchanged batch exports trigger the
 same bounded retries as command failures; valid numerical failures are not retried.
 
-For an explicitly chosen reduced-trait analysis, add
+Alternatively, to defer trait selection until genomicPCA, add
 `--result_failure_action report` to your existing **`ldsc`** command, then run:
 
 ```bash
