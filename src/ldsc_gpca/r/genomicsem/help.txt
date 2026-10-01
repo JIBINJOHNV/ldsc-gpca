@@ -66,7 +66,7 @@ INPUT FILE CONTRACT
     Package auto-preparation also requires vcf_files if the input folder is omitted.
   --ldsc_results: binary RData containing LDSCoutput, with S,V,I,S_Stand,V_Stand.
     This is NOT a delimited table. Generate it upstream with stand=TRUE.
-  --gpca_input_folder: tab-separated TSV files; exact column order:
+  --gpca_input_folder: tab-separated TSV files; required columns (extra/reordered columns allowed):
     SNPID,CHR,BP,EA,OA,EAF,N,Z,P (A1/A2/p aliases accepted for EA/OA/P).
     Split: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv (chromosomes 1-22).
     Whole genome: {traitname}_GenomicPCA_inputs.tsv.

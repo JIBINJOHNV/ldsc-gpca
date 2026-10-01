@@ -89,7 +89,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_custom_runtime_reaches_pairwise(self):
         frame=pd.DataFrame({'gwas_name':['q'], 'ref':['yes'], 'pop_prevalence':[float('nan')], 'sample_prevalence':[float('nan')]})
-        with tempfile.TemporaryDirectory(prefix='ldsc runtime ') as folder, patch.object(pairwise, 'run_command') as run:
+        with tempfile.TemporaryDirectory(prefix='ldsc runtime ') as folder, patch.object(pairwise, 'run_command', side_effect=lambda command, *a, **k: Path(shlex.split(command)[-1] + '.results.csv').write_text('fresh result')) as run:
             pairwise.parallel_ldsc_analysis(1,1,folder,folder,frame,folder,runtime={'prefix':'/child env'})
             args=shlex.split(run.call_args.args[0])
             self.assertEqual(args[:6], ['conda','run','--no-capture-output','--prefix','/child env','python'])
@@ -114,6 +114,7 @@ class RuntimeTests(unittest.TestCase):
             hook=Path(root)/'etc/profile.d/conda.sh'; hook.parent.mkdir(parents=True)
             hook.write_text('conda() { export CONDA_PREFIX="$2"; }\n')
             fake.write_text('#!'+sys.executable+'\nimport sys,os,json\n'
+                            'if sys.argv[1:]==["env","create","--help"]: print("--file --name --prefix"); sys.exit(0)\n'
                             'with open(os.environ["COMMAND_LOG"],"a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
                             'if sys.argv[1:]==["info","--base"]: print(os.path.dirname(os.path.abspath(sys.argv[0])))\n'
                             'sys.exit(int(os.environ.get("COMMAND_FAIL","0")))\n')

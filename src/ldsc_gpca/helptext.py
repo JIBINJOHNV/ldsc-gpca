@@ -74,6 +74,7 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
   --input: comma-separated CSV. VCF workflow headers:
     traitname,vcf_files,ref,population_prevalence,sample_prevalence
   With --ldsc_only, vcf_files is optional; all other headers remain required.
+  Extra columns and any column order are allowed; required headers remain mandatory.
   Names must be unique/non-empty. Use absolute VCF paths when VCFs are processed.
   ref=yes selects an LDSC reference trait; ref=no leaves it as a target.
   Use ref=yes for every trait to generate complete GPCA pairwise coverage.

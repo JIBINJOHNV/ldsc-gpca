@@ -1,4 +1,4 @@
-# python_ldsc/qc.R: function bodies preserved from the original workflow.
+# Validate LDSC estimates and resolve explicitly authorized incomplete trait sets.
 
 coerce_python_ldsc_numeric <- function(ldsc_rows) {
   for (column_name in python_ldsc_numeric_columns) {
@@ -234,6 +234,64 @@ empty_failed_trait_table <- function() {
   )
 }
 
+# Check conflicts before optional trait removal can hide them. Missing values
+# agree only with other missing values, never with a finite estimate.
+validate_duplicate_estimates <- function(ldsc_rows, trait_order, tolerance = 1e-3,
+                                         duplicate_z_tolerance = 1e-2,
+                                         comparison_epsilon = 1e-12) {
+  duplicate_stats <- ldsc_rows[, c(
+    setNames(lapply(.SD, function(x) if (any(is.finite(x))) min(x[is.finite(x)]) else NA_real_), paste0("min_", names(.SD))),
+    setNames(lapply(.SD, function(x) if (any(is.finite(x))) max(x[is.finite(x)]) else NA_real_), paste0("max_", names(.SD))),
+    setNames(lapply(.SD, function(x) sum(is.finite(x))), paste0("finite_", names(.SD))),
+    list(source_row_count = .N)
+  ), by = .(pair_i, pair_j), .SDcols = duplicate_comparison_columns]
+
+  conflict <- rep(FALSE, nrow(duplicate_stats))
+  conflict_fields <- rep("", nrow(duplicate_stats))
+  for (column_name in duplicate_comparison_columns) {
+    current_tolerance <- if (column_name == "z") {
+      duplicate_z_tolerance
+    } else {
+      tolerance
+    }
+    agrees <- values_agree(
+      duplicate_stats[[paste0("min_", column_name)]],
+      duplicate_stats[[paste0("max_", column_name)]],
+      current_tolerance,
+      comparison_epsilon
+    )
+    finite_count <- duplicate_stats[[paste0("finite_", column_name)]]
+    newly_conflicting <- (finite_count > 0L & finite_count < duplicate_stats$source_row_count) |
+      (finite_count > 1L & !is.na(agrees) & !agrees)
+    conflict[newly_conflicting] <- TRUE
+    conflict_fields[newly_conflicting] <- ifelse(
+      conflict_fields[newly_conflicting] == "",
+      column_name,
+      paste0(conflict_fields[newly_conflicting], ",", column_name)
+    )
+  }
+
+  if (any(conflict)) {
+    bad <- duplicate_stats[conflict]
+    descriptions <- paste0(
+      trait_order[bad$pair_i], " <-> ", trait_order[bad$pair_j],
+      " [", conflict_fields[conflict], "]"
+    )
+    stop(
+      "Conflicting duplicate Python LDSC estimates were found:\n",
+      paste(head(descriptions, 25L), collapse = "\n"),
+      if (length(descriptions) > 25L) {
+        glue("\n... and {length(descriptions) - 25L} more")
+      } else {
+        ""
+      },
+      call. = FALSE
+    )
+  }
+
+  duplicate_stats
+}
+
 # Missing/non-finite pair estimates cannot be inserted into a genomic PCA
 # matrix. In opt-in drop mode, find a deterministic complete finite subset:
 #   1. remove traits whose self-pair is missing/invalid or whose self h2 <= 0;
@@ -250,7 +308,9 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
                                            h2_z_warn_threshold = 2,
                                            heritability_scale = c(
                                              "auto", "liability", "observed", "mixed"
-                                           )) {
+                                           ), duplicate_tolerance = 1e-3,
+                                           duplicate_z_tolerance = 1e-2,
+                                           audit_outdir = NULL) {
   action <- match.arg(action)
   heritability_scale <- match.arg(heritability_scale)
   source_rows_read <- attr(ldsc_rows, "source_rows_read", exact = TRUE)
@@ -279,6 +339,8 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   index_2 <- match(ldsc_rows$p2, trait_order)
   ldsc_rows[, pair_i := pmin(index_1, index_2)]
   ldsc_rows[, pair_j := pmax(index_1, index_2)]
+  validate_duplicate_estimates(ldsc_rows, trait_order, duplicate_tolerance,
+    duplicate_z_tolerance, comparison_epsilon)
   ldsc_rows[, valid_ldsc_row := python_ldsc_valid_row(.SD)]
 
   pair_status <- ldsc_rows[, .(
@@ -321,6 +383,19 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   )
 
   invalid_self_indices <- self_pair_qc[Self_QC_Pass == FALSE, Manifest_Order]
+
+  # Persist QC even when strict mode or later matrix checks stop analysis.
+  audit_resolution <- function(excluded = empty_failed_trait_table(), retained = trait_order) {
+    if (is.null(audit_outdir)) return(invisible(NULL))
+    dir.create(audit_outdir, recursive = TRUE, showWarnings = FALSE)
+    fwrite(self_pair_qc, file.path(audit_outdir, "Python_LDSC_Self_Pair_QC.csv"))
+    pairs <- copy(failed_pairs)
+    pairs[, `:=`(p1 = trait_order[pair_i], p2 = trait_order[pair_j])]
+    fwrite(pairs, file.path(audit_outdir, "Python_LDSC_Failed_Pairs.csv"))
+    fwrite(excluded, file.path(audit_outdir, "Python_LDSC_Dropped_Failed_Traits.csv"))
+    fwrite(data.table(traitname = retained), file.path(audit_outdir, "Python_LDSC_Retained_Traits.csv"))
+  }
+  audit_resolution()
 
   if (nrow(failed_pairs) == 0L && length(invalid_self_indices) == 0L) {
     if (!is.null(source_rows_read)) {
@@ -462,6 +537,7 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   }
 
   retained_traits <- trait_order[active]
+  audit_resolution(rbindlist(exclusions, use.names = TRUE, fill = TRUE), retained_traits)
   if (length(retained_traits) < 2L) {
     stop(
       glue(
@@ -619,52 +695,8 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
   ldsc_rows[, pair_i := pmin(trait_index_1, trait_index_2)]
   ldsc_rows[, pair_j := pmax(trait_index_1, trait_index_2)]
 
-  duplicate_stats <- ldsc_rows[, c(
-    setNames(lapply(.SD, min), paste0("min_", names(.SD))),
-    setNames(lapply(.SD, max), paste0("max_", names(.SD))),
-    list(source_row_count = .N)
-  ), by = .(pair_i, pair_j), .SDcols = duplicate_comparison_columns]
-
-  conflict <- rep(FALSE, nrow(duplicate_stats))
-  conflict_fields <- rep("", nrow(duplicate_stats))
-  for (column_name in duplicate_comparison_columns) {
-    current_tolerance <- if (column_name == "z") {
-      duplicate_z_tolerance
-    } else {
-      tolerance
-    }
-    agrees <- values_agree(
-      duplicate_stats[[paste0("min_", column_name)]],
-      duplicate_stats[[paste0("max_", column_name)]],
-      current_tolerance,
-      comparison_epsilon
-    )
-    newly_conflicting <- !agrees
-    conflict[newly_conflicting] <- TRUE
-    conflict_fields[newly_conflicting] <- ifelse(
-      conflict_fields[newly_conflicting] == "",
-      column_name,
-      paste0(conflict_fields[newly_conflicting], ",", column_name)
-    )
-  }
-
-  if (any(conflict)) {
-    bad <- duplicate_stats[conflict]
-    descriptions <- paste0(
-      trait_order[bad$pair_i], " <-> ", trait_order[bad$pair_j],
-      " [", conflict_fields[conflict], "]"
-    )
-    stop(
-      "Conflicting duplicate Python LDSC estimates were found:\n",
-      paste(head(descriptions, 25L), collapse = "\n"),
-      if (length(descriptions) > 25L) {
-        glue("\n... and {length(descriptions) - 25L} more")
-      } else {
-        ""
-      },
-      call. = FALSE
-    )
-  }
+  duplicate_stats <- validate_duplicate_estimates(ldsc_rows, trait_order,
+    tolerance, duplicate_z_tolerance, comparison_epsilon)
 
   collapsed <- ldsc_rows[, lapply(.SD, mean),
     by = .(pair_i, pair_j),

@@ -120,7 +120,8 @@ across inputs; installation cannot establish their scientific compatibility.
   manifest row order in matrices, loadings and GWAMA inputs.
 - Header spelling and case matter. Use one canonical spelling for each managed
   argument/header. Multiword managed flags use underscores; abbreviations and
-  older spellings are rejected. Variant-table headers are unchanged.
+  older argument spellings are rejected. Extra input columns are accepted;
+  old manifest names may be annotations but cannot replace required headers.
 - Quote shell paths containing spaces. Within CSVs, quote fields containing
   commas. Prefer absolute paths. Relative manifest file paths resolve beside the
   manifest for `prepare` and `genomicsem ldsc`; Python `ldsc` uses supplied VCF
@@ -348,6 +349,7 @@ It reruns all requested LDSC batches, rather than only failed batches.
 | `--ld_weights DIRECTORY` | Same as `--ld_ref` | Regression weights directory. |
 | `--hm3 FILE` | Unset | Required unless `--ldsc_only`; HapMap `SNP,A1,A2` reference. |
 | `--n_cores INTEGER` | `5` | Concurrent local extraction, munging and LDSC workers; integer ≥1. |
+| `--result_failure_action {error,report}` | `error` | Save numerical failure diagnostics, then stop (`error`) or finish diagnostic collection (`report`). This does not authorize trait removal. |
 | `--ldsc_only` | Off | Skip extraction/munging and reuse munged files. |
 | `--munged_dir DIRECTORY` | `<outdir>/ldsc_input` | Existing munged input directory in reuse mode. Leave unset for ordinary VCF runs. |
 | `--ldsc_retries INTEGER` | `1` | Additional attempts per failed LDSC command; ≥0. One means two total attempts. Does not retry result-validation failures. |
@@ -381,7 +383,11 @@ LP can underflow to P=0 here and be removed by munging; inspect its logs.
 
 | Output under `--outdir` | Purpose |
 | --- | --- |
-| `ldsc_results.csv` | Compiled numerical results; pass this to `gpca --ldsc_results`. |
+| `ldsc_results.csv` | Written only when all requested rows pass compilation QC; full GPCA matrix validation is still required. |
+| `ldsc_results_diagnostic.csv` | All compiled estimates, including missing values; suitable for explicit downstream failure handling, not automatic approval for analysis. |
+| `LDSC_Pair_Status.csv`, `LDSC_Trait_Status.csv` | Numerical failures/warnings, exact trait names, manifest order and source file/row provenance. |
+| `LDSC_Compilation_Status.csv` | `compiled`, `estimation_failures`, `structural_failure`, or `incomplete`; action and result path. |
+| `ldsc_results/LDSC_Batch_Status.csv` | Completed and failed jobs after bounded execution retries. |
 | `ldsc_results/` | Per-batch `.results.csv` numerical exports and readable logs. |
 | `ldsc_input/` | Newly munged `{traitname}.sumstats.gz` files and prevalence sidecars in the default VCF workflow. |
 | `munge_input/` | Intermediate extracted tables. |
@@ -394,10 +400,65 @@ LP can underflow to P=0 here and be removed by munging; inspect its logs.
 
 Managed LDSC exports each native result table numerically with `%.17g` formatting
 before readable-log rounding. Compilation reads each numerical CSV once; it
-does not reconstruct estimates from logs. Missing/invalid exports fail.
+does not reconstruct estimates from logs. Missing/malformed exports fail.
+Numerical estimation failures follow the explicit policy below.
 Extraction failure stops; handled munging failures remove affected traits.
 Exhausted command retries stop before compilation. Check retained traits and
 logs before using the results: compilation is not the full GPCA QC check.
+
+### Handling failed LDSC estimates in future runs
+
+A non-positive heritability or missing correlation is an estimation outcome,
+not a reason to discard valid results from other pairs. Strict behavior remains
+the default. Both `--result_failure_action error` and `report` preserve all
+well-formed estimates and QC reports. `error` then exits unsuccessfully;
+`report` finishes collection and returns the diagnostic table path when needed.
+Neither policy imputes, clips or repairs estimates. Raw batch CSVs remain intact.
+Malformed numeric text, missing columns/files and trait-name/coverage mismatches
+still fail in report mode. Missing, empty or unchanged batch exports trigger the
+same bounded retries as command failures; valid numerical failures are not retried.
+
+For an explicitly chosen reduced-trait analysis, add
+`--result_failure_action report` to your existing **`ldsc`** command, then run:
+
+```bash
+ldsc-gpca gpca \
+  --input selected_traits.csv \
+  --ldsc_results python_ldsc_results/ldsc_results_diagnostic.csv \
+  --outdir gpca_validation \
+  --failed_ldsc_action drop_traits \
+  --validate_only
+```
+
+This uses the existing deterministic removal policy: failed self-pairs first,
+then traits incident to the most remaining failed pairs, with ties resolved by
+lower self-h2 Z and then later manifest position. It is a greedy complete-subset
+heuristic, not a guarantee of the largest subset. Low positive h2/SE and finite
+out-of-range rg are warnings rather than automatic significance filters.
+Conflicting duplicate estimates are rejected **before** any trait can be removed.
+The retained set must still have at least two traits, complete pair coverage,
+positive-definite CTI and a finite positive PC1 eigenvalue. Genetic-matrix negative
+eigenvalues remain reported under the existing warning/error policy; no nearest-PD
+replacement is made. No correlation is replaced by zero.
+
+`Python_LDSC_Retained_Traits.csv`, `Python_LDSC_Dropped_Failed_Traits.csv`,
+`Python_LDSC_Failed_Pairs.csv` and `Python_LDSC_Self_Pair_QC.csv` audit the selection.
+Selection reports are saved even if too few traits remain or later checks fail.
+`GenomicPCA_Run_Status.csv` and `GWAMA_Run_Status.csv` distinguish validation,
+completion and failure. Use the same selected policy across clusters; an external
+multi-cluster runner can record each exit status and continue independent clusters.
+This single-cluster command does not silently skip failed clusters.
+
+Use a separate output directory per analysis. If compilation is repeated in an
+existing directory, previous result/QC tables are preserved with `.previous-<id>`
+suffixes so a failed rerun cannot advertise a stale `ldsc_results.csv` as current.
+Result collection success never means that genomicPCA/GWAMA has passed validation.
+
+All managed tabular inputs accept additional annotation columns and reordered
+columns. Required canonical headers and scientific value checks still apply.
+Old manifest aliases are allowed as extra annotations but cannot substitute for
+missing canonical headers. GWAMA receives only the required nine fields in its
+original order; its weighting implementation is unchanged.
 
 ## Run GenomicSEM LDSC
 
@@ -550,10 +611,9 @@ the run. No sampling covariance matrices are fabricated or repaired.
 | `Resolved_Manifest.csv`, logs, `sessionInfo.txt` | Resolved inputs and runtime provenance. |
 | `munge_output/` | Newly munged files in default mode. |
 
-Create a clean GPCA manifest from the retained-trait audit. In the current
-implementation, `Selected_Traits.csv` also contains internal headers rejected by
-the managed manifest reader, so do not pass that whole audit file as `--input`.
-This command preserves exact trait strings and row order:
+The retained-trait audit `Selected_Traits.csv` can be used directly as a GPCA
+manifest; extra internal columns are ignored. Alternatively, create a minimal
+manifest with this command, preserving exact trait strings and row order:
 
 ```bash
 python - /results/genomicsem_ldsc/Selected_Traits.csv /results/genomicsem_ldsc/Selected_Traits_for_GPCA.csv <<'PY'
@@ -594,8 +654,9 @@ Each row selects one trait; order is authoritative. Extra traits in the LDSC
 results are allowed. For GWAMA, supply a folder of per-trait TSVs or use
 [automatic preparation](#automatic-vcf-preparation).
 
-GWAMA inputs must have **exactly nine columns in this order**, separated by
-actual tabs. This example contains tabs:
+GWAMA inputs must contain the **nine required columns below**, separated by
+actual tabs. Extra columns and any input column order are allowed; the reader
+selects and reorders the required fields before calling GWAMA. This example contains tabs:
 
 ```tsv
 SNPID	CHR	BP	EA	OA	EAF	N	Z	P
@@ -614,8 +675,9 @@ SNPID	CHR	BP	EA	OA	EAF	N	Z	P
 | `P` | Association P value. |
 
 Existing variant-header handling still accepts `A1`, `A2`, `p` for `EA`, `OA`,
-`P` in memory. The canonical output headers above are unchanged. Extra columns
-or a different order fail. The reader checks file existence and schema;
+`P` in memory when their canonical counterparts are absent. When both are
+present, the canonical field is used. The canonical output headers above are
+unchanged. Missing or duplicate required fields fail. The reader checks file existence and schema;
 **it does not provide complete per-variant numerical QC**. Validate externally
 prepared files, sample sizes, alleles and genome builds before use.
 

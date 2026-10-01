@@ -111,7 +111,7 @@ parse_command_line <- function() {
       "  Manifest: comma-separated CSV with a header row.\n",
       "  Python LDSC: CSV, tab-separated TSV or whitespace-delimited text;\n",
       "    separator is detected from the header; gzip (.gz) is accepted.\n",
-      "  GWAMA inputs: tab-separated TSV, exact ordered columns:\n",
+      "  GWAMA inputs: tab-separated TSV, required columns (extra/reordered columns allowed):\n",
       "    SNPID,CHR,BP,EA,OA,EAF,N,Z,P\n",
       "    A1/A2/p aliases are accepted for EA/OA/P.\n",
       "  Split files: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv\n",

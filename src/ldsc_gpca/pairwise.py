@@ -3,9 +3,18 @@ import os
 import shlex
 import math
 import concurrent.futures
+import pandas as pd
 from .utils import run_command
 from .ldsc_runtime import ldsc_regression_command
-from .ldsc_export import RESULT_SUFFIX
+from .ldsc_export import RESULT_SUFFIX, write_results_csv
+
+
+def _result_stamp(path):
+    try:
+        stat = os.stat(path)
+        return (stat.st_ino, stat.st_mtime_ns, stat.st_size) if stat.st_size else None
+    except FileNotFoundError:
+        return None
 
 def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None, ld_weights_dir=None):
     if not isinstance(retries, int) or retries < 0:
@@ -25,7 +34,11 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
         for attempt in range(1, retries + 2):
             label = f'LDSC_{ref_prefix}_batch_{part} attempt {attempt}/{retries + 1}'
             try:
+                previous = _result_stamp(out_prefix + RESULT_SUFFIX)
                 run_command(command, label, output_folder=os.path.dirname(os.path.abspath(output_path)))
+                current = _result_stamp(out_prefix + RESULT_SUFFIX)
+                if current is None or current == previous:
+                    raise RuntimeError(f'{label}: no fresh non-empty numerical CSV was produced')
                 return out_prefix + RESULT_SUFFIX
             except RuntimeError as error:
                 if attempt == retries + 1:
@@ -46,5 +59,19 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
                 t_files = ",".join([os.path.join(ldsc_input_path, f"{n}.sumstats.gz") for n in batch['gwas_name']])
                 s_prev = f"{ref_row['sample_prevalence']}," + ",".join(batch['sample_prevalence'].astype(str))
                 p_prev = f"{ref_row['pop_prevalence']}," + ",".join(batch['pop_prevalence'].astype(str))
-                futures.append(executor.submit(ldsc_analysis, t_files, ref_file, i//batch_size, s_prev, p_prev))
-        return [future.result() for future in futures]
+                future = executor.submit(ldsc_analysis, t_files, ref_file, i//batch_size, s_prev, p_prev)
+                futures.append((future, ref_name, i//batch_size))
+        paths, statuses, errors = [], [], []
+        for future, ref_name, part in futures:
+            try:
+                path = future.result()
+                paths.append(path)
+                statuses.append(dict(Reference=ref_name, Batch=part, Status='completed', Result_File=path, Error=''))
+            except RuntimeError as error:
+                errors.append(str(error))
+                statuses.append(dict(Reference=ref_name, Batch=part, Status='execution_failed', Result_File='', Error=str(error)))
+        write_results_csv(pd.DataFrame(statuses), os.path.join(output_path, 'LDSC_Batch_Status.csv'))
+        if errors:
+            raise RuntimeError('LDSC execution failed; completed batch files were retained. '
+                               'See LDSC_Batch_Status.csv.\n' + '\n'.join(errors))
+        return paths

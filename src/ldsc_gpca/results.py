@@ -2,8 +2,11 @@
 import os
 import math
 import re
+import csv
+import uuid
 import pandas as pd
 from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, write_results_csv
+from .result_qc import result_status, trait_status
 
 
 def _trait_name(path):
@@ -117,11 +120,15 @@ def _read_legacy_log(log):
     return pd.DataFrame(_restore_correlation_precision(rows, lines, log))
 
 
-def _read_numerical_csv(path):
+def _read_numerical_csv(path, *, allow_failed=False):
     """Read each machine-readable export once, without opening a readable log."""
     try:
+        with open(path, newline='', encoding='utf-8-sig') as handle:
+            header = next(csv.reader(handle), [])
+        if len(header) != len(set(header)):
+            raise ValueError('Duplicate column headers')
         frame = pd.read_csv(path, float_precision='round_trip',
-                            dtype={'p1': str, 'p2': str})
+                            dtype={'p1': str, 'p2': str}, keep_default_na=False)
     except (OSError, ValueError, pd.errors.ParserError) as error:
         raise RuntimeError(
             f'Cannot read numerical LDSC CSV {path}: {error}. '
@@ -139,50 +146,82 @@ def _read_numerical_csv(path):
     for column in ['p1', 'p2']:
         if frame[column].isna().any() or frame[column].str.strip().eq('').any():
             raise RuntimeError(f'Missing LDSC trait identifier {column} in {path}')
-    numeric_columns = [column for column in BASE_RESULT_COLUMNS if column not in ('p1', 'p2')]
-    numeric_columns.extend(column for pair in h2_columns for column in pair)
-    for column in numeric_columns:
-        frame[column] = pd.to_numeric(frame[column], errors='coerce')
-        bad = ~frame[column].map(math.isfinite)
-        if bad.any():
-            pairs = list(zip(frame.loc[bad, 'p1'], frame.loc[bad, 'p2']))
-            raise RuntimeError(f'Non-finite LDSC {column} in {path} for pairs: {pairs}')
-    se_columns = ['se', 'h2_int_se', 'gcov_int_se'] + [pair[1] for pair in h2_columns]
-    for column in se_columns:
-        if frame[column].le(0).any():
-            raise RuntimeError(
-                f'Non-positive LDSC {column} in numerical CSV {path}; '
-                'the original numerical result was exported. No SE was imputed.'
-            )
-    if (~frame['p'].between(0, 1)).any():
-        raise RuntimeError(f'LDSC p-values outside [0,1] in {path}')
+    # Extra annotation columns do not enter validation, deduplication or analysis.
+    frame = frame[list(BASE_RESULT_COLUMNS) + [c for pair in h2_columns for c in pair]].copy()
+    status = result_status(frame, path)
+    if not allow_failed and status.Status.eq('failed_estimate').any():
+        raise RuntimeError(f'{status.loc[status.Status.eq("failed_estimate"), "Reason"].iloc[0]} in {path}')
+    frame.attrs['pair_status'] = status
     return frame
 
 
-def compile_results(output_folder, log_files, trait_metadata):
+class EstimationFailure(RuntimeError):
+    """Reportable numerical failure; its diagnostic outputs have been saved."""
+
+
+def prepare_compilation_outputs(output_folder, result_failure_action='error'):
+    os.makedirs(output_folder, exist_ok=True)
+    # A failed rerun must never leave a previous success at the advertised path.
+    # Retain old outputs for recovery rather than deleting them.
+    for filename in ('ldsc_results.csv', 'ldsc_results_diagnostic.csv',
+                     'LDSC_Pair_Status.csv', 'LDSC_Trait_Status.csv'):
+        path = os.path.join(output_folder, filename)
+        if os.path.exists(path):
+            os.replace(path, path + '.previous-' + uuid.uuid4().hex)
+    status_path = os.path.join(output_folder, 'LDSC_Compilation_Status.csv')
+    write_results_csv(pd.DataFrame([{'Status': 'incomplete', 'Action': result_failure_action,
+                                    'Result_File': '', 'Failed_Rows': ''}]), status_path)
+
+
+def compile_results(output_folder, log_files, trait_metadata, *, result_failure_action='error'):
+    if result_failure_action not in ('error', 'report'):
+        raise ValueError('result_failure_action must be error or report')
+    prepare_compilation_outputs(output_folder, result_failure_action)
+    try:
+        return _compile_results(output_folder, log_files, trait_metadata,
+                                result_failure_action=result_failure_action)
+    except EstimationFailure:
+        raise
+    except (RuntimeError, ValueError, OSError) as error:
+        write_results_csv(pd.DataFrame([{'Status': 'structural_failure',
+            'Action': result_failure_action, 'Result_File': '', 'Failed_Rows': '',
+            'Error': str(error)}]), os.path.join(output_folder, 'LDSC_Compilation_Status.csv'))
+        raise
+
+
+def _compile_results(output_folder, log_files, trait_metadata, *, result_failure_action):
     """Compile fresh numerical CSVs; explicitly supplied .log paths retain legacy support.
 
     The historical log_files parameter name is retained for API compatibility.
-    Missing/invalid CSVs fail, never silently falling back to rounded log text.
+    Structural failures remain fatal. Estimation failures are always audited;
+    opt-in report mode exposes their diagnostic table to downstream trait QC.
     """
+    if result_failure_action not in ('error', 'report'):
+        raise ValueError('result_failure_action must be error or report')
     if not log_files:
         raise RuntimeError('No correlation results found in current LDSC outputs')
     print(f"  -> Reading {len(log_files)} LDSC result files...")
-    frames = [(_read_legacy_log(path) if os.fspath(path).endswith('.log')
-               else _read_numerical_csv(path)) for path in log_files]
+    frames, statuses = [], []
+    for path in log_files:
+        if os.fspath(path).endswith('.log'):
+            frame = _read_legacy_log(path)
+            status = result_status(frame, path)
+        else:
+            frame = _read_numerical_csv(path, allow_failed=True)
+            status = frame.attrs.pop('pair_status')
+        frames.append(frame)
+        statuses.append(status)
     df = pd.concat(frames, ignore_index=True)
+    pairs = pd.concat(statuses, ignore_index=True)
     for column in ['p1', 'p2']:
         df[column] = df[column].apply(_trait_name)
+        pairs[column] = pairs[column].apply(_trait_name)
     df = df[df['p1'] != 'p1'].drop_duplicates()
     expected = {(ref, target) for ref in trait_metadata.loc[trait_metadata['ref'] == 'yes', 'gwas_name']
                 for target in trait_metadata['gwas_name']}
     actual = set(zip(df['p1'], df['p2']))
     if expected != actual:
         raise RuntimeError(f'LDSC comparison mismatch: missing={sorted(expected - actual)}; unexpected={sorted(actual - expected)}')
-    values = pd.to_numeric(df['rg'], errors='coerce')
-    bad = ~values.map(math.isfinite)
-    if bad.any():
-        raise RuntimeError(f'Non-finite LDSC rg for pairs: {list(zip(df.loc[bad, "p1"], df.loc[bad, "p2"]))}')
     prevalence = trait_metadata.set_index('gwas_name')['pop_prevalence']
     # Preserve the historical scale mapping; no estimates are recomputed.
     for name in ['h2_obs', 'h2_obs_se', 'h2_liab', 'h2_liab_se']:
@@ -193,8 +232,37 @@ def compile_results(output_folder, log_files, trait_metadata):
         df.loc[no_conversion, observed] = df.loc[no_conversion, observed].fillna(df.loc[no_conversion, liability])
         df.loc[no_conversion, liability] = float('nan')
     df['h2_scale'] = df['p2'].map(lambda name: 'NEF_unconverted' if pd.isna(prevalence[name]) else 'liability')
-    write_results_csv(df, os.path.join(output_folder, 'ldsc_results.csv'))
-    print(f"  -> Successfully compiled {len(df)} correlations.")
+    order = {name: i for i, name in enumerate(trait_metadata.gwas_name)}
+    for table in (df, pairs):
+        table.sort_values(['p1', 'p2'], key=lambda x: x.map(order), kind='stable', inplace=True)
+        table.reset_index(drop=True, inplace=True)
+    failed = pairs.Status.eq('failed_estimate')
+    diagnostic = os.path.join(output_folder, 'ldsc_results_diagnostic.csv')
+    write_results_csv(df, diagnostic)
+    write_results_csv(pairs, os.path.join(output_folder, 'LDSC_Pair_Status.csv'))
+    write_results_csv(trait_status(df, pairs, trait_metadata.gwas_name),
+                      os.path.join(output_folder, 'LDSC_Trait_Status.csv'))
+    output = diagnostic if failed.any() else os.path.join(output_folder, 'ldsc_results.csv')
+    if not failed.any():
+        write_results_csv(df, output)
+    status_path = os.path.join(output_folder, 'LDSC_Compilation_Status.csv')
+    write_results_csv(pd.DataFrame([{
+        'Status': 'estimation_failures' if failed.any() else 'compiled',
+        'Action': result_failure_action, 'Result_File': output, 'Failed_Rows': int(failed.sum()),
+    }]), status_path)
+    if failed.any():
+        detail = '; '.join(dict.fromkeys(reason for text in pairs.loc[failed, 'Reason']
+                                       for reason in text.split('; ')))
+        message = (f'{int(failed.sum())} LDSC result row(s) failed QC: {detail}. '
+                   f'All estimates and source locations saved in {diagnostic} and LDSC_Pair_Status.csv. '
+                   'No estimates were imputed. Use --result_failure_action report for result collection; '
+                   'genomicPCA remains strict unless --failed_ldsc_action drop_traits is explicitly selected.')
+        if result_failure_action == 'error':
+            raise EstimationFailure(message)
+        print('WARNING: ' + message)
+    if pairs.Warning.ne('').any():
+        print('WARNING: LDSC diagnostic warnings recorded in LDSC_Pair_Status.csv.')
+    return output
 
 
 def check_saved_filters(metadata, filters, trait):

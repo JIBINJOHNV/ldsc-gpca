@@ -26,10 +26,8 @@ check_gpca_cli_options <- function(arguments) {
 read_gpca_manifest <- function(path) {
   manifest <- fread(path, data.table = FALSE, check.names = FALSE, colClasses = "character")
   if (anyDuplicated(names(manifest))) stop("Manifest headers must be unique.", call. = FALSE)
-  removed <- intersect(names(manifest), c("gwas_name", "sampleprevalence", "pop_prevalence",
-    "populationprevalence", "munge_inputs", "traits"))
-  if (length(removed)) stop("Unsupported manifest headers: ", paste(removed, collapse = ", "),
-    ". Use the column names listed in --help.", call. = FALSE)
+  # Required canonical columns are checked by the consuming workflow.
+  # Extra columns are annotations, not aliases for missing required fields.
   manifest
 }
 

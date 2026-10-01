@@ -116,7 +116,7 @@ INPUT FILE FORMATS
   Manifest: comma-separated CSV with a header row.
   Python LDSC: CSV, tab-separated TSV or whitespace-delimited text;
     separator is detected from the header; gzip (.gz) is accepted.
-  GWAMA inputs: tab-separated TSV, exact ordered columns:
+  GWAMA inputs: tab-separated TSV, required columns (extra/reordered columns allowed):
     SNPID,CHR,BP,EA,OA,EAF,N,Z,P
     A1/A2/p aliases are accepted for EA/OA/P.
   Split files: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv

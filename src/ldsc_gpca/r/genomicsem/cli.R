@@ -13,7 +13,7 @@ genomicsem_parser <- function() {
       "    Package auto-preparation also requires vcf_files if the input folder is omitted.\n",
       "  --ldsc_results: binary RData containing LDSCoutput, with S,V,I,S_Stand,V_Stand.\n",
       "    This is NOT a delimited table. Generate it upstream with stand=TRUE.\n",
-      "  --gpca_input_folder: tab-separated TSV files; exact column order:\n",
+      "  --gpca_input_folder: tab-separated TSV files; required columns (extra/reordered columns allowed):\n",
       "    SNPID,CHR,BP,EA,OA,EAF,N,Z,P (A1/A2/p aliases accepted for EA/OA/P).\n",
       "    Split: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv (chromosomes 1-22).\n",
       "    Whole genome: {traitname}_GenomicPCA_inputs.tsv.\n",

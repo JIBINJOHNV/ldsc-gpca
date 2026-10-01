@@ -35,7 +35,7 @@ class ResultsPrecisionTests(unittest.TestCase):
                 'pop_prevalence': [float('nan')] * len(traits),
             })
             results.compile_results(folder, [str(log)], metadata)
-            return pd.read_csv(Path(folder) / 'ldsc_results.csv')
+            return pd.read_csv(Path(folder) / 'ldsc_results.csv', float_precision='round_trip')
 
     def test_recovers_positive_self_se_in_scientific_notation(self):
         content = ('Reading summary statistics from /inputs/A.sumstats.gz ...\n'

@@ -2,13 +2,16 @@
 
 Managed `prepare`, `ldsc`, `gpca`, `genomicsem ldsc` and `genomicsem gpca`
 commands use one accepted name per option or manifest field. Multiword options
-use underscores. Previous spellings and abbreviated options are rejected.
+use underscores. Previous argument spellings and abbreviated options are rejected.
+Extra manifest columns are allowed, including old alias names as annotations;
+they do not substitute for required canonical headers.
 Update existing scripts and manifests before using this breaking release.
 
 Raw `ldsc.py` and `munge_sumstats.py` passthrough commands retain the upstream
 interface. Installer, Conda, bcftools and Docker command options are external to
 this analysis interface. Variant-table headers and the original GWAMA code are
-unchanged, including the pre-existing GWAMA variant-column handling.
+unchanged, while the GWAMA reader now accepts extra/reordered input columns and selects the
+required canonical fields before calling the unchanged GWAMA function.
 
 ## Arguments
 
@@ -71,8 +74,8 @@ The upstream definitions are in [pinned CBIIT LDSC](https://github.com/CBIIT/lds
 | Either GPCA with prepared inputs or `--validate_only` | `traitname` |
 
 A master CSV can contain all the listed fields. Modes require only their relevant
-fields; other metadata can be present. Removed manifest names are rejected even
-if their new counterparts are also present. Headers are case-sensitive and unique.
+fields; other metadata can be present. Old manifest names may be extra metadata
+but do not substitute for required canonical fields. Headers are case-sensitive and unique.
 Trait names stay strings, including leading zeros; row order is preserved.
 Existing backend/audit report names are retained. This specification applies to
 CLI options and input manifests, not variant tables or output report schemas.

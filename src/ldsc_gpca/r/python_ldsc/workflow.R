@@ -1,7 +1,29 @@
-# python_ldsc/workflow.R: function bodies preserved from the original workflow.
+# Orchestrate audited trait selection, matrix validation and genomicPCA/GWAMA.
 
 gpsca_main <- function() {
   args <- validate_cli_paths(parse_command_line())
+  status_path <- file.path(args$outdir, "GenomicPCA_Run_Status.csv")
+  write_status <- function(status, error = "") fwrite(data.table(
+    Status = status, Failed_LDSC_Action = args$failed_ldsc_action, Error = error), status_path)
+  write_status("running")
+  gwama_path <- file.path(args$outdir, "GWAMA_Run_Status.csv")
+  fwrite(data.table(Chromosome = "not_started", Success = NA, Output = NA_character_,
+    Error = "GWAMA has not started"), gwama_path)
+  tryCatch({
+    gpsca_analysis(args)
+    write_status(if (isTRUE(args$validate_only)) "validated" else "completed")
+  }, error = function(e) {
+    write_status("failed", conditionMessage(e))
+    status <- fread(gwama_path)
+    if (all(status$Chromosome == "not_started"))
+      fwrite(data.table(Chromosome = "not_run", Success = FALSE, Output = NA_character_,
+        Error = conditionMessage(e)), gwama_path)
+    stop(e)
+  })
+}
+
+# Analysis uses only the retained manifest order and unchanged statistical code.
+gpsca_analysis <- function(args) {
   manifest_trait_order <- read_trait_manifest(args$input)
 
   message(glue(
@@ -12,7 +34,9 @@ gpsca_main <- function() {
     manifest_trait_order,
     args$ldsc_chunk_size,
     heritability_scale = args$heritability_scale,
-    pca_matrix = args$pca_matrix
+    # Failed self h2 must reach the explicit removal policy before covariance
+    # eligibility is checked. Recheck the retained set below, without fallback.
+    pca_matrix = if (args$failed_ldsc_action == "drop_traits") "correlation" else args$pca_matrix
   )
   scale_audit <- data.frame(Trait = manifest_trait_order,
     Heritability_Scale = trait_heritability_scales(selected_ldsc, manifest_trait_order),
@@ -33,6 +57,9 @@ gpsca_main <- function() {
     selected_ldsc,
     availability$trait_order,
     args$failed_ldsc_action,
+    audit_outdir = args$outdir,
+    duplicate_tolerance = args$duplicate_tolerance,
+    duplicate_z_tolerance = args$duplicate_z_tolerance,
     self_rg_tolerance = args$self_rg_tolerance,
     comparison_epsilon = args$comparison_epsilon,
     h2_z_warn_threshold = args$h2_z_warn_threshold,
@@ -40,6 +67,11 @@ gpsca_main <- function() {
   )
   selected_ldsc <- incomplete_resolution$ldsc_rows
   trait_order <- incomplete_resolution$trait_order
+  if (args$pca_matrix == "covariance") {
+    validate_covariance_heritability(
+      selected_ldsc[p1 %chin% trait_order & p2 %chin% trait_order],
+      args$heritability_scale)
+  }
 
   message("--- Validating pairwise LDSC coverage and constructing matrices ---")
   ldsc <- canonicalize_and_validate_ldsc(

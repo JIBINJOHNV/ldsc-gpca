@@ -42,3 +42,6 @@ results/
 !tests/INTERFACE_VALIDATION.md
 !tests/test_postprocess.py
 !tests/POSTPROCESS_VALIDATION.md
+!tests/test_failure_handling.py
+!tests/test_failure_handling.R
+!tests/FAILURE_HANDLING_VALIDATION.md

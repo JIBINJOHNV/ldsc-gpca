@@ -24,9 +24,9 @@ writeLines(c('traitname,vcf_files','002,a','001,b'),tmp)
 stopifnot(identical(read_trait_manifest(tmp),c('002','001')))
 for (old in c('gwas_name','sampleprevalence','populationprevalence','pop_prevalence','munge_inputs','traits')) {
   writeLines(c(paste0('traitname,',old),'A,A','B,B'),tmp)
-  fail(read_trait_manifest(tmp),'Unsupported manifest headers')
+  stopifnot(identical(read_trait_manifest(tmp), c('A', 'B')))
 }
-writeLines(c('gwas_name','A','B'),tmp);fail(read_trait_manifest(tmp),'Unsupported manifest headers')
+writeLines(c('gwas_name','A','B'),tmp);fail(read_trait_manifest(tmp),'traitname')
 writeLines(c('traitname,traitname','A,A','B,B'),tmp);fail(read_trait_manifest(tmp),'unique')
 writeLines(c('traitname','A','A'),tmp);fail(read_trait_manifest(tmp),'unique')
 unlink(tmp);cat('R single-name checks passed\n')

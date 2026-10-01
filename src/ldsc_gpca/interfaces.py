@@ -10,6 +10,7 @@ REMOVED_OPTIONS = frozenset({
     '--ld_ref_snp_file', '--hapmap_file', '--ldsc_input_folder', '--munge_output',
     '--python_ldsc', '--ldsc_path', '--tolerance', '--no_mhc_exclude',
 })
+# Historical names remain importable, but are now permitted as extra metadata.
 REMOVED_MANIFEST_COLUMNS = frozenset({
     'gwas_name', 'sampleprevalence', 'pop_prevalence', 'populationprevalence',
     'munge_inputs', 'traits',
@@ -75,8 +76,6 @@ def read_manifest(path):
     for index, row in enumerate(rows, 2):
         if None in row or any(value is None for value in row.values()):
             raise ValueError(f'Manifest CSV row {index} has a different number of fields than its header')
-    removed = sorted(set(columns).intersection(REMOVED_MANIFEST_COLUMNS))
-    if removed:
-        raise ValueError('Unsupported manifest headers: ' + ', '.join(removed) +
-                         '. Use the column names listed in --help.')
+    # Consumers select their required canonical names. Other columns are
+    # annotations, including names once used as aliases; never reinterpret them.
     return columns, rows

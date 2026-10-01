@@ -515,9 +515,11 @@ protein1
 protein2
 ```
 
-For GWAMA, supply `--gpca_input_folder` with tab-separated files containing exactly
-`SNPID,CHR,BP,EA,OA,EAF,N,Z,P` in that order. The aliases `A1,A2,p` are accepted for
-`EA,OA,P` in memory. Default split filenames are
+For GWAMA, supply `--gpca_input_folder` with tab-separated files containing
+`SNPID,CHR,BP,EA,OA,EAF,N,Z,P`; extra columns and any input order are allowed.
+The reader selects and reorders those nine fields for GWAMA. The aliases
+`A1,A2,p` are accepted for `EA,OA,P` when canonical fields are absent; explicit
+canonical fields take precedence. Default split filenames are
 `{traitname}_chr{CHR}_GenomicPCA_inputs.tsv` for all chromosomes 1–22;
 `--splitby_chr nosplit` uses `{traitname}_GenomicPCA_inputs.tsv`.
 The R reader checks the schema, **not complete row-level numerical QC**; externally

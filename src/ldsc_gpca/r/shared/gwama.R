@@ -1,6 +1,6 @@
 gwama_required_columns <- c("SNPID", "CHR", "BP", "EA", "OA", "EAF", "N", "Z", "P")
 
-# shared/gwama.R: function bodies preserved from the original workflow.
+# Read required fields in canonical order before calling the modified GWAMA function.
 
 canonicalize_gwama_column_names <- function(column_names) {
   column_names[column_names == "A1"] <- "EA"
@@ -12,12 +12,21 @@ canonicalize_gwama_column_names <- function(column_names) {
 validate_gwama_columns <- function(column_names, file_path, trait_name) {
   canonical_names <- canonicalize_gwama_column_names(column_names)
 
-  if (length(canonical_names) != length(gwama_required_columns) ||
-      !identical(canonical_names, gwama_required_columns)) {
+  # Prefer an explicit canonical name when both it and a legacy alias exist.
+  # This allows A1/A2/p to remain harmless extra annotations beside EA/OA/P.
+  for (canonical in c("EA", "OA", "P")) {
+    alias <- c(EA = "A1", OA = "A2", P = "p")[[canonical]]
+    if (canonical %in% column_names) canonical_names[column_names == alias] <- alias
+  }
+  missing <- setdiff(gwama_required_columns, canonical_names)
+  ambiguous <- gwama_required_columns[vapply(gwama_required_columns,
+    function(column) sum(canonical_names == column) > 1L, logical(1))]
+  if (length(missing) || length(ambiguous)) {
     stop(
       glue(
-        "GWAMA input for '{trait_name}' must contain exactly these columns ",
-        "in order: {paste(gwama_required_columns, collapse = ', ')}. ",
+        "GWAMA input for '{trait_name}' is missing required columns: ",
+        "{paste(missing, collapse = ', ')}; ambiguous required columns: ",
+        "{paste(ambiguous, collapse = ', ')}. ",
         "Observed after allowed A1/A2/p renaming: ",
         "{paste(canonical_names, collapse = ', ')}. File: {file_path}"
       ),
@@ -141,7 +150,7 @@ read_gwama_data <- function(trait_order, gpca_input_folder,
       trait_name
     )
     names(trait_data) <- canonical_names
-    dat[[trait_name]] <- trait_data
+    dat[[trait_name]] <- trait_data[, gwama_required_columns, drop = FALSE]
   }
 
   dat

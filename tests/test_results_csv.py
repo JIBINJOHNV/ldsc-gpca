@@ -113,7 +113,7 @@ class NumericalCsvTests(unittest.TestCase):
             ("se", float("nan"), "Non-finite"), ("se", float("inf"), "Non-finite"),
             ("h2_obs_se", 0, "Non-positive"), ("h2_int_se", 0, "Non-positive"),
             ("gcov_int_se", 0, "Non-positive"), ("z", float("inf"), "Non-finite"),
-            ("rg", "bad", "Non-finite"), ("p", -0.1, "outside"),
+            ("rg", "bad", "Non-numeric"), ("p", -0.1, "outside"),
             ("p", 1.1, "outside"), ("p1", None, "identifier"),
         ):
             row = record()
@@ -134,12 +134,13 @@ class NumericalCsvTests(unittest.TestCase):
 
     def test_consistent_duplicates_collapse_conflicting_records_are_not_silently_discarded(self):
         self.assertEqual(len(self.compile(pd.DataFrame([record(), record()]))), 1)
-        different = record()
+        different = record("A", "B")
         different["rg"] = 0.9
         # The downstream R duplicate-conflict checks remain authoritative.
-        compiled = self.compile(pd.DataFrame([record(), different]))
-        self.assertEqual(len(compiled), 2)
-        self.assertEqual(compiled.rg.iloc[1], 0.9)
+        compiled = self.compile(pd.DataFrame([record("A", "A"), record("A", "B"), different]),
+                                manifest(("A", "B"), ["yes", "no"]))
+        self.assertEqual(len(compiled), 3)
+        self.assertEqual(compiled.rg.iloc[2], 0.9)
 
 
 if __name__ == "__main__":

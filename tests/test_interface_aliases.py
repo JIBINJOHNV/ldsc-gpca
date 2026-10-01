@@ -95,12 +95,15 @@ class ManifestNamesTests(unittest.TestCase):
             write_csv(path,cols,rows);observed,parsed=read_manifest(path)
             self.assertEqual(observed,cols);self.assertEqual([list(row.values()) for row in parsed],rows)
 
-    def test_removed_headers_rejected_including_when_canonical_is_present(self):
+    def test_extra_headers_allowed_including_old_alias_names(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'in.csv'
             for old in REMOVED_MANIFEST_COLUMNS:
                 write_csv(path,['traitname',old],[['A','A'],['B','B']])
-                with self.subTest(old=old),self.assertRaisesRegex(ValueError,'Unsupported manifest headers'):read_manifest(path)
+                with self.subTest(old=old):
+                    columns, rows = read_manifest(path)
+                    self.assertIn(old, columns)
+                    self.assertEqual([row['traitname'] for row in rows], ['A', 'B'])
 
     def test_duplicate_empty_and_malformed_csv_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -172,7 +175,7 @@ class ManifestNamesTests(unittest.TestCase):
         frame=pd.DataFrame({'gwas_name':['A'],'ref':['yes'],'sample_prevalence':[float('nan')],'pop_prevalence':[float('nan')]})
         with tempfile.TemporaryDirectory() as folder:
             for weights in (None,'/separate weights/'):
-                with patch.object(pairwise,'run_command') as run:
+                with patch.object(pairwise,'run_command', side_effect=lambda command, *a, **k: Path(shlex.split(command)[-1] + '.results.csv').write_text('fresh result')) as run:
                     pairwise.parallel_ldsc_analysis(1,1,folder,'/ref/',frame,folder,ld_weights_dir=weights)
                     tokens=shlex.split(run.call_args.args[0]);self.assertEqual(tokens[tokens.index('--ref-ld-chr')+1],'/ref/')
                     self.assertEqual(tokens[tokens.index('--w-ld-chr')+1],weights or '/ref/')
