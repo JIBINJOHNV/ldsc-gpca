@@ -1,4 +1,4 @@
-"""Pairwise LDSC batching and bounded execution retries."""
+"""Pairwise LDSC batching, verified restarts and bounded execution retries."""
 import os
 import shlex
 import math
@@ -7,6 +7,8 @@ import pandas as pd
 from .utils import run_command
 from .ldsc_runtime import ldsc_regression_command
 from .ldsc_export import RESULT_SUFFIX, write_results_csv
+from .restart import (RestartContext, CHECKPOINT_SUFFIX, file_digest,
+                      reusable_result, validate_batch, write_checkpoint)
 
 
 def _result_stamp(path):
@@ -16,10 +18,16 @@ def _result_stamp(path):
     except FileNotFoundError:
         return None
 
-def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None, ld_weights_dir=None):
+def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, input_df, ldsc_input_path, retries=1, runtime=None, ld_weights_dir=None, *, restart=False, checkpoint_parameters=None):
     if not isinstance(retries, int) or retries < 0:
         raise ValueError('LDSC retries must be a non-negative integer')
     os.makedirs(output_path, exist_ok=True)
+    context = None
+    if restart or checkpoint_parameters is not None:
+        print('  -> Verifying LDSC runtime and input contents for restart checkpoints...', flush=True)
+        context = RestartContext(ld_ref_dir, ld_weights_dir or ld_ref_dir,
+            [os.path.join(ldsc_input_path, f'{name}.sumstats.gz') for name in input_df.gwas_name],
+            runtime or {}, checkpoint_parameters or {})
 
     def ldsc_analysis(target_files, reference_sumstat, part, s_prevalence, p_prevalence):
         ref_prefix = os.path.basename(reference_sumstat).replace('.sumstats.gz', '')
@@ -28,21 +36,43 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
         prevalence_flags = []
         if any(value != 'nan' for value in p_prevalence.split(',')):
             prevalence_flags = ['--samp-prev', s_prevalence, '--pop-prev', p_prevalence]
-        command = shlex.join(ldsc_regression_command(**(runtime or {})) + [
+        command_args = ldsc_regression_command(**(runtime or {})) + [
             '--rg', f'{reference_sumstat},{target_files}', '--ref-ld-chr', ld_ref_dir,
-            '--w-ld-chr', ld_weights_dir if ld_weights_dir is not None else ld_ref_dir, *prevalence_flags, '--out', out_prefix])
+            '--w-ld-chr', ld_weights_dir if ld_weights_dir is not None else ld_ref_dir, *prevalence_flags, '--out', out_prefix]
+        command = shlex.join(command_args)
+        result_path = out_prefix + RESULT_SUFFIX
+        targets = target_files.split(',')
+        sumstats_paths = [reference_sumstat, *targets]
+        request = context.request(command_args, sumstats_paths) if context else None
+        reason = 'restart_not_requested'
+        if restart:
+            reuse, reason = reusable_result(result_path, request, reference_sumstat, targets)
+            if reuse:
+                context.check_unchanged(sumstats_paths)
+                print(f'  -> Reusing completed batch: {ref_prefix}, batch {part}', flush=True)
+                return result_path, 'reused', reason
+        # Invalidate completion before launching; an interruption must not leave
+        # an older checkpoint endorsing this attempt's result.
+        checkpoint_path = result_path + CHECKPOINT_SUFFIX
+        if os.path.exists(checkpoint_path):
+            os.unlink(checkpoint_path)
         for attempt in range(1, retries + 2):
             label = f'LDSC_{ref_prefix}_batch_{part} attempt {attempt}/{retries + 1}'
             try:
-                previous = _result_stamp(out_prefix + RESULT_SUFFIX)
+                previous = _result_stamp(result_path)
                 run_command(command, label, output_folder=os.path.dirname(os.path.abspath(output_path)))
-                current = _result_stamp(out_prefix + RESULT_SUFFIX)
+                current = _result_stamp(result_path)
                 if current is None or current == previous:
                     raise RuntimeError(f'{label}: no fresh non-empty numerical CSV was produced')
-                return out_prefix + RESULT_SUFFIX
-            except RuntimeError as error:
+                if context:
+                    validate_batch(result_path, reference_sumstat, targets)
+                    context.check_unchanged(sumstats_paths)
+                    write_checkpoint(checkpoint_path, {'status': 'completed', 'request': request,
+                                                       'result_sha256': file_digest(result_path)})
+                return result_path, 'completed', reason
+            except (RuntimeError, OSError, ValueError) as error:
                 if attempt == retries + 1:
-                    raise RuntimeError(f'{label}: retries exhausted; see execution_errors.log') from error
+                    raise RuntimeError(f'{label}: retries exhausted: {error}; see execution_errors.log') from error
                 print(f'  [!] {label} failed; retrying this batch only.', flush=True)
 
     ref_names = input_df[input_df['ref'] == 'yes']['gwas_name'].unique()
@@ -61,17 +91,23 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
                 p_prev = f"{ref_row['pop_prevalence']}," + ",".join(batch['pop_prevalence'].astype(str))
                 future = executor.submit(ldsc_analysis, t_files, ref_file, i//batch_size, s_prev, p_prev)
                 futures.append((future, ref_name, i//batch_size))
-        paths, statuses, errors = [], [], []
-        for future, ref_name, part in futures:
+        paths, errors = {}, []
+        statuses = [dict(Reference=ref, Batch=part, Status='pending', Result_File='', Error='', Restart_Reason='')
+                    for _, ref, part in futures]
+        status_path = os.path.join(output_path, 'LDSC_Batch_Status.csv')
+        write_results_csv(pd.DataFrame(statuses), status_path)
+        indices = {future: i for i, (future, _, _) in enumerate(futures)}
+        for future in concurrent.futures.as_completed(indices):
+            index = indices[future]
             try:
-                path = future.result()
-                paths.append(path)
-                statuses.append(dict(Reference=ref_name, Batch=part, Status='completed', Result_File=path, Error=''))
-            except RuntimeError as error:
+                path, status, reason = future.result()
+                paths[index] = path
+                statuses[index].update(Status=status, Result_File=path, Restart_Reason=reason)
+            except (RuntimeError, OSError, ValueError) as error:
                 errors.append(str(error))
-                statuses.append(dict(Reference=ref_name, Batch=part, Status='execution_failed', Result_File='', Error=str(error)))
-        write_results_csv(pd.DataFrame(statuses), os.path.join(output_path, 'LDSC_Batch_Status.csv'))
+                statuses[index].update(Status='execution_failed', Error=str(error))
+            write_results_csv(pd.DataFrame(statuses), status_path)
         if errors:
             raise RuntimeError('LDSC execution failed; completed batch files were retained. '
                                'See LDSC_Batch_Status.csv.\n' + '\n'.join(errors))
-        return paths
+        return [paths[i] for i in sorted(paths)]

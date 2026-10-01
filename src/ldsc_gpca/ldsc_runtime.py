@@ -1,5 +1,6 @@
 """Launch LDSC in an isolated environment without changing the caller's environment."""
 import os
+import json
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,20 @@ def ldsc_regression_command(**runtime):
     """Run native LDSC with an in-process, precision-preserving result export."""
     exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ldsc_export.py')
     return ldsc_command('python', **runtime) + [exporter]
+
+
+def fingerprint_runtime(**runtime):
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ldsc_provenance.py')
+    result = subprocess.run(ldsc_command('python', **runtime) + [script],
+                            capture_output=True, text=True)
+    try:
+        identity = json.loads(result.stdout)
+        if result.returncode or not isinstance(identity, dict) or not identity.get('sources'):
+            raise ValueError('Incomplete runtime identity')
+    except ValueError as error:
+        raise RuntimeError('Cannot verify LDSC runtime for restart checkpoints. '
+                           + result.stderr) from error
+    return identity
 
 
 def run_ldsc_script(script, arguments, *, conda=None, environment=None, prefix=None):

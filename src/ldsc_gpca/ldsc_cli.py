@@ -63,8 +63,10 @@ filter_group.add_argument(
 # Flags for LDSC-only execution
 parser.add_argument('--ldsc_only', action='store_true', help="Reuse existing munged files; extraction/munging filters are NOT reapplied. --chisq_max is applied to separate copies when supplied. Total-N traits require .prevalence.json; legacy NEF files are accepted with a provenance warning.")
 parser.add_argument('--munged_dir', help="Path to pre-munged sumstats.gz files.", default=None)
+parser.add_argument('--restart', action='store_true',
+                    help='Reuse completed LDSC batches in the same outdir only when checkpointed input contents, parameters, runtime and result integrity match. Recompute unverified, changed or incomplete batches. Default: disabled. Extraction/munging is skipped only with --ldsc_only.')
 parser.add_argument('--ldsc_retries', type=int, default=1,
-                    help='Additional attempts per failed pairwise LDSC command. Default: 1 (2 total attempts); 0 disables retries. Successful batches are not repeated. Result-validation failures are not retried.')
+                    help='Additional attempts per failed pairwise LDSC command or malformed/incomplete export. Default: 1 (2 total attempts); 0 disables retries. Numerical estimation failures are not retried.')
 parser.add_argument('--result_failure_action', choices=('error', 'report'), default='error',
                     help='Handling of unestimable/invalid numerical LDSC results. Both modes save diagnostic estimates and pair/trait status. error stops; report completes collection with ldsc_results_diagnostic.csv. Structural errors still stop. Trait exclusion is a separate genomicPCA policy.')
 def main(argv=None):
@@ -156,6 +158,7 @@ def main(argv=None):
             'bcftools': args.bcftools,
             'backend': 'CBIIT/ldsc',
             'result_failure_action': args.result_failure_action,
+            'restart': args.restart,
             'ld_ref': ld_ref_dir,
             'ld_weights': ld_weights_dir,
             'result_export': {
@@ -233,7 +236,9 @@ def main(argv=None):
     if not input_df.empty:
         prepare_compilation_outputs(output_folder, args.result_failure_action)
         print("\n[3/4] Running LDSC Genetic Correlation...")
-        result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder, retries=args.ldsc_retries, runtime=runtime, ld_weights_dir=ld_weights_dir)
+        result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder,
+            retries=args.ldsc_retries, runtime=runtime, ld_weights_dir=ld_weights_dir,
+            restart=args.restart, checkpoint_parameters={'filters': filters, 'chisq_max': args.chisq_max})
 
         print("\n[4/4] Compiling final results...")
         result_path = compile_results(output_folder, result_files, input_df,

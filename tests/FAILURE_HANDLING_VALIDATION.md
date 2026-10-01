@@ -82,3 +82,46 @@ native regression or a full biological GWAMA analysis was rerun.
 The existing deterministic trait-removal heuristic is reused. It does not
 guarantee the largest complete subset and changes the analyzed trait set;
 exclusion audits and the retained manifest must accompany interpretation.
+
+## Restart validation (2026-10-01)
+
+`tests/test_restart.py` adds 16 tests in the same supported environment. All 16
+passed, including a real CLI/filter/compilation path with a simulated native
+regression command and runtime identity. Native numerical estimates in these
+tests are explicit fixtures, not newly estimated biological results.
+
+The full regression suite after this change ran 117 tests in 203.299 seconds:
+114 passed and the same three optional native-LDSC tests were skipped. Existing
+R matrix, interface and worker validation tests passed. `git diff --check` passed.
+
+Expected behavior matched observed results:
+
+- Four completed fixture batches: restart launched zero regression commands,
+  preserved result ordering and returned four `reused` statuses. Without
+  `--restart`, all four ran again.
+- One process interrupted after writing its result: only the three independently
+  completed batches had checkpoints. Restart launched exactly one regression.
+- Changed sumstats contents with the original modification time restored:
+  three affected batches reran and the independent B-B result was reused.
+- Changed LD scores, M files, regression weights, chi-square threshold, extraction
+  filters, either prevalence, or runtime source identity: affected results reran.
+- Identical decompressed sumstats with different gzip timestamps and extra
+  manifest annotations: all four results were reused. The real CLI re-filtered
+  ten-SNP inputs twice and produced byte-identical compiled results on restart.
+- Missing, empty or modified results; absent/corrupt checkpoints; changed batch
+  layout; malformed numerical text; missing required columns; incomplete or wrong
+  pair coverage: no incorrect completed result was reused. A truncated CSV with
+  a matching recorded checksum still failed pair-coverage validation.
+- Numerical missing-rg estimates remained unchanged and reportable during reuse.
+- Inputs changed during execution: no completion checkpoint was saved. Missing
+  references and invalid gzip inputs stopped before regression commands launched.
+- Runtime probe parsing, failure handling, native-source changes and CLI argument
+  propagation were tested. The native LDSC runtime itself remains unavailable
+  for fresh integration testing on this host.
+
+Hashing and reference-file selection were checked against the
+[Python hashlib documentation](https://docs.python.org/3/library/hashlib.html)
+and the pinned
+[CBIIT LDSC reference parser](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldscore/parse.py).
+Restart relies on the existing numerical reader and exact required batch
+coverage, and does not change regression, PCA or GWAMA calculations.

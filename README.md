@@ -337,22 +337,73 @@ The reuse directory must contain `{traitname}.sumstats.gz` (tab-separated
 For total-N traits, matching sidecars/file hashes are required. Legacy NEF files
 without sidecars are accepted with provenance warnings. Reuse does not reapply
 extraction/munging filters; recorded mismatches fail and unknown settings warn.
-It reruns all requested LDSC batches, rather than only failed batches.
+By default it reruns all requested LDSC batches. Add `--restart` to reuse
+verified completed batches in the same output directory.
+
+### Restarting interrupted LDSC runs
+
+Add `--restart` to the same command and keep the same `--outdir`:
+
+```bash
+ldsc-gpca ldsc \
+  --input "${python_csv}" \
+  --ldsc_only \
+  --munged_dir "${munge_dir}/" \
+  --ld_ref "${ld_ref}/" \
+  --outdir "${out_folder}/" \
+  --n_cores 90 \
+  --ldsc_retries 1 \
+  --chisq_max 80 \
+  --result_failure_action report \
+  --restart
+```
+
+Every new CLI run writes an atomic `.results.csv.checkpoint.json` after each
+batch exits successfully and its numerical table has all requested comparisons.
+`--restart` checks SHA-256 fingerprints of effective munged contents, LD scores
+and M files, regression weights, the batch command/prevalences, filter settings,
+the native LDSC/exporter source and runtime versions, and the saved result file.
+It reuses matching batches and reruns missing, interrupted, corrupt or changed
+batches. Checkpoints are independent, so an interrupted job does not invalidate
+other completed jobs. Results are recompiled and QC is reapplied in manifest order.
+
+Completed numerical estimation failures (for example, missing rg from negative
+h2) remain recorded and can be reused; restarting does not make those estimates
+valid. `--result_failure_action` still controls collection, and genomicPCA trait
+removal remains a separate explicit choice. Changing that collection policy or
+retry count does not invalidate otherwise matching regression results.
+
+**Older outputs without these checkpoints rerun once**, even when their names
+and `LDSC_Runtime.json` appear to match: those files cannot prove successful
+completion with the current inputs. Keep checkpoints beside the batch CSVs.
+Changing the worker count can change the batch layout and cause recomputation;
+keep it unchanged for the most predictable restart. Extra manifest annotation
+columns do not invalidate a batch. Gzip header timestamps are ignored when
+hashing effective sumstats, so repeated chi-square filtering with identical
+contents can reuse results.
+
+Restart applies to pairwise LDSC. `--ldsc_only` skips extraction and munging;
+chi-square filtering, content verification and final compilation still run.
+Content verification reads each shared input once per invocation and adds I/O.
+Keep inputs/runtime unchanged during a run and use one active command per output
+directory. The batch status report is updated as each job finishes, with
+`completed`, `reused`, `execution_failed` or `pending`, plus a restart reason.
 
 ### All Python LDSC options
 
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
 | `--input CSV` | Required | Trait manifest described above. |
-| `--outdir DIRECTORY` | Required | Results, intermediate files and logs. Use a fresh directory. |
+| `--outdir DIRECTORY` | Required | Results, intermediate files and logs. Reuse the same directory with `--restart`. |
 | `--ld_ref DIRECTORY` | Required | Chromosome LD-score reference directory. |
 | `--ld_weights DIRECTORY` | Same as `--ld_ref` | Regression weights directory. |
 | `--hm3 FILE` | Unset | Required unless `--ldsc_only`; HapMap `SNP,A1,A2` reference. |
 | `--n_cores INTEGER` | `5` | Concurrent local extraction, munging and LDSC workers; integer ≥1. |
 | `--result_failure_action {error,report}` | `error` | Save numerical failure diagnostics, then stop (`error`) or finish diagnostic collection (`report`). This does not authorize trait removal. |
 | `--ldsc_only` | Off | Skip extraction/munging and reuse munged files. |
+| `--restart` | Off | Reuse completed batches with matching input/parameter/runtime checkpoints; rerun unverified or changed batches. |
 | `--munged_dir DIRECTORY` | `<outdir>/ldsc_input` | Existing munged input directory in reuse mode. Leave unset for ordinary VCF runs. |
-| `--ldsc_retries INTEGER` | `1` | Additional attempts per failed LDSC command; ≥0. One means two total attempts. Does not retry result-validation failures. |
+| `--ldsc_retries INTEGER` | `1` | Additional attempts per failed LDSC command or malformed/incomplete export; ≥0. One means two total attempts. Numerical estimation failures are not retried. |
 | `--chisq_max FLOAT` | Unset; disabled | Finite positive threshold; independently retain `Z² <= value` in each munged trait before LDSC. Applies in both modes. |
 | `--exclude_mhc` | Off | Exclude the configured MHC interval during VCF extraction. |
 | `--mhc_chr STRING` | `6` | Chromosome label used for MHC exclusion; match the VCF's naming. |
@@ -387,7 +438,8 @@ LP can underflow to P=0 here and be removed by munging; inspect its logs.
 | `ldsc_results_diagnostic.csv` | All compiled estimates, including missing values; suitable for explicit downstream failure handling, not automatic approval for analysis. |
 | `LDSC_Pair_Status.csv`, `LDSC_Trait_Status.csv` | Numerical failures/warnings, exact trait names, manifest order and source file/row provenance. |
 | `LDSC_Compilation_Status.csv` | `compiled`, `estimation_failures`, `structural_failure`, or `incomplete`; action and result path. |
-| `ldsc_results/LDSC_Batch_Status.csv` | Completed and failed jobs after bounded execution retries. |
+| `ldsc_results/LDSC_Batch_Status.csv` | Completed, reused, failed and pending jobs; restart reasons and execution errors. |
+| `ldsc_results/*.results.csv.checkpoint.json` | Per-batch completion, request provenance and numerical-output checksum, used by `--restart`. |
 | `ldsc_results/` | Per-batch `.results.csv` numerical exports and readable logs. |
 | `ldsc_input/` | Newly munged `{traitname}.sumstats.gz` files and prevalence sidecars in the default VCF workflow. |
 | `munge_input/` | Intermediate extracted tables. |
@@ -415,7 +467,7 @@ well-formed estimates and QC reports. `error` then exits unsuccessfully;
 `report` finishes collection and returns the diagnostic table path when needed.
 Neither policy imputes, clips or repairs estimates. Raw batch CSVs remain intact.
 Malformed numeric text, missing columns/files and trait-name/coverage mismatches
-still fail in report mode. Missing, empty or unchanged batch exports trigger the
+still fail in report mode. Missing, malformed, incomplete or unchanged batch exports trigger the
 same bounded retries as command failures; valid numerical failures are not retried.
 
 For an explicitly chosen reduced-trait analysis, add
