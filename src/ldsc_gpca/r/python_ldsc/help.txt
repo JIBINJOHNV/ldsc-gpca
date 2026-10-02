@@ -3,7 +3,7 @@ usage: ldsc-gpca gpca --input MANIFEST.csv --ldsc_results LDSC.csv[.gz] --outdir
 Build genomic-PC1 weights and run the modified Fuertjes GWAMA method
 using a complete pairwise results table produced by Python ldsc.py.
 
-options:
+optional arguments:
   -h, --help            Show this help message and exit.
 
 Required inputs:
@@ -65,10 +65,15 @@ PCA settings:
                         covariance scales, only when each trait has one
                         populated scale. Ambiguity stops; no conversion.
                         Default: auto.
+  --rg_normalization {pair,trait_wide}
+                        Correlation source: 'pair' keeps native Python rg;
+                        'trait_wide' uses the precomputed rg_trait_wide column
+                        (normalization_status must be calculated). Original
+                        rg/SE/Z/P and CTI are preserved. Default: pair.
   --pca_matrix {correlation,covariance}
                         Matrix decomposed for PC1: 'correlation' uses S_Stand;
-                        'covariance' derives genetic covariance from rg and
-                        selected-scale self h2, following the tutorial
+                        'covariance' derives genetic covariance from selected
+                        rg and selected-scale self h2, following the tutorial
                         alternative procedure. CTI is unchanged. Default:
                         correlation.
   --pc1_orientation {tutorial,as_computed}
@@ -138,9 +143,9 @@ REQUIRED PYTHON LDSC COLUMNS
   Mixed-scale covariance requires --heritability_scale mixed.
 
 MATRIX DEFINITIONS
-  Correlation matrix: diagonal = 1; off-diagonal = rg
+  Correlation matrix: diagonal = 1; off-diagonal = selected rg normalization
   Covariance matrix:  diagonal = selected-scale self h2; off-diagonal =
-                      rg * sqrt(h2_1 * h2_2)
+                      selected rg * sqrt(h2_1 * h2_2)
   GWAMA CTI matrix:  diagonal = h2_int; off-diagonal = gcov_int
 
 PC1 SIGN CONVENTION

@@ -1,5 +1,36 @@
 # python_ldsc/covariance.R: function bodies preserved from the original workflow.
 
+select_correlation_matrix <- function(ldsc, rows, trait_order, normalization = "pair",
+                                      tolerance = 1e-3, epsilon = 1e-12,
+                                      out_of_range_action = "warn") {
+  if (normalization == "pair") return(ldsc$S_Stand[trait_order, trait_order, drop = FALSE])
+  if (normalization != "trait_wide") stop("Unknown rg normalization.", call. = FALSE)
+  rows <- rows[p1 %chin% trait_order & p2 %chin% trait_order]
+  if (!all(c("rg_trait_wide", "normalization_status") %in% names(rows)))
+    stop("trait_wide requires rg_trait_wide and normalization_status columns. Enrich the CSV with python -m ldsc_gpca.normalization first.", call. = FALSE)
+  values <- suppressWarnings(as.numeric(rows$rg_trait_wide))
+  bad <- !is.finite(values) | is.na(rows$normalization_status) | rows$normalization_status != "calculated"
+  if (any(bad)) stop("Trait-wide normalization unavailable for: ",
+    paste(head(paste(rows$p1[bad], rows$p2[bad], sep = " <-> "), 20L), collapse = ", "), call. = FALSE)
+  i <- match(rows$p1, trait_order); j <- match(rows$p2, trait_order)
+  pairs <- data.table(i = pmin(i, j), j = pmax(i, j), value = values)[,
+    .(value = mean(value), spread = max(value) - min(value)), by = .(i, j)]
+  if (any(pairs$spread > tolerance + epsilon))
+    stop("Conflicting duplicate rg_trait_wide values.", call. = FALSE)
+  if (any(abs(pairs$value[pairs$i == pairs$j] - 1) > epsilon))
+    stop("Self-pair rg_trait_wide must equal 1.", call. = FALSE)
+  matrix <- ldsc$S_Stand[trait_order, trait_order, drop = FALSE]
+  matrix[cbind(pairs$i, pairs$j)] <- matrix[cbind(pairs$j, pairs$i)] <- pairs$value
+  diag(matrix) <- 1
+  matrix <- validate_symmetric_matrix(matrix, "trait-wide genetic correlation matrix")
+  if (any(abs(matrix[upper.tri(matrix)]) > 1)) {
+    message <- "Trait-wide rg outside [-1,1]; values were not clamped."
+    if (out_of_range_action == "error") stop(message, call. = FALSE)
+    warning(message, call. = FALSE)
+  }
+  matrix
+}
+
 construct_genetic_covariance_matrix <- function(correlation_matrix,
                                                 heritability,
                                                 trait_order,
@@ -110,6 +141,8 @@ make_genetic_covariance_results <- function(correlation_results,
   covariance_results <- correlation_results[, c(
     "Trait_1", "Trait_2", "rg", "SE", "Z", "P"
   ), drop = FALSE]
+  for (column in intersect(c("rg_used", "RG_Normalization"), names(correlation_results)))
+    covariance_results[[column]] <- correlation_results[[column]]
   covariance_results$Heritability_Scale <- heritability_scale
   scales <- attr(covariance_matrix, "trait_scales", exact = TRUE)
   if (is.null(scales)) {
@@ -135,7 +168,7 @@ make_genetic_covariance_results <- function(correlation_results,
   ]
   h2_column <- if (heritability_scale == "mixed") "trait-specific h2" else heritability_column_sets[[heritability_scale]][1L]
   covariance_results$Derivation <- paste0(
-    "rg * sqrt(self ", h2_column, "_1 * self ", h2_column, "_2)"
+    "selected rg * sqrt(self ", h2_column, "_1 * self ", h2_column, "_2)"
   )
   covariance_results
 }

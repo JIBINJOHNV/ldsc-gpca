@@ -39,7 +39,10 @@ def write_results_csv(frame, path):
             prefix=".ldsc-results-", suffix=".tmp", delete=False,
         ) as handle:
             temporary = handle.name
-            frame.to_csv(handle, index=False, float_format=FLOAT_FORMAT)
+            if hasattr(frame, 'write_csv'):  # Polars annotation tables; native exports remain pandas.
+                frame.write_csv(handle.buffer)
+            else:
+                frame.to_csv(handle, index=False, float_format=FLOAT_FORMAT)
         os.replace(temporary, path)
     finally:
         if temporary is not None and os.path.exists(temporary):

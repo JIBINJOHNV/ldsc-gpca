@@ -48,3 +48,6 @@ results/
 !tests/test_restart.py
 !tests/test_ldsc_drop_traits.py
 !tests/test_ldsc_drop_traits.R
+!tests/test_normalization.py
+!tests/test_normalization.R
+!tests/NORMALIZATION_VALIDATION.md

@@ -836,6 +836,75 @@ selected using a significance threshold. Managed LDSC outputs may include both
 h2 scale pairs with unused cells empty and additional provenance columns;
 preserve these rather than deleting/relabeling them to force a scale.
 
+### Optional trait-wide correlation normalization
+
+Completed Python LDSC compilation automatically appends three columns using Polars:
+
+| New column | Meaning |
+| --- | --- |
+| `gcov_pair` | Pairwise genetic covariance reconstructed from the original rg and the two pair-specific h2 estimates. |
+| `rg_trait_wide` | Reconstructed covariance divided by the square root of the two **self-pair** h2 estimates; self-correlations are set to 1. |
+| `normalization_status` | `calculated` or the reason the new values are unavailable. |
+
+For traits A and B, the A–B row contains B's pair-specific h2; the B–A row
+supplies A's. The calculation is:
+
+```text
+gcov_pair(A,B)     = rg(A,B) × sqrt(h2_A_in_AB × h2_B_in_AB)
+rg_trait_wide(A,B) = gcov_pair(A,B) / sqrt(h2_A_self × h2_B_self)
+```
+
+The reconstruction uses the [ratio definition in the pinned Python LDSC source](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldscore/regressions.py#L702-L713).
+
+This postprocessing does not rerun LDSC or alter its original `rg`, `se`, `z`,
+`p`, h2 or intercept columns. Full precision results, both orientations and
+self-pairs from the same analysis/settings are required for reconstruction.
+A triangular table still works with the default PCA mode, but cannot supply both
+pair-specific h2 values for this calculation. Missing, non-positive, non-finite,
+conflicting h2, or ambiguous/inconsistent scales produce empty derived values
+and an explanatory status. Each trait's pair and self h2 must use the same scale;
+different traits may use different scales without conversion. The reconstructed
+covariance inherits those units. Values outside [-1,1] are not clamped.
+
+**PCA/GWAMA continues to use original Python `rg` by default**
+(`--rg_normalization pair`). Select the additional values explicitly:
+
+```bash
+ldsc-gpca gpca \
+  --input /data/selected_traits.csv \
+  --ldsc_results /results/python_ldsc/ldsc_results.csv \
+  --gpca_input_folder /data/genomicpca_inputs \
+  --splitby_chr nosplit \
+  --outdir /results/python_gpca_trait_wide \
+  --rg_normalization trait_wide
+```
+
+Add `--validate_only` to inspect PCA without GWAMA. Trait-wide mode requires
+finite `rg_trait_wide` values and `normalization_status=calculated` for every
+selected row. Existing coverage, duplicate and original-estimate QC still apply.
+It changes the PCA matrix and potentially PC1/GWAMA results; CTI stays unchanged.
+The matrix output contains the selected values; PC1/GWAMA and validation audits
+record `RG_Normalization`.
+`Global_Genetic_Correlations.csv` retains original rg/SE/Z/P and adds `rg_used`.
+**Original SE/Z/P describe original rg only**; no new SE, P value or `V_Stand`
+is inferred for the normalized estimate. This option addresses normalization,
+not LDSC regression-weight differences, and does not guarantee GenomicSEM equality
+or greater statistical accuracy. With covariance PCA, the selected rg is multiplied
+by self-pair h2; trait-wide mode therefore recovers the reconstructed pair covariance.
+
+To append the same columns to an older saved CSV without rerunning LDSC:
+
+```bash
+python -m ldsc_gpca.normalization \
+  --input /results/python_ldsc/ldsc_results.csv \
+  --out /results/python_ldsc/ldsc_results_with_normalization.csv
+```
+
+Input can be gzip-compressed; output is plain CSV. Original cell text and row order
+are preserved. Reusing the input path performs an atomic replacement; a separate
+output is useful for comparisons. Repeated annotation recalculates the three columns.
+See [normalization validation](tests/NORMALIZATION_VALIDATION.md) for real-data results.
+
 ### Native GenomicSEM results object
 
 For `ldsc-gpca genomicsem gpca --ldsc_results`, use a binary `.RData` containing
@@ -949,6 +1018,7 @@ These are accepted by `ldsc-gpca gpca`, **not** `ldsc-gpca genomicsem gpca`.
 
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
+| `--rg_normalization MODE` | `pair` | `pair` uses original `rg`; `trait_wide` uses precomputed `rg_trait_wide`. Changes PCA and downstream PC1/GWAMA, not CTI. |
 | `--heritability_scale MODE` | `auto` | `auto`, `observed`, `liability`, or `mixed`; policy described below. Selects h2 columns, not a conversion procedure. |
 | `--duplicate_tolerance FLOAT` | `0.001` | Finite positive maximum absolute difference between duplicate pair estimates, except z. |
 | `--duplicate_z_tolerance FLOAT` | `0.01` | Finite positive maximum absolute duplicate-z difference. |
@@ -963,7 +1033,7 @@ Scale policy:
 
 | Choice | Behavior |
 | --- | --- |
-| Correlation PCA + `auto` | Select each trait's only populated h2/SE scale; ignore entirely empty column pairs. Different traits can use different scales for h2 QC. Ambiguous populated scales fail. rg and CTI are not rescaled. |
+| Correlation PCA + `auto` | Select each trait's only populated h2/SE scale; ignore entirely empty column pairs. Different traits can use different scales for h2 QC. Ambiguous populated scales fail. This scale option does not rescale rg or CTI; correlation normalization is controlled separately. |
 | Covariance PCA + `auto` | Require one complete common self-h2/SE scale. Two complete scales or no complete common scale fails. |
 | `observed` or `liability` | Use that scale for all selected traits; no fallback or conversion. |
 | Covariance PCA + `mixed` | Explicitly permit trait-specific scales when each is unambiguous; warns about scale dependence. This does not establish common scientific units. |
@@ -1024,8 +1094,8 @@ override, the corresponding source column must exist. Retain the JSON audit.
 
 | Quantity | Python-table backend | Native backend |
 | --- | --- | --- |
-| Correlation PCA matrix | Diagonal 1; off-diagonal rg | `S_Stand` |
-| Covariance PCA matrix | Self h2 on diagonal; off-diagonal `rg × sqrt(h2_i × h2_j)` | Native `S`, on its supplied scales |
+| Correlation PCA matrix | Diagonal 1; off-diagonal original rg by default, or explicitly selected `rg_trait_wide` | `S_Stand` |
+| Covariance PCA matrix | Self h2 on diagonal; off-diagonal `selected rg × sqrt(h2_i × h2_j)` | Native `S`, on its supplied scales |
 | GWAMA CTI/error covariance | Self `h2_int` on diagonal; pairwise `gcov_int` off-diagonal | Native `I` |
 
 CTI must be symmetric and positive definite; it is not the genetic correlation

@@ -1,6 +1,6 @@
 # Managed GPCA input validation; summary-statistic/GWAMA headers are not modified here.
 check_gpca_cli_options <- function(arguments) {
-  groups <- list("--input", "--outdir", "--ldsc_results", "--n_cores", "--duplicate_tolerance")
+  groups <- list("--input", "--outdir", "--ldsc_results", "--n_cores", "--duplicate_tolerance", "--rg_normalization")
   for (group in groups) {
     values <- character()
     flags <- character()

@@ -167,7 +167,8 @@ read_python_ldsc_selected <- function(path, trait_order, chunk_size = 250000L,
     )
   }
   source_columns <- c(required_python_ldsc_base_columns,
-                      intersect(unlist(heritability_column_sets), names(header_table)))
+                      intersect(unlist(heritability_column_sets), names(header_table)),
+                      intersect(c("rg_trait_wide", "normalization_status"), names(header_table)))
 
   retained_chunks <- list()
   retained_index <- 0L

@@ -291,6 +291,13 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
     for table in (df, pairs):
         table.sort_values(['p1', 'p2'], key=lambda x: x.map(order), kind='stable', inplace=True)
         table.reset_index(drop=True, inplace=True)
+    from .normalization import add_trait_wide_columns, DERIVED_COLUMNS
+    import polars as pl
+    annotations = add_trait_wide_columns(pl.DataFrame(
+        {name: df[name].to_numpy() for name in ('p1', 'p2', 'rg', 'h2_obs', 'h2_liab')},
+        schema_overrides={'p1': pl.String, 'p2': pl.String}))
+    for name in DERIVED_COLUMNS:
+        df[name] = annotations[name].to_numpy()
     failed = pairs.Status.ne('valid')
     diagnostic = os.path.join(output_folder, 'ldsc_results_diagnostic.csv')
     write_results_csv(df, diagnostic)

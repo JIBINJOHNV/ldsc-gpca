@@ -629,8 +629,8 @@ R failure, explicitly supply that folder next time.
 
 | Quantity | Python-table backend | Native GenomicSEM backend |
 | --- | --- | --- |
-| Correlation PCA matrix | Diagonal 1; off-diagonal rg | `S_Stand` |
-| Covariance PCA matrix | Diagonal selected self h2; off-diagonal `rg × sqrt(h2_i × h2_j)` | Native `S`, on its supplied scales |
+| Correlation PCA matrix | Diagonal 1; off-diagonal original rg (default), or `rg_trait_wide` with explicit `--rg_normalization trait_wide` | `S_Stand` |
+| Covariance PCA matrix | Diagonal selected self h2; off-diagonal `selected rg × sqrt(h2_i × h2_j)` | Native `S`, on its supplied scales |
 | GWAMA CTI | Diagonal self `h2_int`; off-diagonal `gcov_int` | Native `I` |
 
 CTI is the LDSC intercept/error-covariance matrix used by GWAMA, **not** the genetic
@@ -645,6 +645,15 @@ negative; `as_computed` retains the arbitrary eigenvector sign. This changes the
 PC's direction, not association strength. Interpret downstream effect signs and
 genetic correlations relative to the recorded PC orientation, not as an intrinsic
 biological “positive” direction.
+
+### Optional Python correlation normalization
+
+Python LDSC compilation appends `gcov_pair`, `rg_trait_wide` and
+`normalization_status` without replacing original estimates. PCA/GWAMA defaults
+to `--rg_normalization pair`; `trait_wide` selects the new correlation and requires
+all selected annotations to be available. CTI remains unchanged. Original SE/Z/P
+remain diagnostics for original rg only. See the [formula, limitations and commands](../README.md#optional-trait-wide-correlation-normalization)
+and [real-data validation](../tests/NORMALIZATION_VALIDATION.md).
 
 ### Default GPCA checks
 
@@ -687,7 +696,7 @@ for trait h2 QC and covariance construction.
 
 | Policy | Behavior |
 | --- | --- |
-| Correlation + `auto` | Select the only populated scale per trait; different traits may use observed/liability scales for QC. Both populated for a trait is ambiguous and stops. rg and CTI are not rescaled. |
+| Correlation + `auto` | Select the only populated scale per trait; different traits may use observed/liability scales for QC. Both populated for a trait is ambiguous and stops. This scale option does not rescale rg or CTI. |
 | Covariance + `auto` | Require exactly one complete common self-h2/SE scale across the selected traits, then finite positive values. Two complete scales or no complete common scale stops. |
 | `observed` or `liability` | Explicitly select that scale for all traits; no fallback or conversion. |
 | Covariance + `mixed` | Explicit opt-in to trait-specific scales; each trait still needs one unambiguous populated scale and complete valid self h2/SE. Warns about scale dependence. |

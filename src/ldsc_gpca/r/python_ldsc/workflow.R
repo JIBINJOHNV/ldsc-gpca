@@ -109,7 +109,14 @@ gpsca_analysis <- function(args) {
 
   # Manifest order is authoritative for every analysis object.
   order <- trait_order
-  correlation_matrix <- ldsc$S_Stand[order, order, drop = FALSE]
+  normalization <- if (is.null(args$rg_normalization)) "pair" else args$rg_normalization
+  correlation_matrix <- select_correlation_matrix(ldsc, selected_ldsc, order,
+    normalization, args$duplicate_tolerance, args$comparison_epsilon, args$rg_out_of_range_action)
+  ldsc$validation_summary$RG_Normalization <- normalization
+  ldsc$genetic_correlation_results$RG_Normalization <- normalization
+  ldsc$genetic_correlation_results$rg_used <- correlation_matrix[cbind(
+    match(ldsc$genetic_correlation_results$Trait_1, order),
+    match(ldsc$genetic_correlation_results$Trait_2, order))]
   CTI <- ldsc$I[order, order, drop = FALSE]
   covariance_matrix <- NULL
   genetic_covariance_results <- NULL
@@ -126,6 +133,8 @@ gpsca_analysis <- function(args) {
       heritability_scale = ldsc$heritability_scale,
       trait_scales = ldsc$heritability_results$Heritability_Scale
     )
+    if (normalization == "trait_wide") attr(covariance_matrix, "source") <-
+      "rg_trait_wide * sqrt(self h2 trait 1 * self h2 trait 2); reconstructed pairwise genetic covariance"
     covariance_reconstruction_error <- attr(
       covariance_matrix,
       "maximum_reconstruction_error",
@@ -153,6 +162,8 @@ gpsca_analysis <- function(args) {
   )
   pc1$loading_results$Heritability_Scale_Used <-
     ldsc$heritability_scale
+  pc1$loading_results$RG_Normalization <- normalization
+  pc1$eigenvalue_results$RG_Normalization <- normalization
   pc1$eigenvalue_results$Heritability_Scale_Used <-
     ldsc$heritability_scale
   ldsc$validation_summary$PCA_Matrix_Type <- args$pca_matrix
@@ -203,6 +214,7 @@ gpsca_analysis <- function(args) {
   if (isTRUE(args$validate_only)) {
     validation_status <- data.frame(
       Chromosome = "not_run_validate_only",
+      RG_Normalization = normalization,
       PCA_Matrix_Type = args$pca_matrix,
       Heritability_Scale_Used = ldsc$heritability_scale,
       Success = NA,
@@ -277,6 +289,7 @@ gpsca_analysis <- function(args) {
 
   run_status <- make_run_status(gwama_results)
   run_status$PCA_Matrix_Type <- args$pca_matrix
+  run_status$RG_Normalization <- normalization
   run_status$Heritability_Scale_Used <- ldsc$heritability_scale
   write.csv(
     run_status,

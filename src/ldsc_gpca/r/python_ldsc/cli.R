@@ -130,9 +130,9 @@ parse_command_line <- function() {
       "  Auto ignores empty pairs; ambiguous populated scales require a choice.\n",
       "  Mixed-scale covariance requires --heritability_scale mixed.\n\n",
       "MATRIX DEFINITIONS\n",
-      "  Correlation matrix: diagonal = 1; off-diagonal = rg\n",
+      "  Correlation matrix: diagonal = 1; off-diagonal = selected rg normalization\n",
       "  Covariance matrix:  diagonal = selected-scale self h2; off-diagonal =\n",
-      "                      rg * sqrt(h2_1 * h2_2)\n",
+      "                      selected rg * sqrt(h2_1 * h2_2)\n",
       "  GWAMA CTI matrix:  diagonal = h2_int; off-diagonal = gcov_int\n\n",
       "PC1 SIGN CONVENTION\n",
       "  Default --pc1_orientation tutorial: multiply the entire PC1 loading\n",
@@ -291,12 +291,22 @@ parse_command_line <- function() {
     )
   )
   pca_settings$add_argument(
+    "--rg_normalization",
+    choices = c("pair", "trait_wide"),
+    default = "pair",
+    help = paste(
+      "Correlation source: 'pair' keeps native Python rg; 'trait_wide' uses",
+      "the precomputed rg_trait_wide column (normalization_status must be calculated).",
+      "Original rg/SE/Z/P and CTI are preserved. Default: pair."
+    )
+  )
+  pca_settings$add_argument(
     "--pca_matrix",
     choices = c("correlation", "covariance"),
     default = "correlation",
     help = paste(
       "Matrix decomposed for PC1: 'correlation' uses S_Stand; 'covariance'",
-      "derives genetic covariance from rg and selected-scale self h2, following the",
+      "derives genetic covariance from selected rg and selected-scale self h2, following the",
       "tutorial alternative procedure. CTI is unchanged. Default: correlation."
     )
   )
