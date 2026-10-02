@@ -68,9 +68,9 @@ pd.set_option('display.float_format', '{:.4f}'.format)
 args = SimpleNamespace(out=sys.argv[1], samp_prev=None, pop_prev=None)
 hsq = SimpleNamespace(tot=0.06123456789123456, tot_se=0.01234567891234567,
                       intercept=1.0123456789123456, intercept_se=1.234567891234567e-08)
-cov = SimpleNamespace(intercept=0.21234567891234567, intercept_se=2.345678912345678e-09)
+cov = SimpleNamespace(tot=0.06123456789123456, intercept=0.21234567891234567, intercept_se=2.345678912345678e-09)
 estimate = SimpleNamespace(rg_ratio=0.9999999999999876, rg_se=1.9647123456789123e-06,
-                           z=508990.39251234567, p=3.212345678912345e-100, hsq2=hsq, gencov=cov)
+                           z=508990.39251234567, p=3.212345678912345e-100, hsq1=hsq, hsq2=hsq, gencov=cov)
 expected = native._get_rg_table(['A', 'A'], [estimate], args)
 with export_rg_tables(native, pd) as paths:
     observed = native._get_rg_table(['A', 'A'], [estimate], args)
@@ -80,7 +80,8 @@ data = pd.read_csv(paths[0], float_precision='round_trip')
 for column, value in {'rg': estimate.rg_ratio, 'se': estimate.rg_se, 'z': estimate.z,
                       'p': estimate.p, 'h2_obs': hsq.tot, 'h2_obs_se': hsq.tot_se,
                       'h2_int': hsq.intercept, 'h2_int_se': hsq.intercept_se,
-                      'gcov_int': cov.intercept, 'gcov_int_se': cov.intercept_se}.items():
+                      'gcov_int': cov.intercept, 'gcov_int_se': cov.intercept_se,
+                      'gcov_native_obs': cov.tot, 'h2_p1_pair_obs': hsq.tot, 'h2_p2_pair_obs': hsq.tot}.items():
     assert data[column].iloc[0] == value, column
 print('Exact native estimates preserved; readable rendering unchanged.')
 """

@@ -59,6 +59,25 @@ class NumericalCsvTests(unittest.TestCase):
         self.assertEqual(set(zip(compiled.p1, compiled.p2)),
                          {(a, b) for a in ("A", "B", "C") for b in ("A", "B", "C")})
 
+    def test_native_fields_survive_compilation_with_one_read_and_no_log_parsing(self):
+        from ldsc_gpca.ldsc_export import NATIVE_COLUMNS
+        row = record()
+        row.update(gcov_native_obs=row['rg']*row['h2_obs'],
+                   h2_p1_pair_obs=row['h2_obs'],h2_p2_pair_obs=row['h2_obs'])
+        actual = self.compile(pd.DataFrame([row]))
+        for column,value in row.items():
+            if column not in ('p1','p2'): self.assertEqual(actual[column].iloc[0],value)
+        self.assertEqual(actual.normalization_status.iloc[0], 'calculated')
+        self.assertEqual(actual.rg_trait_wide.iloc[0], 1.)
+        for value in (None, float('inf'), -.1):
+            bad=dict(row,h2_p1_pair_obs=value)
+            actual=self.compile(pd.DataFrame([bad]))
+            self.assertEqual(actual.rg.iloc[0],row['rg'])
+            self.assertEqual(actual.normalization_status.iloc[0],'invalid_native_estimate')
+        for data, message in [(pd.DataFrame([row]).drop(columns=NATIVE_COLUMNS[0]), 'Incomplete native'),
+                              (pd.DataFrame([dict(row,gcov_native_obs='bad')]),'Non-numeric')]:
+            with self.assertRaisesRegex(RuntimeError,message): self.compile(data)
+
     def test_preserves_existing_observed_and_liability_mapping(self):
         observed = pd.DataFrame([record("A", "A")])
         liability = pd.DataFrame([record("A", "B")]).rename(

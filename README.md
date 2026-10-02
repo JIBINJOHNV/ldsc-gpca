@@ -838,30 +838,50 @@ preserve these rather than deleting/relabeling them to force a scale.
 
 ### Optional trait-wide correlation normalization
 
-Completed Python LDSC compilation automatically appends three columns using Polars:
+Managed Python LDSC exports three additional values directly from each fitted
+pair, before formatting the readable log. Compilation retains them and adds the
+normalization columns in memory using Polars, without rereading the final CSV:
 
 | New column | Meaning |
 | --- | --- |
-| `gcov_pair` | Pairwise genetic covariance reconstructed from the original rg and the two pair-specific h2 estimates. |
-| `rg_trait_wide` | Reconstructed covariance divided by the square root of the two **self-pair** h2 estimates; self-correlations are set to 1. |
+| `gcov_native_obs` | Native genetic covariance: `RG.gencov.tot`, on the unconverted observed scale. |
+| `h2_p1_pair_obs` | First trait's pair-specific heritability: `RG.hsq1.tot`, on the unconverted observed scale. |
+| `h2_p2_pair_obs` | Second trait's pair-specific heritability: `RG.hsq2.tot`, on the unconverted observed scale. |
+| `gcov_pair` | Covariance reconstructed from original rg and the pair-specific h2 values, on their reported scales. Retained for compatibility. |
+| `rg_trait_wide` | Native covariance divided by the square root of the two **self-pair** observed h2 estimates; self-correlations are set to 1. Older exports use reconstructed covariance. |
 | `normalization_status` | `calculated` or the reason the new values are unavailable. |
 
-For traits A and B, the A–B row contains B's pair-specific h2; the B–A row
-supplies A's. The calculation is:
+For new native exports, each pair already contains both heritabilities:
 
 ```text
-gcov_pair(A,B)     = rg(A,B) × sqrt(h2_A_in_AB × h2_B_in_AB)
-rg_trait_wide(A,B) = gcov_pair(A,B) / sqrt(h2_A_self × h2_B_self)
+rg(A,B)           = gcov_native_obs(A,B) / sqrt(h2_p1_pair_obs × h2_p2_pair_obs)
+rg_trait_wide(A,B) = gcov_native_obs(A,B) / sqrt(h2_A_self_obs × h2_B_self_obs)
 ```
 
 The reconstruction uses the [ratio definition in the pinned Python LDSC source](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldscore/regressions.py#L702-L713).
 
-This postprocessing does not rerun LDSC or alter its original `rg`, `se`, `z`,
-`p`, h2 or intercept columns. Full precision results, both orientations and
-self-pairs from the same analysis/settings are required for reconstruction.
-A triangular table still works with the default PCA mode, but cannot supply both
-pair-specific h2 values for this calculation. Missing, non-positive, non-finite,
-conflicting h2, or ambiguous/inconsistent scales produce empty derived values
+The native fields are exported without liability conversion, even when the
+original `h2_liab` column is liability-scale. If the analysis uses effective
+sample size (NEF), “observed” here means LDSC's unconverted output; it does not
+assert that NEF-based h2 has the usual population observed-scale interpretation.
+Self denominators come from `h2_p2_pair_obs` on A–A and B–B rows. A triangular
+table with these native fields and all self-pairs supports trait-wide normalization.
+Native covariance and pair h2 must reproduce original rg, and reported/native
+h2 scale factors must agree with the corresponding self-pair.
+
+Older files without native fields retain the existing fallback: the A–B row
+supplies B's pair h2 and the B–A row supplies A's; `gcov_pair = rg ×
+sqrt(h2_A_pair × h2_B_pair)`, then divide by `sqrt(h2_A_self × h2_B_self)`.
+This fallback requires full precision results, both orientations and self-pairs
+from the same analysis/settings. It does not manufacture native export columns.
+
+Neither export nor normalization changes original `rg`, `se`, `z`, `p`, h2,
+intercepts or readable logs, and no extra regressions are added to a fresh run.
+Existing restart checkpoints are invalidated by the changed exporter fingerprint;
+rerunning LDSC obtains native fields for old batches. The standalone annotation
+command below can instead reuse older CSVs through the reconstruction fallback.
+Missing, non-positive, non-finite or conflicting h2, and ambiguous/inconsistent
+scales produce empty derived values
 and an explanatory status. Each trait's pair and self h2 must use the same scale;
 different traits may use different scales without conversion. The reconstructed
 covariance inherits those units. Values outside [-1,1] are not clamped.
@@ -903,7 +923,8 @@ python -m ldsc_gpca.normalization \
 Input can be gzip-compressed; output is plain CSV. Original cell text and row order
 are preserved. Reusing the input path performs an atomic replacement; a separate
 output is useful for comparisons. Repeated annotation recalculates the three columns.
-See [normalization validation](tests/NORMALIZATION_VALIDATION.md) for real-data results.
+See [normalization validation](tests/NORMALIZATION_VALIDATION.md) and
+[native-export validation](tests/NATIVE_EXPORT_VALIDATION.md) for real-data results.
 
 ### Native GenomicSEM results object
 

@@ -4,14 +4,14 @@ import csv
 import gzip
 from pathlib import Path
 import polars as pl
-from .ldsc_export import write_results_csv
+from .ldsc_export import NATIVE_COLUMNS, write_results_csv
 
 
 DERIVED_COLUMNS = ('gcov_pair', 'rg_trait_wide', 'normalization_status')
 
 
 def add_trait_wide_columns(frame):
-    """Use p2 h2, its reverse orientation and self-pairs in three Polars joins.
+    """Prefer native covariance and observed self h2; reconstruct older exports.
 
     Exactly one populated scale is required per row, matching that trait's
     self-pair. Mixed traits are supported without converting their scales.
@@ -27,13 +27,18 @@ def add_trait_wide_columns(frame):
                 if name in frame.columns else pl.lit(None, dtype=pl.Float64))
 
     rows = frame.select('p1', 'p2', numeric('rg').alias('_rg'),
-                        numeric('h2_obs').alias('_obs'), numeric('h2_liab').alias('_liab'))
+        numeric('h2_obs').alias('_obs'), numeric('h2_liab').alias('_liab'),
+        *[numeric(name).alias(alias) for name, alias in zip(NATIVE_COLUMNS, ('_ncov', '_n1', '_n2'))])
     rows = rows.with_row_index('_row').with_columns(
+        pl.any_horizontal(pl.col(name).is_not_null() for name in ('_ncov', '_n1', '_n2')).alias('_native'),
         pl.coalesce('_obs', '_liab').alias('_h2'),
         pl.when(pl.col('_obs').is_not_null() & pl.col('_liab').is_null()).then(pl.lit('observed'))
         .when(pl.col('_liab').is_not_null() & pl.col('_obs').is_null()).then(pl.lit('liability'))
         .otherwise(None).alias('_scale'),
-    ).with_columns(pl.struct('_h2', '_scale').n_unique().over('p1', 'p2').alias('_count'))
+    ).with_columns(
+        pl.struct('_h2', '_scale').n_unique().over('p1', 'p2').alias('_count'),
+        pl.struct('_ncov', '_n1', '_n2').n_unique().over('p1', 'p2').alias('_native_count'),
+        pl.when(pl.col('_native')).then(pl.col('_n2')).otherwise(pl.col('_obs')).alias('_native_h2'))
     lookup = rows.unique(subset=['p1', 'p2'], keep='first')
     rows = rows.join(lookup.select(pl.col('p2').alias('p1'), pl.col('p1').alias('p2'),
         pl.col('_h2').alias('_other_h2'), pl.col('_scale').alias('_other_scale'),
@@ -42,7 +47,26 @@ def add_trait_wide_columns(frame):
     for key, suffix in [('p1', 'a'), ('p2', 'b')]:
         rows = rows.join(self_pairs.select(pl.col('p1').alias(key),
             *[pl.col('_' + field).alias(f'_self_{suffix}_{field}')
-              for field in ('h2', 'scale', 'count')]), on=key, how='left', validate='m:1', coalesce=True)
+              for field in ('h2', 'scale', 'count', 'native_h2', 'native_count')]),
+            on=key, how='left', validate='m:1', coalesce=True)
+
+    native = pl.col('_native')
+    # Keep gcov_pair on its historical reported h2 scales. Native normalization
+    # uses only observed-scale quantities, so liability conversion cannot leak in.
+    rows = rows.with_columns(
+        pl.when(native).then(pl.col('_n1') * pl.col('_self_a_h2') / pl.col('_self_a_native_h2'))
+        .otherwise(pl.col('_other_h2')).alias('_other_h2'),
+        pl.when(native).then(pl.col('_self_a_scale')).otherwise(pl.col('_other_scale')).alias('_other_scale'),
+        pl.when(native).then(pl.lit(1)).otherwise(pl.col('_other_count')).alias('_other_count'))
+    native_unique = pl.all_horizontal(pl.col(name) == 1 for name in
+        ('_native_count', '_self_a_native_count', '_self_b_native_count'))
+    native_valid = pl.col('_ncov').is_finite() & pl.all_horizontal(
+        pl.col(name).is_finite() & (pl.col(name) > 0)
+        for name in ('_n1', '_n2', '_self_a_native_h2', '_self_b_native_h2'))
+    native_rg = pl.col('_ncov') / pl.col('_n1').sqrt() / pl.col('_n2').sqrt()
+    scale_ratio = (pl.col('_h2') / pl.col('_n2')) / (pl.col('_self_b_h2') / pl.col('_self_b_native_h2'))
+    consistent = ((native_rg - pl.col('_rg')).abs() <= 1e-10 + 1e-8 * pl.col('_rg').abs()) & \
+                 ((scale_ratio - 1).abs() <= 1e-8)
 
     h2_columns = ('_h2', '_other_h2', '_self_a_h2', '_self_b_h2')
     unique = pl.all_horizontal(pl.col(name) == 1 for name in
@@ -55,14 +79,18 @@ def add_trait_wide_columns(frame):
         .when(pl.col('_self_a_count').is_null() | pl.col('_self_b_count').is_null())
         .then(pl.lit('missing_self_pair'))
         .when(~unique).then(pl.lit('ambiguous_heritability'))
+        .when(native & ~native_unique.fill_null(False)).then(pl.lit('ambiguous_native_estimate'))
+        .when(native & ~native_valid.fill_null(False)).then(pl.lit('invalid_native_estimate'))
         .when(~positive.fill_null(False) | ~pl.col('_rg').is_finite().fill_null(False))
         .then(pl.lit('invalid_estimate'))
         .when(~same_scale.fill_null(False)).then(pl.lit('incompatible_or_ambiguous_scale'))
+        .when(native & ~consistent.fill_null(False)).then(pl.lit('inconsistent_native_estimate'))
         .otherwise(pl.lit('calculated')))
     rows = rows.with_columns(status.alias('normalization_status'),
         (pl.col('_rg') * pl.col('_h2').sqrt() * pl.col('_other_h2').sqrt()).alias('gcov_pair'))
     rows = rows.with_columns(
         pl.when(pl.col('p1') == pl.col('p2')).then(1.0)
+        .when(native).then(pl.col('_ncov') / pl.col('_self_a_native_h2').sqrt() / pl.col('_self_b_native_h2').sqrt())
         .otherwise(pl.col('gcov_pair') / pl.col('_self_a_h2').sqrt() / pl.col('_self_b_h2').sqrt())
         .alias('rg_trait_wide'))
     rows = rows.with_columns(pl.when(

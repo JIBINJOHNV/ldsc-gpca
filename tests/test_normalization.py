@@ -14,6 +14,7 @@ from pathlib import Path
 import polars as pl
 from polars.testing import assert_frame_equal
 from ldsc_gpca.normalization import add_trait_wide_columns, main, DERIVED_COLUMNS
+from ldsc_gpca.ldsc_export import NATIVE_COLUMNS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,6 +29,16 @@ def fixture():
             rg = 1.0 if i == j else (-.3 if {i, j} == {0, 1} else 1.02 if {i, j} == {2, 3} else .4)
             rows.append(dict(p1=a, p2=b, rg=rg, h2_obs=h2[j] * (1 if i == j else .8 + i/10),
                              se=.05, z=rg/.05, p=1e-310, metadata='0001'))
+    return pl.DataFrame(rows)
+
+
+def native_fixture():
+    rows = fixture().to_dicts()
+    lookup = {(r['p1'], r['p2']): r['h2_obs'] for r in rows}
+    for r in rows:
+        r['h2_p1_pair_obs'] = lookup[r['p2'], r['p1']]
+        r['h2_p2_pair_obs'] = r['h2_obs']
+        r['gcov_native_obs'] = r['rg'] * math.sqrt(r['h2_p1_pair_obs'] * r['h2_p2_pair_obs'])
     return pl.DataFrame(rows)
 
 
@@ -67,6 +78,62 @@ class NormalizationTests(unittest.TestCase):
         self.assertLess(observed.filter((pl.col('p1') == 'D') & (pl.col('p2') == 'NA'))['rg_trait_wide'][0], 0)
         self.assertGreater(observed.filter((pl.col('p1') == 'B') & (pl.col('p2') == 'C'))['rg_trait_wide'][0], 1)
         assert_frame_equal(add_trait_wide_columns(observed), observed)
+
+    def test_native_covariance_works_without_reverse_rows_and_preserves_inputs(self):
+        source = native_fixture().filter(pl.col('p1') <= pl.col('p2')).reverse()
+        result = add_trait_wide_columns(source)
+        assert_frame_equal(result.select(source.columns), source)
+        expected = add_trait_wide_columns(fixture())
+        for row in result.to_dicts():
+            old = expected.filter((pl.col('p1') == row['p1']) & (pl.col('p2') == row['p2'])).row(0,named=True)
+            self.assertEqual(row['normalization_status'], 'calculated')
+            for column in ('gcov_pair','rg_trait_wide'):
+                self.assertAlmostEqual(row[column], old[column], places=14)
+        assert_frame_equal(add_trait_wide_columns(result), result)
+
+    def test_native_normalization_uses_unconverted_h2_with_mixed_reported_scales(self):
+        source = native_fixture()
+        converted = source.with_columns(
+            pl.when(pl.col('p2')=='D').then(pl.col('h2_obs')*2).otherwise(None).alias('h2_liab'),
+            pl.when(pl.col('p2')!='D').then(pl.col('h2_obs')).otherwise(None).alias('h2_obs'))
+        native_result = add_trait_wide_columns(converted)
+        legacy_result = add_trait_wide_columns(converted.drop(NATIVE_COLUMNS))
+        self.assertEqual(set(native_result['normalization_status']), {'calculated'})
+        for column in ('gcov_pair','rg_trait_wide'):
+            assert_frame_equal(native_result.select(column),legacy_result.select(column))
+        assert_frame_equal(native_result.select('rg_trait_wide'),add_trait_wide_columns(source).select('rg_trait_wide'))
+        bad = converted.with_columns(pl.when(pl.col('p1')!='D').then(pl.col('h2_liab')*2)
+                                     .otherwise(pl.col('h2_liab')).alias('h2_liab'))
+        self.assertIn('inconsistent_native_estimate',add_trait_wide_columns(bad)['normalization_status'])
+
+    def test_native_invalid_partial_conflicting_and_inconsistent_values_are_explicit(self):
+        source = native_fixture()
+        for column,value in [('gcov_native_obs',float('inf')),('gcov_native_obs',None),
+                             ('h2_p1_pair_obs',0),('h2_p2_pair_obs',-.1),('h2_p1_pair_obs',float('nan'))]:
+            with self.subTest(column=column,value=value):
+                bad = source.with_columns(pl.lit(value,dtype=pl.Float64).alias(column))
+                result = add_trait_wide_columns(bad)
+                self.assertEqual(set(result['normalization_status']), {'invalid_native_estimate'})
+                self.assertEqual(result['rg_trait_wide'].null_count(), len(result))
+        bad=source.with_columns((pl.col('gcov_native_obs')+.01).alias('gcov_native_obs'))
+        self.assertEqual(set(add_trait_wide_columns(bad)['normalization_status']), {'inconsistent_native_estimate'})
+        same=pl.concat([source,source.head(1)])
+        self.assertEqual(set(add_trait_wide_columns(same)['normalization_status']), {'calculated'})
+        conflict=pl.concat([source,source.head(1).with_columns(pl.lit(.8).alias('h2_p1_pair_obs'))])
+        result=add_trait_wide_columns(conflict).filter((pl.col('p1')=='D')|(pl.col('p2')=='D'))
+        self.assertEqual(set(result['normalization_status']), {'ambiguous_native_estimate'})
+        missing_self=source.filter(~((pl.col('p1')=='D')&(pl.col('p2')=='D')))
+        self.assertIn('missing_self_pair', add_trait_wide_columns(missing_self)['normalization_status'])
+
+    def test_blank_native_fields_support_legacy_exports_and_zero_covariance_is_valid(self):
+        source=fixture().with_columns(*[pl.lit(None,dtype=pl.Float64).alias(c) for c in NATIVE_COLUMNS])
+        assert_frame_equal(add_trait_wide_columns(source).select(*DERIVED_COLUMNS),
+                           add_trait_wide_columns(fixture()).select(*DERIVED_COLUMNS))
+        zero=native_fixture().with_columns(*[pl.when(pl.col('p1')!=pl.col('p2')).then(0.)
+                            .otherwise(pl.col(c)).alias(c) for c in ('rg','gcov_native_obs')])
+        result=add_trait_wide_columns(zero)
+        self.assertEqual(set(result['normalization_status']), {'calculated'})
+        self.assertTrue((result.filter(pl.col('p1')!=pl.col('p2'))['rg_trait_wide']==0).all())
 
     def test_missing_reverse_or_self_is_explicit_and_never_imputed(self):
         source = fixture()

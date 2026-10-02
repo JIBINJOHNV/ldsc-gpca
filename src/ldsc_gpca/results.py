@@ -5,8 +5,8 @@ import re
 import csv
 import uuid
 import pandas as pd
-from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, write_results_csv
-from .result_qc import result_status, trait_status
+from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, NATIVE_COLUMNS, write_results_csv
+from .result_qc import result_status, trait_status, _missing_value
 from .trait_selection import select_complete_traits
 
 
@@ -147,8 +147,16 @@ def _read_numerical_csv(path, *, allow_failed=False):
     for column in ['p1', 'p2']:
         if frame[column].isna().any() or frame[column].str.strip().eq('').any():
             raise RuntimeError(f'Missing LDSC trait identifier {column} in {path}')
-    # Extra annotation columns do not enter validation, deduplication or analysis.
-    frame = frame[list(BASE_RESULT_COLUMNS) + [c for pair in h2_columns for c in pair]].copy()
+    native_columns = [c for c in NATIVE_COLUMNS if c in frame]
+    if native_columns and len(native_columns) != len(NATIVE_COLUMNS):
+        raise RuntimeError(f'Incomplete native LDSC columns in {path}: require {NATIVE_COLUMNS}')
+    # Preserve native exports; unrelated annotation columns remain excluded.
+    frame = frame[list(BASE_RESULT_COLUMNS) + [c for pair in h2_columns for c in pair] + native_columns].copy()
+    for column in native_columns:
+        try:
+            frame[column] = frame[column].where(~_missing_value(frame[column]), float('nan')).map(float)
+        except (ValueError, TypeError) as error:
+            raise RuntimeError(f'Non-numeric LDSC {column} in {path}') from error
     status = result_status(frame, path)
     if not allow_failed and status.Status.eq('failed_estimate').any():
         raise RuntimeError(f'{status.loc[status.Status.eq("failed_estimate"), "Reason"].iloc[0]} in {path}')
@@ -294,7 +302,7 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
     from .normalization import add_trait_wide_columns, DERIVED_COLUMNS
     import polars as pl
     annotations = add_trait_wide_columns(pl.DataFrame(
-        {name: df[name].to_numpy() for name in ('p1', 'p2', 'rg', 'h2_obs', 'h2_liab')},
+        {name: df[name].to_numpy() for name in ('p1', 'p2', 'rg', 'h2_obs', 'h2_liab', *NATIVE_COLUMNS) if name in df},
         schema_overrides={'p1': pl.String, 'p2': pl.String}))
     for name in DERIVED_COLUMNS:
         df[name] = annotations[name].to_numpy()

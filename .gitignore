@@ -15,6 +15,7 @@ tests/*
 !tests/test_results_csv.py
 !tests/test_ldsc_runtime.py
 !tests/RESULT_EXPORT_VALIDATION.md
+!tests/NATIVE_EXPORT_VALIDATION.md
 !tests/test_threads_and_workers.py
 !tests/THREADS_VALIDATION.md
 .github/

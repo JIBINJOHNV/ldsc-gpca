@@ -20,6 +20,7 @@ BASE_RESULT_COLUMNS = (
 HERITABILITY_COLUMNS = (
     ("h2_obs", "h2_obs_se"), ("h2_liab", "h2_liab_se"),
 )
+NATIVE_COLUMNS = ('gcov_native_obs', 'h2_p1_pair_obs', 'h2_p2_pair_obs')
 
 
 def has_result_columns(columns):
@@ -71,10 +72,15 @@ def export_rg_tables(sumstats, pandas):
                 raise RuntimeError("Unsupported LDSC result-table schema; no estimates were exported.")
             if captures:
                 raise RuntimeError("Native LDSC rendered more than one result table per batch.")
-            # Preserve native log output; export this same frame, not its rendered text.
+            # Render the original table first; export native fit attributes only in CSV.
             rendered = original_to_string(frame, *positional, **keywords)
+            if len(estimates) != len(frame):
+                raise RuntimeError('Native LDSC fit count differs from result-table rows.')
+            native = {column: [getattr(getattr(estimate, attribute, None), 'tot', float('nan'))
+                               for estimate in estimates]
+                      for column, attribute in zip(NATIVE_COLUMNS, ('gencov', 'hsq1', 'hsq2'))}
             path = os.fspath(args.out) + RESULT_SUFFIX
-            write_results_csv(frame, path)
+            write_results_csv(frame.assign(**native), path)
             captures.append(path)
             return rendered
 

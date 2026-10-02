@@ -23,6 +23,11 @@ def frame():
     }])
 
 
+def estimate():
+    return SimpleNamespace(gencov=SimpleNamespace(tot=.03456789123456789),
+                           hsq1=SimpleNamespace(tot=.08), hsq2=SimpleNamespace(tot=.06351234567891234))
+
+
 class ExportTests(unittest.TestCase):
     def test_exports_same_frame_once_and_preserves_native_rendering(self):
         data = frame()
@@ -40,19 +45,22 @@ class ExportTests(unittest.TestCase):
             args = SimpleNamespace(out=str(Path(directory) / "batch"))
             expected_log = native_to_string(data, header=True, index=False) + "\n"
             with ldsc_export.export_rg_tables(module, pd) as exported:
-                rendered = module._get_rg_table(["A", "A"], ["already computed"], args)
+                rendered = module._get_rg_table(["A", "A"], [estimate()], args)
                 self.assertEqual(rendered, expected_log)
                 self.assertEqual(exported, [args.out + ".results.csv"])
             self.assertEqual(len(calls), 1)
             self.assertIs(module._get_rg_table, native_table)
             self.assertIs(pd.DataFrame.to_string, native_to_string)
             observed = pd.read_csv(exported[0], float_precision="round_trip")
-            pd.testing.assert_frame_equal(observed, data)
+            pd.testing.assert_frame_equal(observed[data.columns], data)
+            self.assertEqual(observed[list(ldsc_export.NATIVE_COLUMNS)].iloc[0].tolist(),
+                             [.03456789123456789, .08, .06351234567891234])
             self.assertIn("0.0000", rendered)
             self.assertGreater(observed.se.iloc[0], 0)
 
     def test_liability_scale_and_failed_estimates_are_exported_without_imputation(self):
         data = frame().rename(columns={"h2_obs": "h2_liab", "h2_obs_se": "h2_liab_se"})
+        data['h2_liab'] *= 4
         failed = data.copy()
         failed.loc[0, ["rg", "se", "z", "p"]] = float("nan")
         data = pd.concat([data, failed], ignore_index=True)
@@ -61,9 +69,11 @@ class ExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             args = SimpleNamespace(out=str(Path(directory) / "batch"))
             with ldsc_export.export_rg_tables(module, pd) as exported:
-                module._get_rg_table([], [], args)
+                module._get_rg_table([], [estimate(), None], args)
             observed = pd.read_csv(exported[0], float_precision="round_trip")
-            pd.testing.assert_frame_equal(observed, data)
+            pd.testing.assert_frame_equal(observed[data.columns], data)
+            self.assertEqual(observed.h2_p2_pair_obs.iloc[0], estimate().hsq2.tot)
+            self.assertTrue(observed[list(ldsc_export.NATIVE_COLUMNS)].iloc[1].isna().all())
 
     def test_export_failure_restores_hooks_and_preserves_previous_csv(self):
         module = SimpleNamespace(_get_rg_table=lambda paths, estimates, args: frame().to_string())
@@ -75,11 +85,20 @@ class ExportTests(unittest.TestCase):
             with patch.object(pd.DataFrame, "to_csv", side_effect=OSError("disk full")):
                 with self.assertRaisesRegex(OSError, "disk full"):
                     with ldsc_export.export_rg_tables(module, pd):
-                        module._get_rg_table([], [], args)
+                        module._get_rg_table([], [estimate()], args)
             self.assertEqual(destination.read_text(), "previous results")
             self.assertEqual(list(Path(directory).glob(".ldsc-results-*")), [])
         self.assertIs(module._get_rg_table, native_table)
         self.assertIs(pd.DataFrame.to_string, native_to_string)
+
+    def test_native_fit_count_mismatch_fails_before_writing(self):
+        module = SimpleNamespace(_get_rg_table=lambda *args: frame().to_string())
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(out=str(Path(directory)/'batch'))
+            with self.assertRaisesRegex(RuntimeError, 'fit count'):
+                with ldsc_export.export_rg_tables(module, pd):
+                    module._get_rg_table([], [], args)
+            self.assertFalse(Path(args.out+'.results.csv').exists())
 
     def test_unsupported_table_and_no_capture_fail(self):
         for getter, message in (
@@ -106,7 +125,7 @@ class ExportTests(unittest.TestCase):
 
             def native_job(path, run_name):
                 self.assertEqual(sys.argv, ["/runtime/ldsc.py", "--rg", "A,A", "--out", prefix])
-                module._get_rg_table(["A", "A"], [], SimpleNamespace(out=prefix))
+                module._get_rg_table(["A", "A"], [estimate()], SimpleNamespace(out=prefix))
 
             with patch.dict(sys.modules, {"ldscore": parent, "ldscore.sumstats": module}), \
                     patch.object(ldsc_export.shutil, "which", return_value="/runtime/ldsc.py"), \
