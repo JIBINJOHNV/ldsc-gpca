@@ -14,6 +14,7 @@ def main(argv=None):
     parser = HelpParser(
         prog="ldsc-gpca", description="Python LDSC and R genomicPCA/GWAMA workflows.",
         epilog="""AVAILABLE WORKFLOWS
+  pipeline         Preparation -> Python/GenomicSEM LDSC -> GPCA/GWAMA/export.
   prepare          VCF -> GPCA inputs; optional LDSC munging input tables.
   ldsc             Run CBIIT LDSC in an isolated Conda environment.
   ldsc.py          Run the raw pinned CBIIT ldsc.py command.
@@ -32,7 +33,7 @@ NOTES
 Use ldsc-gpca <command> --help for required columns, separators, defaults and choices.
 An empty command also displays help; no input files are opened for help.""")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("command", metavar="COMMAND", choices=["prepare", "ldsc", "ldsc.py", "munge_sumstats.py", "gpca", "genomicsem"], nargs="?",
+    parser.add_argument("command", metavar="COMMAND", choices=["pipeline", "prepare", "ldsc", "ldsc.py", "munge_sumstats.py", "gpca", "genomicsem"], nargs="?",
                         help="Managed workflows or raw pinned CBIIT LDSC script passthrough")
     if argv and argv[0] in ("ldsc.py", "munge_sumstats.py"):
         from .ldsc_runtime import run_ldsc_script
@@ -40,8 +41,10 @@ An empty command also displays help; no input files are opened for help.""")
     if argv and argv[0] == "genomicsem":
         from .genomicsem import main as run
         return run(argv[1:])
-    if argv and argv[0] in ("prepare", "ldsc", "gpca"):
-        if argv[0] == "prepare":
+    if argv and argv[0] in ("pipeline", "prepare", "ldsc", "gpca"):
+        if argv[0] == "pipeline":
+            from .pipeline import main as run
+        elif argv[0] == "prepare":
             from .prepare import main as run
         elif argv[0] == "ldsc":
             from .ldsc_cli import main as run

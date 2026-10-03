@@ -109,3 +109,16 @@ ldsc-gpca gpca \
 This interface update does not itself accelerate analysis. The earlier single-
 thread numerical-library defaults remain enabled unless the environment overrides
 them. Install the updated package in the environment that runs your commands.
+
+## One-command pipeline (v0.7.0)
+
+`ldsc-gpca pipeline --ldsc_backend python|genomicsem` reuses the managed
+interface and writes canonical per-stage manifests. Python `--chisq_max` accepts
+a positive integer or `auto`; GenomicSEM accepts a positive finite number.
+Omitting it preserves the selected backend's default. Python
+`--rg_normalization pair|trait_wide` selects the downstream correlation source.
+`--n_cores` stays positive for pipeline (Python default 5, native default 1), and
+`--prepare_workers` remains a separate setting. There are no compatibility aliases.
+The pipeline generates `--ldsc_results` internally; users do not supply that flag.
+It requires a fresh output directory; `--restart` remains a standalone LDSC option.
+See the [pipeline user guide](../README.md#run-the-entire-analysis-in-one-command).

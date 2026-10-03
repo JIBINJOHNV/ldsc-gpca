@@ -68,3 +68,7 @@ results/
 !tests/AF_FILTER_VALIDATION.md
 !tests/test_io_acceleration.py
 !tests/IO_ACCELERATION_VALIDATION.md
+
+!tests/test_pipeline.py
+!tests/test_pipeline_native.R
+!tests/PIPELINE_VALIDATION.md
