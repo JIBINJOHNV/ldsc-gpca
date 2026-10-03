@@ -75,17 +75,21 @@ def result_status(frame, source):
 
 def trait_status(frame, pairs, trait_order):
     """Manifest-ordered self estimates and counts; pair h2 belongs to p2."""
+    self_rows = frame[frame.p1.eq(frame.p2)].drop_duplicates('p1').set_index('p1')
+    self_qc = {trait: rows for trait, rows in pairs[pairs.p1.eq(pairs.p2)].groupby('p1', sort=False)}
+    empty = pairs.iloc[:0]
+    failed = pairs[pairs.Status.ne('valid')]
+    # A self-pair contributes once, whereas a between-trait row involves both traits.
+    failed_counts = pd.concat([failed.p1, failed.loc[failed.p1.ne(failed.p2), 'p2']]).value_counts()
     records = []
     for position, trait in enumerate(trait_order, 1):
-        self_rows = frame[(frame.p1 == trait) & (frame.p2 == trait)]
-        self_qc = pairs[(pairs.p1 == trait) & (pairs.p2 == trait)]
-        involved = pairs[(pairs.p1 == trait) | (pairs.p2 == trait)]
+        qc = self_qc.get(trait, empty)
         record = {'Manifest_Order': position, 'Trait': trait,
-                  'Self_Status': ('not_requested' if self_qc.empty else
-                                  'failed_estimate' if self_qc.Status.ne('valid').any() else 'valid'),
-                  'Self_Reason': '; '.join(dict.fromkeys(self_qc.Reason[self_qc.Reason.ne('')])),
-                  'Failed_Pair_Rows': int(involved.Status.ne('valid').sum())}
+                  'Self_Status': ('not_requested' if qc.empty else
+                                  'failed_estimate' if qc.Status.ne('valid').any() else 'valid'),
+                  'Self_Reason': '; '.join(dict.fromkeys(qc.Reason[qc.Reason.ne('')])),
+                  'Failed_Pair_Rows': int(failed_counts.get(trait, 0))}
         for col in ('h2_obs', 'h2_obs_se', 'h2_liab', 'h2_liab_se', 'h2_int', 'h2_int_se'):
-            record[col] = self_rows[col].iloc[0] if len(self_rows) else float('nan')
+            record[col] = self_rows.at[trait, col] if trait in self_rows.index else float('nan')
         records.append(record)
     return pd.DataFrame(records)

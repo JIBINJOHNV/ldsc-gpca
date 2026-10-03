@@ -206,7 +206,7 @@ def compile_results(output_folder, log_files, trait_metadata, *, result_failure_
         raise
 
 
-def _publish_retained_results(output_folder, frame, pairs, metadata, input_manifest):
+def _publish_retained_results(output_folder, frame, pairs, metadata, input_manifest, traits):
     retained, excluded = select_complete_traits(frame, pairs, metadata.gwas_name)
     if input_manifest is None:
         input_manifest = metadata.rename(columns={'gwas_name': 'traitname',
@@ -219,7 +219,6 @@ def _publish_retained_results(output_folder, frame, pairs, metadata, input_manif
     manifest_path = os.path.join(output_folder, 'LDSC_Retained_Traits.csv')
     write_results_csv(selected_manifest, manifest_path)
     write_results_csv(excluded, os.path.join(output_folder, 'LDSC_Dropped_Traits.csv'))
-    traits = trait_status(frame, pairs, metadata.gwas_name)
     traits['Retained'] = traits.Trait.isin(retained)
     traits['Exclusion_Reason'] = traits.Trait.map(excluded.set_index('Trait').Reason).fillna('')
     write_results_csv(traits, os.path.join(output_folder, 'LDSC_Trait_Status.csv'))
@@ -315,10 +314,10 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
     diagnostic = os.path.join(output_folder, 'ldsc_results_diagnostic.csv')
     write_results_csv(df, diagnostic)
     write_results_csv(pairs, os.path.join(output_folder, 'LDSC_Pair_Status.csv'))
-    write_results_csv(trait_status(df, pairs, trait_metadata.gwas_name),
-                      os.path.join(output_folder, 'LDSC_Trait_Status.csv'))
+    traits = trait_status(df, pairs, trait_metadata.gwas_name)
+    write_results_csv(traits, os.path.join(output_folder, 'LDSC_Trait_Status.csv'))
     if dropping:
-        return _publish_retained_results(output_folder, df, pairs, trait_metadata, input_manifest)
+        return _publish_retained_results(output_folder, df, pairs, trait_metadata, input_manifest, traits)
     output = diagnostic if failed.any() else os.path.join(output_folder, 'ldsc_results.csv')
     if not failed.any():
         write_results_csv(df, output)

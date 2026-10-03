@@ -1,4 +1,4 @@
-# python_ldsc/reader.R: function bodies preserved from the original workflow.
+# Read selected Python LDSC rows while preserving trait names and scale metadata.
 
 open_ldsc_connection <- function(path) {
   if (grepl("\\.gz$", path, ignore.case = TRUE)) {
@@ -69,9 +69,9 @@ normalize_heritability_columns <- function(ldsc_rows,
       normalized[, H2_Scale := inherited]
     }
     used <- unique(normalized$H2_Scale[normalized$H2_Scale %in% c("observed", "liability")])
-    attr(normalized, "heritability_scale") <- if (length(used) == 1L) used else "mixed"
-    attr(normalized, "heritability_value_column") <- if (length(used) == 1L) heritability_column_sets[[used]][1L] else "trait-specific h2"
-    attr(normalized, "heritability_se_column") <- if (length(used) == 1L) heritability_column_sets[[used]][2L] else "trait-specific h2_se"
+    setattr(normalized, "heritability_scale", if (length(used) == 1L) used else "mixed")
+    setattr(normalized, "heritability_value_column", if (length(used) == 1L) heritability_column_sets[[used]][1L] else "trait-specific h2")
+    setattr(normalized, "heritability_se_column", if (length(used) == 1L) heritability_column_sets[[used]][2L] else "trait-specific h2_se")
     if (pca_matrix == "covariance") validate_covariance_heritability(normalized, requested_scale)
     return(normalized)
   }
@@ -123,9 +123,9 @@ normalize_heritability_columns <- function(ldsc_rows,
   }
   normalized[, (unlist(heritability_column_sets)) := NULL]
   used <- unique(scales[scales != "unavailable"])
-  attr(normalized, "heritability_scale") <- if (length(used) == 1L) used else "mixed"
-  attr(normalized, "heritability_value_column") <- if (length(used) == 1L) heritability_column_sets[[used]][1L] else "trait-specific h2"
-  attr(normalized, "heritability_se_column") <- if (length(used) == 1L) heritability_column_sets[[used]][2L] else "trait-specific h2_se"
+  setattr(normalized, "heritability_scale", if (length(used) == 1L) used else "mixed")
+  setattr(normalized, "heritability_value_column", if (length(used) == 1L) heritability_column_sets[[used]][1L] else "trait-specific h2")
+  setattr(normalized, "heritability_se_column", if (length(used) == 1L) heritability_column_sets[[used]][2L] else "trait-specific h2_se")
   if (pca_matrix == "covariance") validate_covariance_heritability(normalized, requested_scale)
   normalized
 }
@@ -186,6 +186,7 @@ read_python_ldsc_selected <- function(path, trait_order, chunk_size = 250000L,
       text = paste(c(header, lines), collapse = "\n"),
       sep = separator,
       select = source_columns,
+      colClasses = list(character = c("p1", "p2")),
       check.names = FALSE,
       showProgress = FALSE,
       na.strings = c("NA", "NaN", "nan", "")
@@ -220,8 +221,8 @@ read_python_ldsc_selected <- function(path, trait_order, chunk_size = 250000L,
   }
 
   selected <- normalize_heritability_columns(selected, heritability_scale, pca_matrix)
-  attr(selected, "source_rows_read") <- rows_read
-  attr(selected, "selected_traits_seen") <- trait_order[selected_traits_seen]
+  setattr(selected, "source_rows_read", rows_read)
+  setattr(selected, "selected_traits_seen", trait_order[selected_traits_seen])
   selected
 }
 

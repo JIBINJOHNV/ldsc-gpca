@@ -1,4 +1,4 @@
-# shared/pca.R: function bodies preserved from the original workflow.
+# Shared symmetric PCA, PC1 orientation and audit values.
 
 orient_pc1_loadings <- function(loadings,
                                 method = c("tutorial", "as_computed")) {
@@ -23,6 +23,18 @@ orient_pc1_loadings <- function(loadings,
     sign_multiplier = sign_multiplier,
     flip_applied = sign_multiplier == -1
   )
+}
+
+# Shared by computation and reporting, including reports for invalid PC1.
+pc1_components <- function(eigenvalue, coefficient, trait_order, method) {
+  eigenvalue_ok <- is.finite(eigenvalue) && eigenvalue > 0
+  loading <- if (eigenvalue_ok) as.vector(coefficient * sqrt(eigenvalue)) else rep(NA_real_, length(coefficient))
+  finite_ok <- all(is.finite(loading))
+  orientation <- if (length(loading) && finite_ok) orient_pc1_loadings(loading, method) else NULL
+  list(eigenvalue_ok = eigenvalue_ok, length_ok = length(coefficient) == length(trait_order),
+    coefficient_ok = all(is.finite(coefficient)), finite_ok = finite_ok,
+    nonzero_ok = finite_ok && any(abs(loading) > sqrt(.Machine$double.eps)),
+    loading = loading, orientation = orientation)
 }
 
 # Reports describe the selected PCA matrix. Negative later eigenvalues are
@@ -54,13 +66,14 @@ compute_pc1 <- function(pca_matrix, trait_order,
   eigen_selected <- eigen(pca_matrix, symmetric = TRUE)
   eigenvectors <- eigen_selected$vectors
   eigenvalues <- eigen_selected$values
+  pc1 <- pc1_components(eigenvalues[1L], eigenvectors[, 1L], trait_order, pc1_orientation)
 
   # Write failure status too when decomposition succeeds but PC1 is invalid.
   if (!is.null(report_dir)) write_pc1_reports(eigenvalues, eigenvectors, trait_order,
     report_dir, pca_matrix_type, pc1_orientation, matrix_eigen_tolerance,
-    negative_eigen_action)
+    negative_eigen_action, pc1 = pc1)
 
-  if (!is.finite(eigenvalues[1L]) || eigenvalues[1L] <= 0) {
+  if (!pc1$eigenvalue_ok) {
     stop(
       glue(
         "PC1 requires a finite positive first eigenvalue; observed ",
@@ -71,22 +84,13 @@ compute_pc1 <- function(pca_matrix, trait_order,
   }
 
   eigenvalues_after_pmax <- pmax(eigenvalues, 0)
-  loadings_before_orientation <- as.vector(
-    eigenvectors %*% sqrt(diag(eigenvalues_after_pmax))[, 1]
-  )
-
-  if (length(loadings_before_orientation) != length(trait_order) ||
-      any(!is.finite(loadings_before_orientation))) {
+  if (!pc1$length_ok || !pc1$finite_ok) {
     stop("PC1 loadings are invalid.", call. = FALSE)
   }
-  if (all(abs(loadings_before_orientation) <= sqrt(.Machine$double.eps))) {
+  if (!pc1$nonzero_ok) {
     stop("All PC1 loadings are effectively zero.", call. = FALSE)
   }
-
-  orientation <- orient_pc1_loadings(
-    loadings_before_orientation,
-    method = pc1_orientation
-  )
+  orientation <- pc1$orientation
   loadings <- orientation$loadings
   eigenvectors_before_orientation <- eigenvectors
   eigenvectors[, 1L] <- eigenvectors[, 1L] * orientation$sign_multiplier

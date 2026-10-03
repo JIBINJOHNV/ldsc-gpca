@@ -3,6 +3,7 @@
 coerce_python_ldsc_numeric <- function(ldsc_rows) {
   for (column_name in python_ldsc_numeric_columns) {
     original <- ldsc_rows[[column_name]]
+    if (is.double(original) && is.null(attributes(original))) next
     converted <- suppressWarnings(as.numeric(original))
     invalid_conversion <- is.na(converted) & !is.na(original)
 
@@ -21,6 +22,22 @@ coerce_python_ldsc_numeric <- function(ldsc_rows) {
   }
 
   ldsc_rows
+}
+
+# Prepare an owned table at each public QC boundary; internal checks reuse it.
+prepare_python_ldsc_rows <- function(ldsc_rows, trait_order, heritability_scale) {
+  rows <- as.data.table(ldsc_rows)[
+    trimws(as.character(p1)) %chin% trait_order & trimws(as.character(p2)) %chin% trait_order]
+  rows <- normalize_heritability_columns(rows, heritability_scale)
+  missing <- setdiff(required_python_ldsc_columns, names(rows))
+  if (length(missing)) stop("Python LDSC input is missing required columns: ",
+    paste(missing, collapse = ", "), call. = FALSE)
+  rows[, `:=`(p1 = trimws(as.character(p1)), p2 = trimws(as.character(p2)))]
+  rows <- coerce_python_ldsc_numeric(rows)
+  i <- match(rows$p1, trait_order)
+  j <- match(rows$p2, trait_order)
+  rows[, `:=`(pair_i = pmin(i, j), pair_j = pmax(i, j))]
+  rows
 }
 
 # Share the narrow self-rg exception across selection, final QC and audit output.
@@ -55,10 +72,15 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
                                   self_rg_tolerance = 1e-2,
                                   comparison_epsilon = 1e-12,
                                   h2_z_warn_threshold = 2,
-                                  heritability_scale = c(
-                                    "auto", "liability", "observed", "mixed"
-                                  )) {
-  heritability_scale <- match.arg(heritability_scale)
+                                  heritability_scale = c("auto", "liability", "observed", "mixed")) {
+  rows <- prepare_python_ldsc_rows(ldsc_rows, trait_order, match.arg(heritability_scale))
+  .evaluate_self_pair_qc(rows, trait_order, self_rg_tolerance,
+                         comparison_epsilon, h2_z_warn_threshold)
+}
+
+# Internal callers already own normalized, numeric, indexed rows.
+.evaluate_self_pair_qc <- function(ldsc_rows, trait_order, self_rg_tolerance,
+                                   comparison_epsilon, h2_z_warn_threshold) {
   if (!is.finite(self_rg_tolerance) || self_rg_tolerance <= 0) {
     stop("self_rg_tolerance must be finite and greater than zero.", call. = FALSE)
   }
@@ -69,42 +91,9 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
     stop("h2_z_warn_threshold must be finite and non-negative.", call. = FALSE)
   }
 
-  ldsc_rows <- as.data.table(copy(ldsc_rows))
-  ldsc_rows <- ldsc_rows[trimws(as.character(p1)) %chin% trait_order & trimws(as.character(p2)) %chin% trait_order]
-  ldsc_rows <- normalize_heritability_columns(
-    ldsc_rows,
-    heritability_scale
-  )
   selected_scale <- attr(ldsc_rows, "heritability_scale", exact = TRUE)
-  h2_source_column <- attr(
-    ldsc_rows,
-    "heritability_value_column",
-    exact = TRUE
-  )
-  h2_se_source_column <- attr(
-    ldsc_rows,
-    "heritability_se_column",
-    exact = TRUE
-  )
-
-  missing_columns <- setdiff(required_python_ldsc_columns, names(ldsc_rows))
-  if (length(missing_columns) > 0L) {
-    stop(
-      "Python LDSC input is missing required columns: ",
-      paste(missing_columns, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  ldsc_rows[, p1 := trimws(as.character(p1))]
-  ldsc_rows[, p2 := trimws(as.character(p2))]
-  ldsc_rows <- ldsc_rows[p1 %chin% trait_order & p2 %chin% trait_order]
-  ldsc_rows <- coerce_python_ldsc_numeric(ldsc_rows)
-
-  trait_index_1 <- match(ldsc_rows$p1, trait_order)
-  trait_index_2 <- match(ldsc_rows$p2, trait_order)
-  ldsc_rows[, pair_i := pmin(trait_index_1, trait_index_2)]
-  ldsc_rows[, pair_j := pmax(trait_index_1, trait_index_2)]
+  h2_source_column <- attr(ldsc_rows, "heritability_value_column", exact = TRUE)
+  h2_se_source_column <- attr(ldsc_rows, "heritability_se_column", exact = TRUE)
   self_rows <- ldsc_rows[pair_i == pair_j]
 
   finite_mean <- function(value) {
@@ -333,31 +322,11 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   action <- match.arg(action)
   heritability_scale <- match.arg(heritability_scale)
   source_rows_read <- attr(ldsc_rows, "source_rows_read", exact = TRUE)
-  ldsc_rows <- as.data.table(copy(ldsc_rows))
-  ldsc_rows <- ldsc_rows[trimws(as.character(p1)) %chin% trait_order & trimws(as.character(p2)) %chin% trait_order]
-  ldsc_rows <- normalize_heritability_columns(
-    ldsc_rows,
-    heritability_scale
-  )
+  ldsc_rows <- prepare_python_ldsc_rows(ldsc_rows, trait_order, heritability_scale)
   selected_scale <- attr(ldsc_rows, "heritability_scale", exact = TRUE)
-  h2_source_column <- attr(
-    ldsc_rows,
-    "heritability_value_column",
-    exact = TRUE
-  )
-  h2_se_source_column <- attr(
-    ldsc_rows,
-    "heritability_se_column",
-    exact = TRUE
-  )
-  ldsc_rows <- ldsc_rows[p1 %chin% trait_order & p2 %chin% trait_order]
-  ldsc_rows <- coerce_python_ldsc_numeric(ldsc_rows)
-
+  h2_source_column <- attr(ldsc_rows, "heritability_value_column", exact = TRUE)
+  h2_se_source_column <- attr(ldsc_rows, "heritability_se_column", exact = TRUE)
   number_traits <- length(trait_order)
-  index_1 <- match(ldsc_rows$p1, trait_order)
-  index_2 <- match(ldsc_rows$p2, trait_order)
-  ldsc_rows[, pair_i := pmin(index_1, index_2)]
-  ldsc_rows[, pair_j := pmax(index_1, index_2)]
   validate_duplicate_estimates(ldsc_rows, trait_order, duplicate_tolerance,
     duplicate_z_tolerance, comparison_epsilon)
   ldsc_rows[, valid_ldsc_row := python_ldsc_valid_row(.SD,
@@ -385,13 +354,12 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   )
   setorder(failed_pairs, pair_i, pair_j)
 
-  self_pair_qc <- evaluate_self_pair_qc(
+  self_pair_qc <- .evaluate_self_pair_qc(
     ldsc_rows,
     trait_order,
     self_rg_tolerance = self_rg_tolerance,
     comparison_epsilon = comparison_epsilon,
-    h2_z_warn_threshold = h2_z_warn_threshold,
-    heritability_scale = selected_scale
+    h2_z_warn_threshold = h2_z_warn_threshold
   )
   self_pair_qc <- as.data.table(self_pair_qc)
   self_lookup <- data.table(
@@ -597,7 +565,11 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
 
 coerce_and_validate_numeric <- function(ldsc_rows, self_rg_tolerance = 1e-2,
                                         comparison_epsilon = 1e-12) {
-  ldsc_rows <- coerce_python_ldsc_numeric(ldsc_rows)
+  .validate_python_ldsc_numeric(coerce_python_ldsc_numeric(ldsc_rows),
+    self_rg_tolerance, comparison_epsilon)
+}
+
+.validate_python_ldsc_numeric <- function(ldsc_rows, self_rg_tolerance, comparison_epsilon) {
   checks <- python_ldsc_numeric_checks(ldsc_rows, self_rg_tolerance, comparison_epsilon)
 
   non_finite <- vapply(
@@ -668,36 +640,10 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     stop("h2_z_warn_threshold must be finite and non-negative.", call. = FALSE)
   }
 
-  ldsc_rows <- as.data.table(copy(ldsc_rows))
-  ldsc_rows <- ldsc_rows[trimws(as.character(p1)) %chin% trait_order & trimws(as.character(p2)) %chin% trait_order]
-  ldsc_rows <- normalize_heritability_columns(
-    ldsc_rows,
-    heritability_scale
-  )
+  ldsc_rows <- prepare_python_ldsc_rows(ldsc_rows, trait_order, heritability_scale)
   selected_scale <- attr(ldsc_rows, "heritability_scale", exact = TRUE)
-  h2_source_column <- attr(
-    ldsc_rows,
-    "heritability_value_column",
-    exact = TRUE
-  )
-  h2_se_source_column <- attr(
-    ldsc_rows,
-    "heritability_se_column",
-    exact = TRUE
-  )
-
-  missing_columns <- setdiff(required_python_ldsc_columns, names(ldsc_rows))
-  if (length(missing_columns) > 0L) {
-    stop(
-      "Python LDSC input is missing required columns: ",
-      paste(missing_columns, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  ldsc_rows[, p1 := trimws(as.character(p1))]
-  ldsc_rows[, p2 := trimws(as.character(p2))]
-  ldsc_rows <- ldsc_rows[p1 %chin% trait_order & p2 %chin% trait_order]
+  h2_source_column <- attr(ldsc_rows, "heritability_value_column", exact = TRUE)
+  h2_se_source_column <- attr(ldsc_rows, "heritability_se_column", exact = TRUE)
 
   present_traits <- unique(c(ldsc_rows$p1, ldsc_rows$p2))
   missing_traits <- trait_order[!trait_order %chin% present_traits]
@@ -709,12 +655,7 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     )
   }
 
-  ldsc_rows <- coerce_and_validate_numeric(ldsc_rows, self_rg_tolerance, comparison_epsilon)
-
-  trait_index_1 <- match(ldsc_rows$p1, trait_order)
-  trait_index_2 <- match(ldsc_rows$p2, trait_order)
-  ldsc_rows[, pair_i := pmin(trait_index_1, trait_index_2)]
-  ldsc_rows[, pair_j := pmax(trait_index_1, trait_index_2)]
+  ldsc_rows <- .validate_python_ldsc_numeric(ldsc_rows, self_rg_tolerance, comparison_epsilon)
 
   duplicate_stats <- validate_duplicate_estimates(ldsc_rows, trait_order,
     tolerance, duplicate_z_tolerance, comparison_epsilon)
@@ -762,13 +703,12 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     )
   }
 
-  self_pair_qc <- evaluate_self_pair_qc(
+  self_pair_qc <- .evaluate_self_pair_qc(
     ldsc_rows,
     trait_order,
     self_rg_tolerance = self_rg_tolerance,
     comparison_epsilon = comparison_epsilon,
-    h2_z_warn_threshold = h2_z_warn_threshold,
-    heritability_scale = selected_scale
+    h2_z_warn_threshold = h2_z_warn_threshold
   )
   failed_self_qc <- self_pair_qc[!self_pair_qc$Self_QC_Pass, , drop = FALSE]
   if (nrow(failed_self_qc) > 0L) {

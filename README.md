@@ -118,6 +118,10 @@ across inputs; installation cannot establish their scientific compatibility.
   leading/trailing spaces. Keep them identical across manifests, LDSC estimates
   and per-trait filenames. GPCA requires at least two retained traits and preserves
   manifest row order in matrices, loadings and GWAMA inputs.
+  Numeric-looking identifiers such as `001` are read as text in Python LDSC
+  tables, preserving leading zeros.
+  See [cleanup validation](tests/CLEANUP_VALIDATION.md) for before/after checks
+  of package performance changes using saved real LDSC and GenomicSEM results.
 - Header spelling and case matter. Use one canonical spelling for each managed
   argument/header. Multiword managed flags use underscores; abbreviations and
   older argument spellings are rejected. Extra input columns are accepted;

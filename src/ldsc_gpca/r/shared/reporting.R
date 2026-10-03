@@ -1,9 +1,11 @@
-# shared/reporting.R: function bodies preserved from the original workflow.
+# Shared PCA diagnostics, including reports for numerical failures.
 
 write_pc1_reports <- function(eigenvalues, eigenvectors, trait_order, outdir,
                               pca_matrix_type, pc1_orientation,
                               matrix_eigen_tolerance = 1e-8,
-                              negative_eigen_action = "warn") {
+                              negative_eigen_action = "warn",
+                              pc1 = pc1_components(eigenvalues[1L], eigenvectors[, 1L],
+                                                   trait_order, pc1_orientation)) {
   raw_total <- sum(eigenvalues)
   positive <- pmax(eigenvalues, 0)
   positive_total <- sum(positive)
@@ -28,16 +30,14 @@ write_pc1_reports <- function(eigenvalues, eigenvectors, trait_order, outdir,
       "Raw percentages describe the selected PCA matrix",
     stringsAsFactors = FALSE)
 
-  eigenvalue_ok <- is.finite(eigenvalues[1L]) && eigenvalues[1L] > 0
-  coefficient <- eigenvectors[,1L]
-  length_ok <- length(coefficient) == length(trait_order)
-  coefficient_ok <- all(is.finite(coefficient))
-  loading <- if (eigenvalue_ok) coefficient * sqrt(eigenvalues[1L]) else rep(NA_real_, length(coefficient))
-  finite_ok <- all(is.finite(loading))
-  nonzero_ok <- finite_ok && any(abs(loading) > sqrt(.Machine$double.eps))
-  multiplier <- if (finite_ok && pc1_orientation == "tutorial" && median(loading) < 0) -1 else 1
-  coefficient <- coefficient * multiplier
-  loading <- loading * multiplier
+  eigenvalue_ok <- pc1$eigenvalue_ok
+  length_ok <- pc1$length_ok
+  coefficient_ok <- pc1$coefficient_ok
+  finite_ok <- pc1$finite_ok
+  nonzero_ok <- pc1$nonzero_ok
+  multiplier <- if (is.null(pc1$orientation)) 1 else pc1$orientation$sign_multiplier
+  coefficient <- eigenvectors[, 1L] * multiplier
+  loading <- pc1$loading * multiplier
   reasons <- c(if (!eigenvalue_ok) "PC1 eigenvalue is not finite and positive",
     if (!length_ok) "PC1 coefficient count differs from trait count",
     if (!coefficient_ok) "PC1 coefficients are non-finite",

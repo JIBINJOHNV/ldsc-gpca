@@ -37,7 +37,8 @@ def _extract_table(sample_name, out_file, commands, header):
         # Leave filtering to bcftools; count after optional MHC selection, before QC.
         counter = r'''
             function missing(tag) {
-                return $8 !~ "(^|;)" tag "=" || $8 ~ "(^|;)" tag "=([^;]*,)?[.]([,;]|$)"
+                if (tag == "AF") return $8 !~ /(^|;)AF=/ || $8 ~ /(^|;)AF=([^;]*,)?[.]([,;]|$)/
+                return $8 !~ /(^|;)EUR=/ || $8 ~ /(^|;)EUR=([^;]*,)?[.]([,;]|$)/
             }
             !/^#/ { n++; af=missing("AF"); eur=missing("EUR"); a+=af; e+=eur; any+=(af || eur) }
             { print }

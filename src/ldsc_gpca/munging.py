@@ -3,7 +3,6 @@ import gzip
 import os
 import shlex
 import json
-import hashlib
 import math
 import shutil
 import tempfile
@@ -13,6 +12,7 @@ from .ldsc_runtime import ldsc_munging_command
 from .ldsc_munge import FLOAT_FORMAT as MUNGE_FLOAT_FORMAT
 from .workers import run_parallel_jobs
 from .pairwise import _result_stamp
+from .restart import file_digest
 
 
 def _split_sumstats_line(line, tab_separated):
@@ -259,12 +259,9 @@ def parallel_munge_sumstats(n_parallel, input_df, output_folder, snp_include_fil
         run_command(command, f"Munge_{sample_name}", output_folder=output_folder)
         if not is_valid_gz(final_out_file) or _result_stamp(final_out_file) == previous:
             raise RuntimeError(f'{sample_name}: munging produced no fresh valid gzip output')
-        with open(final_out_file, 'rb') as handle:
-            digest = hashlib.sha256()
-            for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-                digest.update(chunk)
+        digest = file_digest(final_out_file)
         with open(metadata_file, 'w') as handle:
-            json.dump({'sample_size_column': n_column, 'sha256': digest.hexdigest(), 'filters': filters,
+            json.dump({'sample_size_column': n_column, 'sha256': digest, 'filters': filters,
                        'float_format': MUNGE_FLOAT_FORMAT,
                        'sample_prevalence': None if pd.isna(row['sample_prevalence']) else float(row['sample_prevalence'])}, handle)
         return sample_name

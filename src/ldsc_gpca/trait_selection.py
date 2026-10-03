@@ -41,9 +41,11 @@ def validate_duplicate_estimates(frame, order):
 
 
 def _self_estimates(frame, traits):
+    self_rows = {trait: rows for trait, rows in frame[frame.p1.eq(frame.p2)].groupby('p1', sort=False)}
+    empty = frame.iloc[:0]
     estimates = {}
     for trait in traits:
-        rows = frame[(frame.p1 == trait) & (frame.p2 == trait)]
+        rows = self_rows.get(trait, empty)
         scale = 'h2_liab' if rows.h2_liab.notna().any() else 'h2_obs'
         def finite_mean(column):
             values = rows[column]

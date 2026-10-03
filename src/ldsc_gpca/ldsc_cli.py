@@ -2,7 +2,6 @@
 import os
 import math
 import json
-import hashlib
 import sys
 from argparse import ArgumentTypeError
 from .helptext import HelpParser, LDSC_INPUT_HELP
@@ -16,6 +15,7 @@ from .ldsc_runtime import check_runtime
 from .ldsc_export import FLOAT_FORMAT
 from .ldsc_munge import FLOAT_FORMAT as MUNGE_FLOAT_FORMAT
 from .interfaces import read_manifest
+from .restart import file_digest
 
 
 def chisq_max_argument(value):
@@ -241,11 +241,7 @@ def main(argv=None):
             with open(sidecar) as handle:
                 metadata = json.load(handle)
             check_saved_filters(metadata, filters, row['gwas_name'])
-            with open(prefix + '.sumstats.gz', 'rb') as handle:
-                digest = hashlib.sha256()
-                for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-                    digest.update(chunk)
-            if metadata['sample_size_column'] != row['sample_size_column'] or metadata['sha256'] != digest.hexdigest():
+            if metadata['sample_size_column'] != row['sample_size_column'] or metadata['sha256'] != file_digest(prefix + '.sumstats.gz'):
                 raise ValueError(f"{row['gwas_name']}: munged file or N convention changed; rerun without --ldsc_only")
             if row['sample_size_column'] == 'N_TOTAL' and pd.isna(row['sample_prevalence']):
                 value = optional_prevalence(metadata['sample_prevalence'], row['gwas_name'])
