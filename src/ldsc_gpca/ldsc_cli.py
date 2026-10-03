@@ -4,6 +4,7 @@ import math
 import json
 import hashlib
 import sys
+from argparse import ArgumentTypeError
 from .helptext import HelpParser, LDSC_INPUT_HELP
 import pandas as pd
 from .utils import optional_prevalence, is_valid_gz
@@ -14,6 +15,20 @@ from .results import compile_results, check_saved_filters, prepare_compilation_o
 from .ldsc_runtime import check_runtime
 from .ldsc_export import FLOAT_FORMAT
 from .interfaces import read_manifest
+
+
+def chisq_max_argument(value):
+    """Accept an explicit positive integer cutoff or GenomicSEM's auto rule."""
+    if value == 'auto':
+        return value
+    try:
+        cutoff = int(value)
+        if cutoff > 0:
+            return cutoff
+    except ValueError:
+        pass
+    raise ArgumentTypeError('must be a positive integer (>0) or auto')
+
 
 # Define command-line arguments
 parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise CBIIT Python LDSC using an isolated Conda environment; no Docker.", epilog=LDSC_INPUT_HELP)
@@ -55,8 +70,10 @@ filter_group.add_argument('--paliandromaf_lower', type=float, default=0.45,
 filter_group.add_argument('--paliandromaf_upper', type=float, default=0.55,
                           help='Upper AF bound for palindromic removal. Default: 0.55.')
 filter_group.add_argument(
-    '--chisq_max', type=float, default=None, metavar='FLOAT',
-    help='Independently keep variants with Z^2 <= FLOAT in each munged trait before pairwise LDSC. '
+    '--chisq_max', type=chisq_max_argument, default=None, metavar='INTEGER|auto',
+    help='Positive integer cutoff, or auto: max(80, 0.001 * maximum N) separately per trait '
+         'after matching reference and weight LD-score SNPs and removing missing rows. '
+         'Keep Z^2 <= cutoff before pairwise LDSC. '
          'Applies to VCF and --ldsc_only workflows; does not use native LDSC cross-product filtering. '
          'Default: disabled.')
 
@@ -86,8 +103,6 @@ def main(argv=None):
         parser.error('--n_cores must be positive')
     if args.ldsc_retries < 0:
         parser.error('--ldsc_retries must be >= 0')
-    if args.chisq_max is not None and (not math.isfinite(args.chisq_max) or args.chisq_max <= 0):
-        parser.error('--chisq_max must be a positive finite number')
     if args.mhc_start < 1 or args.mhc_end < args.mhc_start:
         parser.error('--mhc_start must be positive and --mhc_end must be >= --mhc_start')
     if not 0 <= args.info_min <= 1 or not 0 < args.maf_min < 0.5:
@@ -173,6 +188,9 @@ def main(argv=None):
             'chisq_filter': {
                 'enabled': args.chisq_max is not None,
                 'threshold': args.chisq_max,
+                'threshold_rule': ('max(80, 0.001 * max(N)) after complete-row/LD-score matching'
+                                   if args.chisq_max == 'auto' else 'fixed' if args.chisq_max is not None else None),
+                'summary_file': 'LDSC_ChiSquare_Filter_Summary.csv' if args.chisq_max is not None else None,
                 'mode': 'per_trait_genomicsem',
                 'keep_rule': 'Z^2 <= threshold',
                 'native_ldsc_chisq_max_forwarded': False,
@@ -232,9 +250,10 @@ def main(argv=None):
 
     analysis_input_folder = ldsc_input_folder
     if args.chisq_max is not None and not input_df.empty:
-        print(f"\n[filter] Applying independent per-trait Z^2 <= {args.chisq_max:g} filtering...")
+        print(f"\n[filter] Applying independent per-trait chi-square filtering ({args.chisq_max})...")
         analysis_input_folder = filter_munged_sumstats(
-            n_parallel, input_df, ldsc_input_folder, output_folder, args.chisq_max)
+            n_parallel, input_df, ldsc_input_folder, output_folder, args.chisq_max,
+            ld_ref_dir=ld_ref_dir, ld_weights_dir=ld_weights_dir)
 
     if not input_df.empty:
         prepare_compilation_outputs(output_folder, args.result_failure_action)

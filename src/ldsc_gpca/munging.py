@@ -28,8 +28,61 @@ def _temporary_path(destination):
     return path
 
 
-def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file, chisq_max):
+def _matched_ld_snps(ld_ref_dir, ld_weights_dir):
+    """Load the reference/weight SNP intersection once, shared by trait workers."""
+    if not ld_ref_dir:
+        raise ValueError('--chisq_max auto requires an LD-score reference directory')
+    matched = None
+    for directory in dict.fromkeys(map(os.path.realpath, (ld_ref_dir, ld_weights_dir or ld_ref_dir))):
+        snps = set()
+        for chromosome in range(1, 23):
+            path = os.path.join(directory, f'{chromosome}.l2.ldscore.gz')
+            snps.update(pd.read_csv(path, sep=r'\s+', usecols=['SNP'], dtype=str)['SNP'].dropna())
+        matched = snps if matched is None else matched.intersection(snps)
+    if not matched:
+        raise ValueError('--chisq_max auto: reference and weight LD scores have no shared SNPs')
+    return frozenset(matched)
+
+
+def _automatic_chisq_max(trait, source_file, matched_snps):
+    """Match GenomicSEM's complete-row, per-trait maximum N before filtering."""
+    maximum_n, matched_rows = 0., 0
+    # A preliminary pass is needed: a later SNP can raise the cutoff for earlier SNPs.
+    # Stream rows to bound memory; match readr's trim_ws before missing-value checks.
+    with gzip.open(source_file, 'rt', encoding='utf-8') as source:
+        header = source.readline()
+        tab_separated = '\t' in header
+        columns = _split_sumstats_line(header, tab_separated)
+        if any(columns.count(name) != 1 for name in ('SNP', 'A1', 'A2', 'N', 'Z')):
+            raise ValueError(f'{trait}: --chisq_max auto requires unique SNP,A1,A2,N,Z columns')
+        snp_index, n_index = columns.index('SNP'), columns.index('N')
+        for line_number, line in enumerate(source, start=2):
+            values = _split_sumstats_line(line, tab_separated)
+            if len(values) != len(columns):
+                raise ValueError(f'{trait}: malformed munged LDSC row {line_number}')
+            if values[snp_index].strip() not in matched_snps or any(
+                    value.strip() in ('', 'NA', 'nan', 'NaN', '.') for value in values):
+                continue
+            try:
+                n = float(values[n_index])
+            except ValueError as error:
+                raise ValueError(f'{trait}: non-numeric N at LD-matched row {line_number}') from error
+            if not math.isfinite(n) or n <= 0:
+                raise ValueError(f'{trait}: LD-matched N must be finite and positive (row {line_number})')
+            maximum_n = max(maximum_n, n)
+            matched_rows += 1
+    if not matched_rows:
+        raise ValueError(f'{trait}: --chisq_max auto has no complete rows matching both LD-score files')
+    return max(80., .001 * maximum_n), maximum_n, matched_rows
+
+
+def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file, chisq_max,
+                               matched_snps=None):
     """Write one independently chi-square-filtered LDSC input and its exclusions."""
+    automatic = chisq_max == 'auto'
+    maximum_n = matched_rows = None
+    if automatic:
+        chisq_max, maximum_n, matched_rows = _automatic_chisq_max(trait, source_file, matched_snps)
     filtered_temp = _temporary_path(filtered_file)
     excluded_temp = _temporary_path(excluded_file)
     before = kept = removed = missing_z = 0
@@ -87,7 +140,7 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
             raise ValueError(f'{trait}: munged LDSC input contains no variants')
         if kept == 0:
             raise ValueError(
-                f'{trait}: no variants with finite Z remain after --chisq-max {chisq_max:g} '
+                f'{trait}: no variants with finite Z remain after --chisq_max {chisq_max} '
                 f'({missing_z:,} missing Z; {removed:,} above threshold)')
         os.replace(excluded_temp, excluded_file)
         os.replace(filtered_temp, filtered_file)
@@ -102,6 +155,9 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
     return {
         'gwas_name': trait,
         'chisq_max': chisq_max,
+        'threshold_mode': 'auto' if automatic else 'fixed',
+        'maximum_matched_n': maximum_n,
+        'complete_ld_matched_rows': matched_rows,
         'variants_before': before,
         'variants_removed': removed,
         'variants_after': kept + missing_z,
@@ -112,17 +168,19 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
     }
 
 
-def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, chisq_max):
+def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, chisq_max,
+                          *, ld_ref_dir=None, ld_weights_dir=None):
     """Apply GenomicSEM-style per-trait Z^2 filtering to munged LDSC inputs."""
-    if isinstance(chisq_max, bool) or not isinstance(chisq_max, (int, float)) \
-            or not math.isfinite(chisq_max) or chisq_max <= 0:
-        raise ValueError('chisq_max must be a positive finite number')
+    if chisq_max != 'auto' and (isinstance(chisq_max, bool) or not isinstance(chisq_max, (int, float))
+            or (isinstance(chisq_max, float) and not math.isfinite(chisq_max)) or chisq_max <= 0):
+        raise ValueError('chisq_max must be a positive finite number or auto')
     if not isinstance(n_parallel, int) or isinstance(n_parallel, bool) or n_parallel < 1:
         raise ValueError('n_parallel must be a positive integer')
 
     filtered_folder = os.path.join(output_folder, 'ldsc_input_chisq_filtered')
     if os.path.realpath(input_folder) == os.path.realpath(filtered_folder):
         raise ValueError('ldsc_input_folder must not be the chi-square filtered output directory')
+    matched_snps = _matched_ld_snps(ld_ref_dir, ld_weights_dir) if chisq_max == 'auto' else None
     os.makedirs(filtered_folder, exist_ok=True)
     tasks = []
     for trait in input_df['gwas_name']:
@@ -134,7 +192,8 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
             source_file,
             os.path.join(filtered_folder, f'{trait}.sumstats.gz'),
             os.path.join(filtered_folder, f'{trait}.chisq_excluded.tsv.gz'),
-            float(chisq_max),
+            chisq_max,
+            matched_snps,
         ))
 
     summaries = []
@@ -169,7 +228,7 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
 
     for row in summaries:
         print(f"{row['gwas_name']}: removed {row['variants_removed']:,} of "
-              f"{row['variants_before']:,} variants with Z^2 > {chisq_max:g}; "
+              f"{row['variants_before']:,} variants with Z^2 > {row['chisq_max']}; "
               f"preserved {row['variants_missing_z']:,} missing-Z rows for LDSC to discard")
     return filtered_folder
 

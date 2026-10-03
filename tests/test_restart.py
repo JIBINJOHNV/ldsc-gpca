@@ -224,6 +224,43 @@ class RestartTests(unittest.TestCase):
         self.assertEqual(summary.variants_after.tolist(), [12, 12])
 
 
+    def test_auto_cli_restart_and_switch_to_fixed_cutoff(self):
+        for folder in (self.ld, self.weights):
+            for chrom in range(1, 23):
+                text = 'CHR\tSNP\tBP\tL2\n'
+                if chrom == 1:
+                    text += '1\trs1\t1\t2\n1\trs2\t2\t3\n'
+                (folder / f'{chrom}.l2.ldscore.gz').write_bytes(gzip.compress(text.encode()))
+        for name, n in [('A', 50000), ('B', 200000)]:
+            self.write_sumstats(name, f'SNP\tA1\tA2\tN\tZ\nrs1\tA\tG\t{n}\t1\nrs2\tA\tG\t{n}\t12\n')
+        source = self.root / 'manifest.csv'
+        source.write_text('traitname,ref,population_prevalence,sample_prevalence\nA,yes,,\nB,yes,,\n')
+        arguments = ['--input', str(source), '--outdir', str(self.out), '--ld_ref', str(self.ld),
+                     '--ld_weights', str(self.weights), '--ldsc_only', '--munged_dir', str(self.inputs),
+                     '--n_cores', '4', '--chisq_max', 'auto']
+        with patch.object(ldsc_cli, 'check_runtime'), \
+             patch.object(restart, 'fingerprint_runtime', return_value=self.runtime), \
+             patch.object(pairwise, 'run_command', side_effect=self.command) as command, \
+             contextlib.redirect_stdout(io.StringIO()):
+            ldsc_cli.main(arguments)
+            first = (self.out / 'ldsc_results.csv').read_bytes()
+            summary = pd.read_csv(self.out / 'LDSC_ChiSquare_Filter_Summary.csv')
+            self.assertEqual(summary.chisq_max.tolist(), [80, 200])
+            self.assertEqual(summary.variants_removed.tolist(), [1, 0])
+            runtime = json.loads((self.out / 'LDSC_Runtime.json').read_text())['chisq_filter']
+            self.assertEqual(runtime['threshold'], 'auto')
+            self.assertFalse(runtime['native_ldsc_chisq_max_forwarded'])
+            self.assertTrue(all('--chisq-max' not in call.args[0] for call in command.call_args_list))
+            ldsc_cli.main([*arguments, '--restart'])
+            self.assertEqual(len(self.calls), 4)
+            self.assertEqual(first, (self.out / 'ldsc_results.csv').read_bytes())
+            self.assertTrue(pd.read_csv(self.out / 'ldsc_results/LDSC_Batch_Status.csv').Status.eq('reused').all())
+            # A changed choice invalidates the checkpoint even when some inputs stay identical.
+            ldsc_cli.main([*arguments[:-1], '80', '--restart'])
+            self.assertEqual(len(self.calls), 8)
+            self.assertEqual(pd.read_csv(self.out / 'LDSC_ChiSquare_Filter_Summary.csv').chisq_max.tolist(), [80, 80])
+
+
 class RuntimeAndCLITests(unittest.TestCase):
     def test_runtime_probe_parses_identity_and_rejects_failure(self):
         for code, output in ((0, '{"sources":{"ldsc.py":"abc"}}'), (1, '{}'), (0, 'garbage')):

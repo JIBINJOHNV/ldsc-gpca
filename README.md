@@ -405,7 +405,7 @@ directory. The batch status report is updated as each job finishes, with
 | `--restart` | Off | Reuse completed batches with matching input/parameter/runtime checkpoints; rerun unverified or changed batches. |
 | `--munged_dir DIRECTORY` | `<outdir>/ldsc_input` | Existing munged input directory in reuse mode. Leave unset for ordinary VCF runs. |
 | `--ldsc_retries INTEGER` | `1` | Additional attempts per failed LDSC command or malformed/incomplete export; ≥0. One means two total attempts. Numerical estimation failures are not retried. |
-| `--chisq_max FLOAT` | Unset; disabled | Finite positive threshold; independently retain `Z² <= value` in each munged trait before LDSC. Applies in both modes. |
+| `--chisq_max INTEGER\|auto` | Unset; disabled | Positive integer: fixed cutoff. `auto`: per-trait `max(80, 0.001 * max(N))` after complete-row matching to reference and weight LD-score SNPs. Keep `Z² <= cutoff` before LDSC in both modes. |
 | `--exclude_mhc` | Off | Exclude the configured MHC interval during VCF extraction. |
 | `--mhc_chr STRING` | `6` | Chromosome label used for MHC exclusion; match the VCF's naming. |
 | `--mhc_start INTEGER` | `25000000` | Inclusive MHC start; positive, relevant with `--exclude_mhc`. |
@@ -423,11 +423,42 @@ directory. The batch status report is updated as each job finishes, with
 | `--bcftools EXECUTABLE` | `bcftools` | Local program/path; unnecessary with `--ldsc_only`. |
 | `--help` | Off | Show usage and exit. |
 
-For a fixed per-trait chi-square threshold, add `--chisq_max 80`. This writes
-filtered copies without changing the original munged files. The value is an
-explicit analysis decision, not the default and not GenomicSEM's automatic
-threshold selection. It is also different from raw Python LDSC's native
-cross-product `--chisq-max` rule; see [raw commands](#raw-ldsc-commands).
+Choose chi-square filtering explicitly for `ldsc-gpca ldsc`:
+
+| Setting | Behavior |
+| --- | --- |
+| Omit `--chisq_max` | No additional chi-square filtering (unchanged default). |
+| `--chisq_max 80` | Use cutoff 80 for every trait; any positive integer is accepted. |
+| `--chisq_max auto` | Calculate a separate cutoff for each trait using GenomicSEM's automatic rule. |
+
+For `auto`, first omit rows with missing fields and match SNPs to **both** the
+reference and regression-weight LD-score files. Take the largest `N` among those
+rows, multiply by 0.001, and use the larger of that result and 80. For example,
+maximum matched N of 50,000 gives cutoff 80; 200,000 gives 200; 500,250 gives
+500.25. Automatic cutoffs are not rounded. `N` is the value already in the munged
+file, including effective N when that convention was used. The cutoff is computed
+before excluding large Z² values and before intersecting trait pairs.
+[GenomicSEM source](https://github.com/GenomicSEM/GenomicSEM/blob/6b65ca5db39fdade08b0d811477be1cdd57b5039/R/ldsc.R#L172-L195).
+
+Both settings keep `Z² <= cutoff` and write separate filtered copies, preserving
+source files. LD matching determines the automatic cutoff; native LDSC still
+performs its usual LD matching and missing-row removal on the copies. The summary
+`LDSC_ChiSquare_Filter_Summary.csv` records each trait's `threshold_mode`, numeric
+`chisq_max`, `maximum_matched_n`, and `complete_ld_matched_rows`; the last two are
+blank for fixed cutoffs. Reference SNPs are loaded once per run, and automatic N
+selection uses a memory-bounded preliminary pass over each trait file.
+
+The option requires a value: `auto` or an integer greater than zero. Zero,
+negative values, decimals (including `80.0`), and a bare `--chisq_max` are rejected.
+This replaces the previous floating-point CLI cutoff syntax; write `80` instead
+of `80.0`. Changing filtering requires rerunning LDSC; `--restart` reuses batches
+only when the selected mode, inputs, references, and other settings match.
+Previously filtered inputs cannot recover SNPs already removed: use the original
+munged files when comparing cutoffs. Matching this filter alone does not remove
+other differences between Python LDSC and GenomicSEM.
+
+The managed option uses per-trait filtering and is not forwarded to raw Python
+LDSC's cross-product `--chisq-max`; see [raw commands](#raw-ldsc-commands).
 Missing Z placeholders (blank, `NA`, `nan`, `NaN`, or `.`) pass through unchanged
 for native LDSC to discard. They are counted as `variants_missing_z` in the filter
 summary; `variants_after` includes these rows, so finite-Z survivors equal

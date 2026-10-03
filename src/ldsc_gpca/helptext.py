@@ -87,8 +87,12 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
   --ld_ref: directory of chromosome reference files; see FIXED CONTRACT below.
   --munged_dir: .sumstats.gz directory used with --ldsc_only;
     filenames: {traitname}.sumstats.gz. Required sidecars must remain alongside.
-  --chisq_max: optional positive threshold applied independently to each munged
-    trait as Z^2 <= threshold before pairwise LDSC. Original files are unchanged.
+  --chisq_max INTEGER|auto: optional per-trait Z^2 <= cutoff filtering before LDSC.
+    Omitted: disabled. INTEGER must be >0; auto uses max(80, 0.001 * max(N))
+    separately per trait, after complete-row matching to reference AND weight
+    LD-score SNPs. N is the munged file's N; auto cutoffs are not rounded.
+    Each cutoff and matched maximum N are saved in LDSC_ChiSquare_Filter_Summary.csv.
+    Original files are unchanged. Applies to both VCF and --ldsc_only inputs.
     Missing Z placeholders are preserved and counted separately for LDSC to discard.
     This is not forwarded to native LDSC's cross-product --chisq-max behavior.
 
