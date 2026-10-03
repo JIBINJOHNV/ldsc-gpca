@@ -1,5 +1,6 @@
 """LDSC summary-statistic munging and provenance."""
 import gzip
+import io
 import os
 import shlex
 import json
@@ -7,6 +8,8 @@ import math
 import shutil
 import tempfile
 import pandas as pd
+import polars as pl
+from .compression import compressed_writer, compression_settings
 from .utils import DEFAULT_FILTERS, is_valid_gz, run_command
 from .ldsc_runtime import ldsc_munging_command
 from .ldsc_munge import FLOAT_FORMAT as MUNGE_FLOAT_FORMAT
@@ -30,6 +33,23 @@ def _temporary_path(destination):
     return path
 
 
+def _read_ld_snps(path):
+    """Project standard TSVs with Polars; retain pandas' whitespace/NA rules."""
+    with gzip.open(path, 'rb') as source:
+        data = source.read()
+    # Only plain TSV is unambiguous under both parsers. Quotes, padding, mixed
+    # whitespace and empty tab fields use the existing whitespace reader.
+    if (b'\t' not in data.partition(b'\n')[0] or data.startswith(b'\t') or data.endswith(b'\t')
+            or any(token in data for token in (b' ', b'"', b'\r', b'\v', b'\f', b'\t\t', b'\t\n', b'\n\t'))):
+        return pd.read_csv(io.BytesIO(data), sep=r'\s+', usecols=['SNP'], dtype=str)['SNP'].dropna()
+    # pandas 2.x default missing-value literals; SNP IDs stay strings.
+    missing = ['', '#N/A', '#N/A N/A', '#NA', '-1.#IND', '-1.#QNAN', '-NaN',
+               '-nan', '1.#IND', '1.#QNAN', '<NA>', 'N/A', 'NA', 'NULL', 'NaN',
+               'None', 'n/a', 'nan', 'null']
+    return pl.read_csv(data, separator='\t', columns=['SNP'], infer_schema_length=0,
+                       null_values=missing, n_threads=1)['SNP'].drop_nulls().to_list()
+
+
 def _matched_ld_snps(ld_ref_dir, ld_weights_dir):
     """Load the reference/weight SNP intersection once, shared by trait workers."""
     if not ld_ref_dir:
@@ -39,7 +59,7 @@ def _matched_ld_snps(ld_ref_dir, ld_weights_dir):
         snps = set()
         for chromosome in range(1, 23):
             path = os.path.join(directory, f'{chromosome}.l2.ldscore.gz')
-            snps.update(pd.read_csv(path, sep=r'\s+', usecols=['SNP'], dtype=str)['SNP'].dropna())
+            snps.update(_read_ld_snps(path))
         matched = snps if matched is None else matched.intersection(snps)
     if not matched:
         raise ValueError('--chisq_max auto: reference and weight LD scores have no shared SNPs')
@@ -79,9 +99,10 @@ def _automatic_chisq_max(trait, source_file, matched_snps):
 
 
 def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file, chisq_max,
-                               matched_snps=None):
+                               matched_snps=None, compression=None):
     """Write one independently chi-square-filtered LDSC input and its exclusions."""
     automatic = chisq_max == 'auto'
+    compression = compression or compression_settings(1, 9)
     maximum_n = matched_rows = None
     if automatic:
         chisq_max, maximum_n, matched_rows = _automatic_chisq_max(trait, source_file, matched_snps)
@@ -91,8 +112,8 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
     maximum_chisq = None
     try:
         with gzip.open(source_file, 'rt', encoding='utf-8', newline='') as source, \
-                gzip.open(filtered_temp, 'wt', encoding='utf-8', newline='') as destination, \
-                gzip.open(excluded_temp, 'wt', encoding='utf-8', newline='') as excluded:
+                compressed_writer(filtered_temp, compression, text=True) as destination, \
+                compressed_writer(excluded_temp, compression, text=True) as excluded:
             header = source.readline()
             if not header:
                 raise ValueError(f'{trait}: munged LDSC input is empty')
@@ -183,6 +204,11 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
     if os.path.realpath(input_folder) == os.path.realpath(filtered_folder):
         raise ValueError('ldsc_input_folder must not be the chi-square filtered output directory')
     matched_snps = _matched_ld_snps(ld_ref_dir, ld_weights_dir) if chisq_max == 'auto' else None
+    # Two output streams per active trait; never give every trait the full pool.
+    active = max(1, min(n_parallel, len(input_df)))
+    compression = compression_settings(max(1, n_parallel // (2 * active)), 9)
+    print(f"[Chi-square filtering] Compression: {compression['backend']}, level 9, "
+          f"{compression['workers']} worker(s) per output stream")
     os.makedirs(filtered_folder, exist_ok=True)
     tasks = []
     for trait in input_df['gwas_name']:
@@ -196,6 +222,7 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
             os.path.join(filtered_folder, f'{trait}.chisq_excluded.tsv.gz'),
             chisq_max,
             matched_snps,
+            compression,
         ))
 
     summaries = run_parallel_jobs([(task[0], _filter_one_munged_sumstats, task) for task in tasks],
@@ -210,7 +237,7 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
     excluded_path = os.path.join(output_folder, 'LDSC_ChiSquare_Excluded_Variants.tsv.gz')
     excluded_temp = _temporary_path(excluded_path)
     try:
-        with gzip.open(excluded_temp, 'wt', encoding='utf-8', newline='') as combined:
+        with compressed_writer(excluded_temp, compression_settings(n_parallel, 9), text=True) as combined:
             combined.write('gwas_name\tSNP\tZ\tCHISQ\n')
             for trait in input_df['gwas_name']:
                 per_trait = os.path.join(filtered_folder, f'{trait}.chisq_excluded.tsv.gz')

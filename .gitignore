@@ -66,3 +66,5 @@ results/
 !tests/SELF_PAIR_ZERO_SE_VALIDATION.md
 !tests/test_extraction_af.py
 !tests/AF_FILTER_VALIDATION.md
+!tests/test_io_acceleration.py
+!tests/IO_ACCELERATION_VALIDATION.md

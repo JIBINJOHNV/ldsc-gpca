@@ -519,6 +519,23 @@ performs its usual LD matching and missing-row removal on the copies. The summar
 blank for fixed cutoffs. Reference SNPs are loaded once per run, and automatic N
 selection uses a memory-bounded preliminary pass over each trait file.
 
+Filtered copies and exclusion files use `pigz` when installed, with Python gzip
+as the fallback. Both use compression level 9 and preserve the uncompressed
+row text. Compressor failures follow the existing two-attempt worker policy;
+failed compression is never published as a completed filtered file. Compression
+threads are divided between the two output streams and active trait jobs, with
+at least one compressor worker per stream. The final combined exclusion file
+can use all `--n_cores` workers. Final GWAMA export's `--gzip_level` setting does
+not change filtering compression.
+
+Standard tab-separated LD-score SNP columns are read with Polars; files with
+mixed whitespace, quoting or empty tab fields retain the pandas whitespace
+reader. Numerical LDSC result CSVs also use Polars, followed by the existing
+numeric conversion and QC. This preserves numeric precision and trait names
+such as `001` and `NA`. These paths support the pinned Polars **0.20.31** and
+require no dependency upgrades or PyArrow. See the
+[I/O validation](tests/IO_ACCELERATION_VALIDATION.md) for measured timings and scope.
+
 The option requires a value: `auto` or an integer greater than zero. Zero,
 negative values, decimals (including `80.0`), and a bare `--chisq_max` are rejected.
 This replaces the previous floating-point CLI cutoff syntax; write `80` instead

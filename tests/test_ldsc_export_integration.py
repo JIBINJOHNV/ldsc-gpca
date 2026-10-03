@@ -106,7 +106,7 @@ print('Exact native estimates preserved; readable rendering unchanged.')
             self.assertTrue(all(path.endswith(".results.csv") for path in exported))
             self.assertEqual(len(list((root / "batches").glob("*.log"))), 3)
             with patch.object(results, "_read_legacy_log", side_effect=AssertionError("log read")), \
-                    patch.object(results.pd, "read_csv", wraps=pd.read_csv) as read:
+                    patch.object(results.pl, "read_csv", wraps=results.pl.read_csv) as read:
                 results.compile_results(str(root), exported, metadata)
                 self.assertEqual(read.call_count, 3)
             compiled = pd.read_csv(root / "ldsc_results.csv", float_precision="round_trip")

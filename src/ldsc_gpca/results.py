@@ -3,8 +3,10 @@ import os
 import math
 import re
 import csv
+import io
 import uuid
 import pandas as pd
+import polars as pl
 from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, NATIVE_COLUMNS, write_results_csv
 from .result_qc import result_status, trait_status, _missing_value, self_rg_zero_se
 from .trait_selection import select_complete_traits
@@ -129,13 +131,21 @@ def _read_legacy_log(log):
 def _read_numerical_csv(path, *, allow_failed=False):
     """Read each machine-readable export once, without opening a readable log."""
     try:
-        with open(path, newline='', encoding='utf-8-sig') as handle:
-            header = next(csv.reader(handle), [])
+        with open(path, 'rb') as handle:
+            data = handle.read()
+        reader = csv.reader(io.StringIO(data.decode('utf-8-sig')), strict=True)
+        header = next(reader, [])
         if len(header) != len(set(header)):
             raise ValueError('Duplicate column headers')
-        frame = pd.read_csv(path, float_precision='round_trip',
-                            dtype={'p1': str, 'p2': str}, keep_default_na=False)
-    except (OSError, ValueError, pd.errors.ParserError) as error:
+        # Polars 0.20 may accept an unterminated final quoted field.
+        if b'"' in data:
+            for _ in reader:
+                pass
+        # Read literals first: existing validation uses Python float conversion,
+        # retaining round-trip precision and identifiers such as "001" or "NA".
+        frame = pd.DataFrame(pl.read_csv(data, infer_schema_length=0,
+            missing_utf8_is_empty_string=True, n_threads=1).to_dict(as_series=False))
+    except (OSError, ValueError, csv.Error, pl.exceptions.PolarsError) as error:
         raise RuntimeError(
             f'Cannot read numerical LDSC CSV {path}: {error}. '
             'No readable-log fallback was attempted.'

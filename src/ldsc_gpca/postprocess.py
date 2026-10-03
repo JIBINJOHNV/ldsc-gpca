@@ -6,7 +6,6 @@ import math
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 from time import perf_counter
 
@@ -14,6 +13,7 @@ import numpy as np
 import pandas as pd
 from .threads import export_workers
 from .workers import run_parallel_jobs
+from .compression import compression_settings, compressed_writer
 
 RESULT_SUFFIX = '.N_weighted_GWAMA.results.txt.gz'
 LOG_SUFFIX = '.N_weighted_GWAMA.log'
@@ -30,15 +30,6 @@ def validate_overrides(n_eff, info_value):
 
 def progress(message):
     print(f'[GWAMA export] {message}', flush=True)
-
-
-def compression_settings(n_cores=0, gzip_level=1):
-    n_cores = export_workers(n_cores)
-    if not isinstance(gzip_level, int) or isinstance(gzip_level, bool) or not 1 <= gzip_level <= 9:
-        raise ValueError('--gzip_level must be an integer from 1 to 9')
-    pigz = shutil.which('pigz')
-    return {'backend': 'pigz' if pigz else 'python_gzip', 'executable': pigz,
-            'level': gzip_level, 'workers': n_cores if pigz else 1}
 
 
 def filename_component(value):
@@ -201,32 +192,8 @@ def write_table(data, stream):
 
 def write_compressed_table(data, destination, settings):
     """Stream directly to gzip; pigz is optional and never needs a plain TSV."""
-    with destination.open('wb') as output:
-        if settings['backend'] == 'python_gzip':
-            with gzip.GzipFile(filename='', fileobj=output, mode='wb',
-                               compresslevel=settings['level'], mtime=0) as stream:
-                write_table(data, stream)
-            return
-        # GZIP/PIGZ environment options could silently change the output format
-        # (e.g. to ZIP), level or thread count; use only the recorded settings.
-        env = {k: v for k, v in os.environ.items() if k not in ('GZIP', 'PIGZ')}
-        with tempfile.TemporaryFile() as errors:
-            process = subprocess.Popen(
-                [settings['executable'], '-n', '-c', f"-{settings['level']}",
-                 '-p', str(settings['workers'])],
-                stdin=subprocess.PIPE, stdout=output, stderr=errors, env=env)
-            try:
-                with process.stdin as stream:
-                    write_table(data, stream)
-                code = process.wait()
-                if code:
-                    errors.seek(0)
-                    detail = errors.read(4096).decode('utf-8', errors='replace').strip()
-                    raise OSError(f'pigz failed (exit {code}): {detail}')
-            finally:
-                if process.poll() is None:
-                    process.terminate()
-                    process.wait()
+    with compressed_writer(destination, settings) as stream:
+        write_table(data, stream)
 
 
 def save_outputs(combined, summary, combined_path, summary_path, audit_path, audit,

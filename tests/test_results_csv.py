@@ -35,10 +35,10 @@ class NumericalCsvTests(unittest.TestCase):
             write_results_csv(frame, source)
             with patch.object(results, "_read_legacy_log", side_effect=AssertionError("log read")), \
                     patch.object(results, "_detailed_correlations", side_effect=AssertionError("log parse")), \
-                    patch.object(results.pd, "read_csv", wraps=pd.read_csv) as read:
+                    patch.object(results.pl, "read_csv", wraps=results.pl.read_csv) as read:
                 results.compile_results(directory, [source], manifest() if metadata is None else metadata)
                 read.assert_called_once()
-                self.assertEqual(read.call_args.args[0], source)
+                self.assertEqual(read.call_args.args[0], source.read_bytes())
             return pd.read_csv(Path(directory) / "ldsc_results.csv", float_precision="round_trip")
 
     def test_round_trips_every_numerical_field_with_one_csv_read_and_no_logs(self):
@@ -89,7 +89,7 @@ class NumericalCsvTests(unittest.TestCase):
             paths = [Path(directory) / "observed.results.csv", Path(directory) / "liability.results.csv"]
             write_results_csv(observed, paths[0])
             write_results_csv(liability, paths[1])
-            with patch.object(results.pd, "read_csv", wraps=pd.read_csv) as read:
+            with patch.object(results.pl, "read_csv", wraps=results.pl.read_csv) as read:
                 results.compile_results(directory, paths, metadata)
                 self.assertEqual(read.call_count, 2)
             compiled = pd.read_csv(Path(directory) / "ldsc_results.csv", float_precision="round_trip")
