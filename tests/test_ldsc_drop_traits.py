@@ -190,7 +190,7 @@ class DropTraitsCLITests(unittest.TestCase):
                 if malformed and a == b == 'B': row['rg'] = 'invalid'
                 write_results_csv(pd.DataFrame([row]), tokens[-1] + '.results.csv')
             args = ['--input', str(source), '--outdir', str(root / 'out'), '--ld_ref', str(ld),
-                    '--ldsc_only', '--munged_dir', str(inputs), '--n_cores', '9', '--ldsc_retries', '0',
+                    '--ldsc_only', '--munged_dir', str(inputs), '--n_cores', '9',
                     '--chisq_max', '80', '--result_failure_action', 'drop_traits', '--restart']
             with patch.object(ldsc_cli, 'check_runtime'), \
                  patch.object(restart, 'fingerprint_runtime', return_value={'sources': {'ldsc.py': 'fixture'}}), \
@@ -199,22 +199,28 @@ class DropTraitsCLITests(unittest.TestCase):
                     with self.assertRaises(pairwise.LDSCBatchFailures) as failure: ldsc_cli.main(args)
                     self.assertFalse(failure.exception.can_exclude)
                     return
+                if native_failure:
+                    with self.assertRaisesRegex(pairwise.LDSCBatchFailures, 'Analysis stopped'):
+                        ldsc_cli.main(args)
+                    self.assertFalse((root / 'out/ldsc_results.csv').exists())
+                    self.assertFalse((root / 'out/LDSC_Retained_Traits.csv').exists())
+                    status = pd.read_csv(root / 'out/ldsc_results/LDSC_Batch_Status.csv')
+                    self.assertEqual(status.Status.eq('execution_failed').sum(), 5)
+                    self.assertEqual(status.loc[status.Status.eq('execution_failed'), 'Attempts'].tolist(), [2]*5)
+                    self.assertEqual(len(calls), 14)  # Four successes, five failures attempted twice.
+                    return
                 ldsc_cli.main(args)
                 retained = pd.read_csv(root / 'out/LDSC_Retained_Traits.csv')
                 self.assertEqual(retained.traitname.tolist(), ['A', 'C'])
                 self.assertEqual(retained.note.tolist(), ['a', 'c'])
                 self.assertEqual(len(pd.read_csv(root / 'out/ldsc_results.csv')), 4)
-                if native_failure:
-                    audit = pd.read_csv(root / 'out/LDSC_Pair_Status.csv')
-                    self.assertEqual(audit.Status.eq('missing_result').sum(), 5)
-                    self.assertTrue(audit.loc[audit.Status.eq('missing_result'), 'Reason'].str.contains('interruption').all())
                 count = len(calls); ldsc_cli.main(args)
-                self.assertEqual(len(calls) - count, 5 if native_failure else 0)
+                self.assertEqual(len(calls) - count, 0)
 
     def test_cli_drops_numerical_failure_and_restart_reuses_all_completed_estimates(self):
         self.run_case()
 
-    def test_cli_continues_after_exhausted_execution_retries_and_keeps_successful_batches(self):
+    def test_cli_stops_after_exhausted_execution_retries_even_with_drop_traits(self):
         self.run_case(native_failure=True)
 
     def test_cli_keeps_structural_result_errors_fatal(self):

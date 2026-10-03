@@ -7,10 +7,11 @@ import hashlib
 import math
 import shutil
 import tempfile
-import concurrent.futures
 import pandas as pd
 from .utils import DEFAULT_FILTERS, is_valid_gz, run_command
 from .ldsc_runtime import ldsc_command
+from .workers import run_parallel_jobs
+from .pairwise import _result_stamp
 
 
 def _split_sumstats_line(line, tab_separated):
@@ -196,12 +197,9 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
             matched_snps,
         ))
 
-    summaries = []
-    workers = min(n_parallel, len(tasks))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_filter_one_munged_sumstats, *task): task[0] for task in tasks}
-        for future in concurrent.futures.as_completed(futures):
-            summaries.append(future.result())
+    summaries = run_parallel_jobs([(task[0], _filter_one_munged_sumstats, task) for task in tasks],
+        n_parallel, stage='Chi-square filtering',
+        status_path=os.path.join(output_folder, 'LDSC_ChiSquare_Worker_Attempts.csv'))
 
     order = {trait: index for index, trait in enumerate(input_df['gwas_name'])}
     summaries.sort(key=lambda row: order[row['gwas_name']])
@@ -256,26 +254,19 @@ def parallel_munge_sumstats(n_parallel, input_df, output_folder, snp_include_fil
             '--a2', 'REF', '--p', 'P', '--frq', 'AF', '--maf-min', str(filters['munge_maf_min']),
             '--signed-sumstats', 'EZ,0', '--merge-alleles', snp_include_file, '--out', out_prefix])
 
-        try:
-            run_command(command, f"Munge_{sample_name}", output_folder=output_folder)
-            if not is_valid_gz(final_out_file):
-                raise RuntimeError(f'{sample_name}: munging produced no valid gzip output')
-            with open(final_out_file, 'rb') as handle:
-                digest = hashlib.sha256()
-                for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-                    digest.update(chunk)
-            with open(metadata_file, 'w') as handle:
-                json.dump({'sample_size_column': n_column, 'sha256': digest.hexdigest(), 'filters': filters,
-                           'sample_prevalence': None if pd.isna(row['sample_prevalence']) else float(row['sample_prevalence'])}, handle)
-            return sample_name, True
-        except RuntimeError:
-            print(f"  [!] Failed: {sample_name} (See execution_errors.log)")
-            return sample_name, False
+        previous = _result_stamp(final_out_file)
+        run_command(command, f"Munge_{sample_name}", output_folder=output_folder)
+        if not is_valid_gz(final_out_file) or _result_stamp(final_out_file) == previous:
+            raise RuntimeError(f'{sample_name}: munging produced no fresh valid gzip output')
+        with open(final_out_file, 'rb') as handle:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                digest.update(chunk)
+        with open(metadata_file, 'w') as handle:
+            json.dump({'sample_size_column': n_column, 'sha256': digest.hexdigest(), 'filters': filters,
+                       'sample_prevalence': None if pd.isna(row['sample_prevalence']) else float(row['sample_prevalence'])}, handle)
+        return sample_name
 
-    success_list = []
-    with concurrent.futures.ThreadPoolExecutor(n_parallel) as executor:
-        futures = {executor.submit(munge_sumstats, row): row['gwas_name'] for _, row in input_df.iterrows()}
-        for future in concurrent.futures.as_completed(futures):
-            name, success = future.result()
-            if success: success_list.append(name)
-    return success_list
+    return run_parallel_jobs([(row['gwas_name'], munge_sumstats, (row,)) for _, row in input_df.iterrows()],
+        n_parallel, stage='LDSC munging',
+        status_path=os.path.join(output_folder, 'LDSC_Munging_Worker_Attempts.csv'))

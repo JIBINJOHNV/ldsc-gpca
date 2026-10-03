@@ -370,12 +370,27 @@ LP-to-P transformation can underflow for extreme values; P=0 is rejected during
 LDSC munging. Review logs for resulting exclusions.
 
 Retries rerun identical failed commands; they do not repair data or statistical
-problems. Exhausted retries stop before compilation in `error`/`report` modes.
-With `--result_failure_action drop_traits`, successfully completed batches can
-continue into audited subset selection after execution failures. Malformed
+problems. Exhausted retries stop before compilation in every mode, including
+`--result_failure_action drop_traits`; successful batches and checkpoints remain
+available for restart. Malformed
 exports and contradictory estimates still fail. Numerical estimation failures
 are **not retried**; missing or incomplete exports receive bounded retries.
-Extraction failure stops the run; handled munging failures remove affected traits.
+Extraction, munging, filtering, GPCA preparation, GenomicSEM munging, GWAMA and
+parallel export reads retry failed jobs once (two total attempts), then stop on
+exhaustion. Successful jobs run once. These retries use one worker at a time;
+Unix/macOS R retries run in fresh child processes. The stage collects results
+before stopping; no downstream stage starts with exhausted failures. Preflight
+validation errors stop before launching jobs. A killed controller cannot recover
+itself; Windows R stages run sequentially. Python LDSC keeps the existing
+`--ldsc_retries` override (default 1, explicit 0 disables its retries).
+
+Attempt audits are named `LDSC_Extraction_Worker_Attempts.csv`,
+`LDSC_Munging_Worker_Attempts.csv`, `LDSC_ChiSquare_Worker_Attempts.csv`,
+`Preparation_Worker_Attempts.csv`, `GenomicSEM_Munging_Worker_Attempts.csv`,
+`GWAMA_Worker_Attempts.csv`, and `GWAMA_Export_Worker_Attempts.csv`.
+`LDSC_Batch_Status.csv` and `GWAMA_Run_Status.csv` include `Attempts`.
+Malformed/missing R results are recorded as failures. GWAMA and munging require
+fresh outputs, preventing an old file from establishing success.
 `drop_traits` requires `ref=yes` for all traits, usable self-pairs, and a complete
 set of unordered comparisons among at least two retained traits. It writes
 `ldsc_results.csv`, `LDSC_Retained_Traits.csv` and `LDSC_Dropped_Traits.csv`, while
@@ -531,7 +546,9 @@ conventions if using preparation exports as its inputs.
 
 The wrapper runs `stand=FALSE`, audits raw h2, then reruns `stand=TRUE` on retained
 traits. Fewer than two retained traits or invalid final matrices stops the run.
-Failed munging stops rather than silently removing traits. A fresh/empty output
+Munging is scheduled per trait by the package, calling the unchanged native
+single-trait `GenomicSEM::munge` with its existing filters and N. Failed jobs get
+one retry; failure after two attempts stops before LDSC. A fresh/empty output
 directory is required. The final object contains genuine native sampling covariance
 matrices; none are fabricated or repaired. Final RData validation does not replace
 the downstream GPCA/CTI checks.
@@ -895,8 +912,9 @@ QC the exported statistics before downstream analysis; successful export is not
 scientific validation.
 
 Existing export/archive paths are refused. Archive failure can leave saved outputs
-and some moved originals; it is reported as an error. No automatic export retry
-is performed. Use `--postprocess_help` for this section's CLI options.
+and some moved originals; it is reported as an error. Failed parallel file reads
+retry once; publication and archival are not automatically retried. Use
+`--postprocess_help` for this section's CLI options.
 
 ## Troubleshooting and limitations
 

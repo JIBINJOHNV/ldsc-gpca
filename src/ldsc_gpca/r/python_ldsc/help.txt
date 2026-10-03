@@ -109,7 +109,9 @@ Execution and performance:
   --validate_only       Run LDSC QC and PCA and write audit files, but do not
                         run GWAMA.
   --n_cores N           Workers for chromosome-split GWAMA. 0 selects up to 22
-                        based on available physical cores. Default: 0.
+                        based on available physical cores. Default: 0. Failed
+                        jobs retry once in fresh workers, one at a time;
+                        failure after 2 attempts stops analysis.
   --ldsc_chunk_size N   Number of LDSC rows read per streaming chunk. Default:
                         250000.
   --color {auto,always,never}

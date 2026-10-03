@@ -1,5 +1,5 @@
-usage: ldsc-gpca genomicsem gpca [-h] --input MANIFEST.csv
-                                 --ldsc_results LDSC.RData --outdir DIRECTORY
+usage: ldsc-gpca genomicsem gpca [-h] --input MANIFEST.csv --ldsc_results
+                                 LDSC.RData --outdir DIRECTORY
                                  [--gpca_input_folder DIRECTORY]
                                  [--source_path GWAMA.R]
                                  [--splitby_chr {split,nosplit}]
@@ -15,7 +15,7 @@ usage: ldsc-gpca genomicsem gpca [-h] --input MANIFEST.csv
 
 GPCA/GWAMA from GenomicSEM LDSCoutput RData. Strict QC is the default. Warnings, removals and errors are saved in GenomicSEM_QC_Events.csv.
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
   --input MANIFEST.csv  Comma-separated manifest; required header traitname.
                         Required; no default.
@@ -33,7 +33,8 @@ options:
   --splitby_chr {split,nosplit}
                         Input naming mode. Default: split (chromosomes 1-22).
   --n_cores N_CORES     Chromosome workers. Default: 0 = auto; Windows runs
-                        sequentially.
+                        sequentially. Failed jobs retry once, one at a time;
+                        failure after 2 attempts stops analysis.
   --validate_only       Write QC and PCA diagnostics without running GWAMA.
                         Default: false.
   --allow_missing_traits

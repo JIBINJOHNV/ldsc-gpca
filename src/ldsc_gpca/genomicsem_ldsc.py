@@ -49,7 +49,7 @@ OUTPUTS / DEPENDENCIES
     group.add_argument('--munged_input', action='store_true', help='Use manifest munged_file paths; skip munge.')
     p.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference; required unless skipping munge.')
     p.add_argument('--n_cores', dest='n_cores', type=int, default=1,
-                   help='Munging workers; 1 is sequential. LDSC is not parallelized by this option.')
+                   help='Munging workers; 1 is sequential, as on Windows. Each failed trait gets one retry (2 total attempts); exhausted failures stop before LDSC. LDSC is not parallelized by this option.')
     p.add_argument('--info_filter', type=float, default=.9, help='GenomicSEM munging INFO threshold.')
     p.add_argument('--maf_filter', type=float, default=.01, help='GenomicSEM munging MAF threshold.')
     p.add_argument('--chromosomes', type=int, default=22, help='Use chromosome files 1 through this number (1–22).')

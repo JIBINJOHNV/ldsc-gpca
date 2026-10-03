@@ -16,29 +16,43 @@ run_genomicsem_ldsc <- function(manifest, outdir, ld, wld, hm3, mode, cores,
   }
   write.csv(events, "GenomicSEM_LDSC_Events.csv", row.names = FALSE)
   on.exit(writeLines(capture.output(sessionInfo()), file.path(outdir, "sessionInfo.txt")), add = TRUE)
+  validate_munged <- function(path) {
+    con <- if (grepl("\\.gz$", path)) gzfile(path, "rt") else file(path, "rt")
+    lines <- tryCatch(readLines(con, n = 2L, warn = FALSE), finally = close(con))
+    if (length(lines) < 2L || !all(c("SNP", "A1", "A2", "N", "Z") %in% strsplit(lines[1], "\t", fixed = TRUE)[[1]]))
+      stop(paste("Munged file needs tab-separated SNP,A1,A2,N,Z and data:", path))
+  }
   tryCatch(withCallingHandlers({
     if (mode == "munge") {
       stage <- "munge"
       dir.create("munge_output")
-      setwd("munge_output")
-      tryCatch(munge_fun(files = dat$source_file, hm3 = hm3, trait.names = dat$traitname,
-        N = dat$N, info.filter = info_filter, maf.filter = maf_filter,
-        parallel = cores > 1L, cores = cores, overwrite = FALSE),
-        finally = setwd(outdir))
-      dat$traits <- vapply(dat$traitname, function(name) {
-        candidates <- file.path(outdir, "munge_output", paste0(name, c(".sumstats.gz", ".sumstats")))
-        candidates <- candidates[file.exists(candidates)]
+      worker <- function(name) {
+        before <- setwd(file.path(outdir, "munge_output"))
+        on.exit(setwd(before))
+        row <- dat[match(name, dat$traitname), , drop = FALSE]
+        paths <- file.path(outdir, "munge_output", paste0(name, c(".sumstats.gz", ".sumstats")))
+        previous <- file.info(paths)[, c("size", "mtime", "ctime")]
+        # The package owns scheduling/retries; the upstream single-trait algorithm is unchanged.
+        munge_fun(files = row$source_file, hm3 = hm3, trait.names = name,
+          N = row$N, info.filter = info_filter, maf.filter = maf_filter,
+          parallel = FALSE, cores = 1L, overwrite = TRUE)
+        candidates <- paths[file.exists(paths)]
         if (length(candidates) != 1L) stop(paste("Missing or ambiguous munged output:", name))
-        candidates
-      }, character(1))
+        if (identical(file.info(candidates)[, c("size", "mtime", "ctime")], previous[candidates, , drop = FALSE]))
+          stop(paste("No fresh munged output:", name))
+        validate_munged(candidates)
+        list(success = TRUE, chromosome = name, output = candidates, error = NA_character_)
+      }
+      runs <- run_parallel_workers(as.list(dat$traitname), worker, cores, outdir,
+                                   stage = "GenomicSEM_Munging", label_column = "Trait")
+      status <- make_run_status(runs, "Trait")
+      if (any(!status$Success)) stop("Analysis stopped: GenomicSEM munging failed after 2 attempts. ",
+        "See GenomicSEM_Munging_Worker_Attempts.csv.\n",
+        paste(paste0(status$Trait[!status$Success], ": ", status$Error[!status$Success]), collapse = "\n"))
+      dat$traits <- status$Output
     } else dat$traits <- dat$source_file
     stage <- "munged_input_validation"
-    for (path in dat$traits) {
-      con <- if (grepl("\\.gz$", path)) gzfile(path, "rt") else file(path, "rt")
-      lines <- tryCatch(readLines(con, n = 2L, warn = FALSE), finally = close(con))
-      if (length(lines) < 2L || !all(c("SNP", "A1", "A2", "N", "Z") %in% strsplit(lines[1], "\t", fixed = TRUE)[[1]]))
-        stop(paste("Munged file needs tab-separated SNP,A1,A2,N,Z and data:", path))
-    }
+    for (path in dat$traits) validate_munged(path)
     estimate <- function(selected, stand, log_name) ldsc_fun(
       traits = selected$traits, sample.prev = selected$sampleprevalence,
       population.prev = selected$populationprevalence, trait.names = selected$traitname,

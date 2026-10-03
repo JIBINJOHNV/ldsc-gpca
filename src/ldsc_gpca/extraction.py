@@ -2,10 +2,10 @@
 import os
 import subprocess
 import shlex
-import concurrent.futures
 import pandas as pd
 import polars as pl
 from .utils import DEFAULT_FILTERS, optional_prevalence
+from .workers import run_parallel_jobs
 
 def filter_commands(vcf_file, filters, query, bcftools='bcftools'):
     expression = "(ABS(INFO/AF - INFO/EUR) > {d} || INFO/EUR==\".\")".format(d=filters['max_af_difference'])
@@ -74,25 +74,20 @@ def munge_input_worker_with_prevalence(sample_name, input_path, output_folder, v
 # --- MAIN LOGIC ---
 def run_vcf_to_table(n_parallel, input_df, output_folder, filters=DEFAULT_FILTERS, bcftools='bcftools'):
     os.makedirs(output_folder, exist_ok=True)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_parallel) as executor:
-        futures = {}
-        for _, row in input_df.iterrows():
-            sample_name = row['gwas_name']
-            vcf_file = row['vcf_files']
-            input_path = "/".join(vcf_file.split("/")[:-1])
-            # Submit to the un-nested top-level function
-            if pd.isna(row['pop_prevalence']):
-                future = executor.submit(munge_input_worker, sample_name, input_path, output_folder, vcf_file, filters, bcftools)
-            else:
-                future = executor.submit(munge_input_worker_with_prevalence, sample_name, input_path,
-                                         output_folder, vcf_file, row['sample_prevalence'], filters, bcftools)
-            futures[future] = row.name
-        # CRITICAL: Checking results prints errors to your screen if a process crashes!
-        for future in concurrent.futures.as_completed(futures):
-            prevalence = future.result()
-            if prevalence is not None:
-                index = futures[future]
-                input_df.loc[index, 'sample_prevalence_source'] = 'median_case_fraction' if pd.isna(input_df.loc[index, 'sample_prevalence']) else 'provided'
-                input_df.loc[index, 'sample_prevalence'] = prevalence
+    jobs = []
+    for _, row in input_df.iterrows():
+        name, vcf = row['gwas_name'], row['vcf_files']
+        args = (name, os.path.dirname(vcf), output_folder, vcf)
+        function = munge_input_worker
+        if not pd.isna(row['pop_prevalence']):
+            function = munge_input_worker_with_prevalence
+            args += (row['sample_prevalence'],)
+        jobs.append((name, function, (*args, filters, bcftools)))
+    values = run_parallel_jobs(jobs, n_parallel, stage='VCF extraction', processes=True,
+        status_path=os.path.join(output_folder, 'LDSC_Extraction_Worker_Attempts.csv'))
+    for index, prevalence in zip(input_df.index, values):
+        if prevalence is not None:
+            input_df.loc[index, 'sample_prevalence_source'] = 'median_case_fraction' if pd.isna(input_df.loc[index, 'sample_prevalence']) else 'provided'
+            input_df.loc[index, 'sample_prevalence'] = prevalence
     input_df.to_csv(os.path.join(output_folder, 'LDSC_Trait_Prevalence_Metadata.csv'), index=False)
     return input_df

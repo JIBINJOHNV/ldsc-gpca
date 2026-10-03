@@ -2,7 +2,6 @@
 import csv
 import gzip
 import math
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
@@ -15,6 +14,7 @@ import polars as pl
 from .postprocess import filename_component
 from .helptext import HelpParser, PREPARE_INPUT_HELP
 from .interfaces import read_manifest
+from .workers import run_parallel_jobs
 
 ID_CHOICES = ('chr_pos_ref_alt', 'vcf_id')
 RAW_COLUMNS = ['SNP', 'CHR', 'POS', 'A1', 'A2', 'eaf_A1', 'beta', 'se', 'LP', 'N']
@@ -251,19 +251,19 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
         if write_munge_inputs:
             (stage/'munge_inputs').mkdir()
         statuses = {}
-        with ThreadPoolExecutor(max_workers=prepare_workers) as executor:
-            futures = {executor.submit(prepare_trait, name, vcf, stage, executable, splitby_chr,
-                                       gpca_id_source, munge_id_source, hm3, p_min): (name, vcf) for name,vcf in rows}
-            for future in as_completed(futures):
-                name, vcf = futures[future]
-                try:
-                    statuses[name] = future.result()
-                    print(f'Prepared {name}: {statuses[name]["gpca_rows"]} GPCA variants', flush=True)
-                except Exception as error:
-                    detail = getattr(error, 'stderr', '') or str(error)
-                    statuses[name] = {'traitname':name, 'vcf_files':str(vcf), 'gpca_rows':0,
-                                      'excluded_non_autosomal_rows':0, 'munge_rows':0, 'p_underflow_rows':0,
-                                      'success':False, 'error':str(detail)}
+        values = run_parallel_jobs([(name, prepare_trait, (name, vcf, stage, executable,
+            splitby_chr, gpca_id_source, munge_id_source, hm3, p_min)) for name, vcf in rows],
+            prepare_workers, stage='VCF preparation', collect_failures=True,
+            status_path=outdir/'Preparation_Worker_Attempts.csv')
+        for (name, vcf), value in zip(rows, values):
+            if isinstance(value, Exception):
+                detail = getattr(value, 'stderr', '') or str(value)
+                statuses[name] = {'traitname':name, 'vcf_files':str(vcf), 'gpca_rows':0,
+                                  'excluded_non_autosomal_rows':0, 'munge_rows':0, 'p_underflow_rows':0,
+                                  'success':False, 'error':str(detail)}
+            else:
+                statuses[name] = value
+                print(f'Prepared {name}: {value["gpca_rows"]} GPCA variants', flush=True)
         ordered = [statuses[name] for name,_ in rows]
         summaries = []
         for status in ordered:
@@ -280,7 +280,8 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
             pl.DataFrame(ordered).write_csv(outdir/'Preparation_Status.csv')
             for report in reports:
                 os.rename(stage/report, outdir/report)
-            raise ValueError('VCF preparation failed; no prepared tables published:\n' + '\n'.join(f'{s["traitname"]}: {s["error"]}' for s in failed))
+            raise ValueError('Analysis stopped: VCF preparation failed after 2 attempts; no prepared tables published. '
+                             'See Preparation_Worker_Attempts.csv.\n' + '\n'.join(f'{s["traitname"]}: {s["error"]}' for s in failed))
         pl.DataFrame(ordered).write_csv(stage/'Preparation_Status.csv')
         settings = {'manifest':str(Path(manifest).resolve()), 'splitby_chr':splitby_chr,
                     'gpca_id_source':gpca_id_source, 'munge_id_source':munge_id_source,

@@ -390,6 +390,43 @@ Keep inputs/runtime unchanged during a run and use one active command per output
 directory. The batch status report is updated as each job finishes, with
 `completed`, `reused`, `execution_failed` or `pending`, plus a restart reason.
 
+### Parallel worker failures and retries
+
+Every package-managed parallel stage uses **two attempts by default**: the initial
+attempt and one retry if it fails. Successful jobs run once. Only failed or
+unconfirmed jobs are retried. If a job still fails, the analysis stops with the
+stage, trait/chromosome/job, attempt count and error; downstream stages do not run.
+The current stage collects worker outcomes before reporting failure, preserving
+completed outputs. This is not an immediate termination of other running jobs.
+
+| Stage | Attempt audit |
+| --- | --- |
+| Python LDSC extraction | `LDSC_Extraction_Worker_Attempts.csv` |
+| Python LDSC munging | `LDSC_Munging_Worker_Attempts.csv` |
+| Chi-square filtering | `LDSC_ChiSquare_Worker_Attempts.csv` |
+| Pairwise Python LDSC | `ldsc_results/LDSC_Batch_Status.csv`, including `Attempts` |
+| VCF preparation for GPCA | `Preparation_Worker_Attempts.csv` |
+| GenomicSEM munging | `GenomicSEM_Munging_Worker_Attempts.csv` |
+| GWAMA, either backend | `GWAMA_Worker_Attempts.csv` and `GWAMA_Run_Status.csv` |
+| GWAMA export file reads | `GWAMA_Export_Worker_Attempts.csv` |
+
+Python LDSC retains its existing `--ldsc_retries` override: default `1` means two
+total attempts; `0` explicitly disables its retries. Other managed stages use
+one retry. Retries in those stages run one job at a time to reduce concurrent
+memory demand. GWAMA and GenomicSEM munging use fresh child processes on Unix/macOS,
+including serial retries; Windows runs these R jobs sequentially. A terminated
+main/controller process cannot retry itself. No upstream estimator is modified.
+
+`NULL`, `try-error` and malformed R worker results become explicit failures,
+rather than breaking status reporting. GWAMA requires fresh non-empty output;
+an old file cannot establish success. Normal runs retain their matrix, PC1 and
+GWAMA calculations. Preflight validation errors stop before workers are launched.
+
+Execution failures are fatal even with `--result_failure_action drop_traits`.
+That option still handles invalid estimates from completed LDSC commands, but
+does not discard traits to hide crashed/exhausted jobs. Failed munging no longer
+silently removes traits. See [validation](tests/WORKER_RETRY_VALIDATION.md).
+
 ### All Python LDSC options
 
 | Option | Default | Meaning / accepted values |
@@ -493,9 +530,9 @@ Managed LDSC exports each native result table numerically with `%.17g` formattin
 before readable-log rounding. Compilation reads each numerical CSV once; it
 does not reconstruct estimates from logs. Missing/malformed exports fail.
 Numerical estimation failures follow the explicit policy below.
-Extraction failure stops; handled munging failures remove affected traits.
-Exhausted command retries stop before compilation in `error`/`report` modes.
-`drop_traits` can continue from successful batches and audit missing comparisons.
+Extraction and munging jobs retry once; exhausted failures stop the run.
+Exhausted LDSC command retries stop before compilation in every mode, including
+`drop_traits`. Completed batch files and checkpoints are retained for restart.
 Malformed result exports, conflicting estimates, runtime setup failures and
 input/provenance errors still stop. Check retained traits and
 logs before using the results: compilation is not the full GPCA QC check.
@@ -530,8 +567,8 @@ At least two traits, usable self estimates and every unordered pair must remain.
 One valid orientation can cover an absent opposite orientation. Conflicting
 observed orientations remain fatal, using the existing absolute duplicate
 tolerances (0.001 for rg/SE/p/intercepts, 0.01 for z, with a 1e-12 comparison
-epsilon). An exhausted execution failure is recorded as an unavailable
-comparison, not evidence of a biological defect in a trait.
+epsilon). An exhausted execution failure stops the run and is recorded in
+`LDSC_Batch_Status.csv`; it is not treated as a reason for biological trait removal.
 The original observed estimates stay in `ldsc_results_diagnostic.csv`, with
 missing-comparison reasons in `LDSC_Pair_Status.csv`. No estimate is filled in,
 clipped or repaired. Failed batches can be retried with `--restart`; completed

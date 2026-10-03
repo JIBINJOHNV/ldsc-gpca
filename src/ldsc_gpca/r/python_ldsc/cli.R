@@ -390,7 +390,8 @@ parse_command_line <- function() {
     default = 0L,
     help = paste(
       "Workers for chromosome-split GWAMA. 0 selects up to 22 based on",
-      "available physical cores. Default: 0."
+      "available physical cores. Default: 0. Failed jobs retry once in fresh",
+      "workers, one at a time; failure after 2 attempts stops analysis."
     )
   )
   execution$add_argument(

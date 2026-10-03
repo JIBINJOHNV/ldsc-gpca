@@ -2,7 +2,6 @@
 import json
 import gzip
 import csv
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import math
 import os
 from pathlib import Path
@@ -14,6 +13,7 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 from .threads import export_workers
+from .workers import run_parallel_jobs
 
 RESULT_SUFFIX = '.N_weighted_GWAMA.results.txt.gz'
 LOG_SUFFIX = '.N_weighted_GWAMA.log'
@@ -143,7 +143,7 @@ def position_keys(combined):
     return pl.DataFrame(keys)
 
 
-def combine_results(files, n_eff, info_value, *, n_cores=0):
+def combine_results(files, n_eff, info_value, *, n_cores=0, status_path=None):
     pl = table_engine(n_cores)
     files = list(files)
     if not files:
@@ -155,22 +155,15 @@ def combine_results(files, n_eff, info_value, *, n_cores=0):
         required.remove('INFO')
     workers = min(export_workers(n_cores), len(files))
     progress(f'Polars: {workers} concurrent file reader(s), 1 CSV parser thread per file; table pool {pl.thread_pool_size()} thread(s)')
-    frames = [None] * len(files)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        pending = {pool.submit(read_chromosome, path, required): i for i, path in enumerate(files)}
-        try:
-            for number, future in enumerate(as_completed(pending), 1):
-                index = pending[future]
-                frame, elapsed = future.result()
-                frames[index] = frame  # Completion order must not change tie order.
-                progress(f'Read/count {number}/{len(files)}: {files[index].name}; {len(frame):,} rows ({elapsed:.1f}s)')
-        except BaseException:
-            for future in pending:
-                future.cancel()
-            raise
+    results = run_parallel_jobs([(path.name, read_chromosome, (path, required)) for path in files],
+                               workers, stage='GWAMA export reads', status_path=status_path)
+    frames = []
+    for number, (path, (frame, elapsed)) in enumerate(zip(files, results), 1):
+        frames.append(frame)  # Manifest order, regardless of completion/retry order.
+        progress(f'Read/count {number}/{len(files)}: {path.name}; {len(frame):,} rows ({elapsed:.1f}s)')
     progress('Checking SNPIDs and chromosome/position keys...')
     combined = pl.concat(frames, how='diagonal', rechunk=False)
-    del frames, pending, frame, future
+    del frames, results, frame
     if (combined['SNPID'].null_count() or (combined['SNPID'].str.strip_chars() == '').any()
             or combined['SNPID'].is_duplicated().any()):
         raise ValueError('SNPID values must be non-empty and unique across current-run results')
@@ -293,7 +286,8 @@ def process_gwama_results(outdir, harmonised_output, name=None, n_eff=None,
             if (archive_dir / path.name).exists():
                 raise FileExistsError(f'Archive destination already exists: {archive_dir / path.name}')
     started = perf_counter()
-    combined, summary = combine_results(files, n_eff, info_value, n_cores=n_cores)
+    combined, summary = combine_results(files, n_eff, info_value, n_cores=n_cores,
+        status_path=outdir/'GWAMA_Export_Worker_Attempts.csv')
     combine_seconds = perf_counter() - started
     progress(f'Combined and prepared both tables ({combine_seconds:.1f}s)')
     audit = {'dataset_id': name, 'sources': [str(p) for p in files], 'rows': len(combined),

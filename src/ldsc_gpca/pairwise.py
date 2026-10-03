@@ -12,13 +12,14 @@ from .restart import (RestartContext, CHECKPOINT_SUFFIX, file_digest,
 
 
 class _BatchFailure(RuntimeError):
-    def __init__(self, message, can_exclude):
+    def __init__(self, message, can_exclude, attempts):
         super().__init__(message)
         self.can_exclude = can_exclude
+        self.attempts = attempts
 
 
 class LDSCBatchFailures(RuntimeError):
-    """Completed paths plus failed comparisons for explicit trait exclusion."""
+    """Fatal execution failures, with completed paths retained for diagnostics/restart."""
     def __init__(self, message, result_files, failed_pairs, can_exclude):
         super().__init__(message)
         self.result_files = result_files
@@ -65,7 +66,7 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
             if reuse:
                 context.check_unchanged(sumstats_paths)
                 print(f'  -> Reusing completed batch: {ref_prefix}, batch {part}', flush=True)
-                return result_path, 'reused', reason
+                return result_path, 'reused', reason, 0
         # Invalidate completion before launching; an interruption must not leave
         # an older checkpoint endorsing this attempt's result.
         checkpoint_path = result_path + CHECKPOINT_SUFFIX
@@ -86,11 +87,11 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
                     context.check_unchanged(sumstats_paths)
                     write_checkpoint(checkpoint_path, {'status': 'completed', 'request': request,
                                                        'result_sha256': file_digest(result_path)})
-                return result_path, 'completed', reason
+                return result_path, 'completed', reason, attempt
             except (RuntimeError, OSError, ValueError) as error:
                 if attempt == retries + 1:
                     raise _BatchFailure(f'{label}: retries exhausted: {error}; see execution_errors.log',
-                                        can_exclude=stage == 'execution') from error
+                                        can_exclude=stage == 'execution', attempts=attempt) from error
                 print(f'  [!] {label} failed; retrying this batch only.', flush=True)
 
     ref_names = input_df[input_df['ref'] == 'yes']['gwas_name'].unique()
@@ -111,7 +112,7 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
                 futures.append((future, ref_name, i//batch_size))
         paths, errors, failed_pairs = {}, [], {}
         can_exclude = True
-        statuses = [dict(Reference=ref, Batch=part, Status='pending', Result_File='', Error='', Restart_Reason='')
+        statuses = [dict(Reference=ref, Batch=part, Status='pending', Result_File='', Error='', Restart_Reason='', Attempts=0)
                     for _, ref, part in futures]
         status_path = os.path.join(output_path, 'LDSC_Batch_Status.csv')
         write_results_csv(pd.DataFrame(statuses), status_path)
@@ -119,19 +120,19 @@ def parallel_ldsc_analysis(n_parallel, batch_size, output_path, ld_ref_dir, inpu
         for future in concurrent.futures.as_completed(indices):
             index = indices[future]
             try:
-                path, status, reason = future.result()
+                path, status, reason, attempts = future.result()
                 paths[index] = path
-                statuses[index].update(Status=status, Result_File=path, Restart_Reason=reason)
+                statuses[index].update(Status=status, Result_File=path, Restart_Reason=reason, Attempts=attempts)
             except (RuntimeError, OSError, ValueError) as error:
                 errors.append(str(error))
-                statuses[index].update(Status='execution_failed', Error=str(error))
+                statuses[index].update(Status='execution_failed', Error=str(error), Attempts=getattr(error, 'attempts', 0))
                 can_exclude = can_exclude and isinstance(error, _BatchFailure) and error.can_exclude
                 _, reference, part = futures[index]
                 for target in input_df.iloc[part * batch_size:(part + 1) * batch_size].gwas_name:
                     failed_pairs[(reference, target)] = str(error)
             write_results_csv(pd.DataFrame(statuses), status_path)
         if errors:
-            raise LDSCBatchFailures('LDSC execution failed; completed batch files were retained. '
+            raise LDSCBatchFailures('Analysis stopped: LDSC execution failed; completed batch files were retained. '
                 'See LDSC_Batch_Status.csv.\n' + '\n'.join(errors),
                 [paths[i] for i in sorted(paths)], failed_pairs, can_exclude)
         return [paths[i] for i in sorted(paths)]

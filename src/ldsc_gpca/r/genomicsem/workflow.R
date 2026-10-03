@@ -56,17 +56,9 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
         result$warnings <- warnings
         result
       }
-      cores <- args$n_cores
-      if (cores == 0L) {
-        cores <- parallel::detectCores(logical = FALSE)
-        cores <- if (is.na(cores)) 1L else max(1L, cores - 1L)
-      }
-      runs <- if (args$splitby_chr == "nosplit") list(worker(NULL)) else
-        if (.Platform$OS.type == "windows" || cores == 1L) lapply(1:22, worker) else
-          parallel::mclapply(1:22, worker, mc.cores = min(22L, cores))
+      chromosomes <- if (args$splitby_chr == "split") as.list(1:22) else list(NULL)
+      runs <- run_parallel_workers(chromosomes, worker, args$n_cores, args$outdir)
       for (i in seq_along(runs)) {
-        if (!is.list(runs[[i]])) runs[[i]] <- list(success = FALSE,
-          chromosome = i, output = NA_character_, error = "Parallel worker did not return a valid result")
         label <- if (is.null(runs[[i]]$chromosome)) "whole_genome" else runs[[i]]$chromosome
         for (w in runs[[i]]$warnings) genomicsem_event(audit, "warning", paste("GWAMA", label, w), action = "reported")
         if (!isTRUE(runs[[i]]$success)) genomicsem_event(audit, "error",
@@ -75,7 +67,9 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
       status <- make_run_status(runs)
     }
     write.csv(status, file.path(args$outdir, "GWAMA_Run_Status.csv"), row.names = FALSE)
-    if (any(!status$Success, na.rm = TRUE)) stop("One or more GWAMA runs failed; see GWAMA_Run_Status.csv.", call. = FALSE)
+    if (any(!status$Success, na.rm = TRUE)) stop(
+      "Analysis stopped: GWAMA jobs still failed after 2 attempts. See GWAMA_Run_Status.csv and GWAMA_Worker_Attempts.csv.\n",
+      paste(paste0(status$Chromosome[!status$Success], ": ", status$Error[!status$Success]), collapse = "\n"), call. = FALSE)
     message("Completed. Trait warnings/removals and reasons: ", file.path(args$outdir, "GenomicSEM_QC_Events.csv"))
     invisible(status)
   }, error = function(e) {

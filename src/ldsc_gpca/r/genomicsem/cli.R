@@ -28,7 +28,7 @@ genomicsem_parser <- function() {
   p$add_argument("--gpca_input_folder", metavar = "DIRECTORY", help = "Tab-separated GWAMA input files. Default: unset; package CLI prepares from VCF unless --validate_only.")
   p$add_argument("--source_path", default = bundled_gwama_path, metavar = "GWAMA.R", help = "Optional custom modified GWAMA R source. Default: bundled N_weighted_GWAMA.function.1_2_6.R.")
   p$add_argument("--splitby_chr", choices = c("split", "nosplit"), default = "split", help = "Input naming mode. Default: split (chromosomes 1-22).")
-  p$add_argument("--n_cores", dest = "n_cores", type = "integer", default = 0L, help = "Chromosome workers. Default: 0 = auto; Windows runs sequentially.")
+  p$add_argument("--n_cores", dest = "n_cores", type = "integer", default = 0L, help = "Chromosome workers. Default: 0 = auto; Windows runs sequentially. Failed jobs retry once, one at a time; failure after 2 attempts stops analysis.")
   p$add_argument("--validate_only", action = "store_true", default = FALSE, help = "Write QC and PCA diagnostics without running GWAMA. Default: false.")
   p$add_argument("--allow_missing_traits", action = "store_true", default = FALSE, help = "Remove absent manifest traits with reasons. Default: stop if absent.")
   p$add_argument("--failed_ldsc_action", choices = c("error", "drop_traits"), default = "error", help = "Invalid trait/pair estimates: error (default), or audited deterministic trait removal; never impute.")

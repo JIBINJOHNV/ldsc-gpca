@@ -10,7 +10,7 @@ import pandas as pd
 from .utils import optional_prevalence, is_valid_gz
 from .extraction import run_vcf_to_table
 from .munging import filter_munged_sumstats, parallel_munge_sumstats
-from .pairwise import parallel_ldsc_analysis, LDSCBatchFailures
+from .pairwise import parallel_ldsc_analysis
 from .results import compile_results, check_saved_filters, prepare_compilation_outputs
 from .ldsc_runtime import check_runtime
 from .ldsc_export import FLOAT_FORMAT
@@ -177,6 +177,8 @@ def main(argv=None):
             'backend': 'CBIIT/ldsc',
             'result_failure_action': args.result_failure_action,
             'restart': args.restart,
+            'parallel_worker_attempts': 2,
+            'ldsc_retries': args.ldsc_retries,
             'ld_ref': ld_ref_dir,
             'ld_weights': ld_weights_dir,
             'result_export': {
@@ -202,6 +204,7 @@ def main(argv=None):
     print("-" * 30)
     print("LDSC PIPELINE START")
     print("-" * 30)
+    prepare_compilation_outputs(output_folder, args.result_failure_action)
 
     if not args.ldsc_only:
         print("\n[1/4] Converting VCF to TSV...")
@@ -256,24 +259,15 @@ def main(argv=None):
             ld_ref_dir=ld_ref_dir, ld_weights_dir=ld_weights_dir)
 
     if not input_df.empty:
-        prepare_compilation_outputs(output_folder, args.result_failure_action)
         print("\n[3/4] Running LDSC Genetic Correlation...")
-        execution_failures = None
-        try:
-            result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder,
-                retries=args.ldsc_retries, runtime=runtime, ld_weights_dir=ld_weights_dir,
-                restart=args.restart, checkpoint_parameters={'filters': filters, 'chisq_max': args.chisq_max})
-        except LDSCBatchFailures as error:
-            if args.result_failure_action != 'drop_traits' or not error.can_exclude:
-                raise
-            result_files, execution_failures = error.result_files, error.failed_pairs
-            print('WARNING: Some LDSC batches exhausted execution retries. '
-                  'Continuing with completed results and audited trait selection; see LDSC_Batch_Status.csv.')
+        result_files = parallel_ldsc_analysis(active_parallel, batch_size, ldsc_results_dir, ld_ref_dir, input_df, analysis_input_folder,
+            retries=args.ldsc_retries, runtime=runtime, ld_weights_dir=ld_weights_dir,
+            restart=args.restart, checkpoint_parameters={'filters': filters, 'chisq_max': args.chisq_max})
 
         print("\n[4/4] Compiling final results...")
         result_path = compile_results(output_folder, result_files, input_df,
                                       result_failure_action=args.result_failure_action,
-                                      input_manifest=source_manifest, execution_failures=execution_failures)
+                                      input_manifest=source_manifest)
         print(f"\nLDSC result collection complete: {result_path}")
     else:
         raise RuntimeError('No valid traits left to analyze')

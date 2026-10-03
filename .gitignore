@@ -51,6 +51,9 @@ results/
 !tests/MISSING_Z_FILTER_VALIDATION.md
 !tests/test_chisq_auto.py
 !tests/CHISQ_AUTO_VALIDATION.md
+!tests/test_worker_retries.py
+!tests/test_worker_retries.R
+!tests/WORKER_RETRY_VALIDATION.md
 !tests/test_ldsc_drop_traits.py
 !tests/test_ldsc_drop_traits.R
 !tests/test_normalization.py

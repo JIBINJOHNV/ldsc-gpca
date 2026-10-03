@@ -255,37 +255,9 @@ gpsca_analysis <- function(args) {
     pca_matrix_type = args$pca_matrix
   )
 
-  if (args$splitby_chr == "split") {
-    physical_cores <- detectCores(logical = FALSE)
-    if (is.na(physical_cores) || physical_cores < 1L) physical_cores <- 1L
-    worker_count <- if (args$n_cores == 0L) {
-      min(22L, max(1L, physical_cores - 1L))
-    } else {
-      min(22L, args$n_cores)
-    }
-
-    message(glue("--- Running chromosomes 1-22 with {worker_count} worker(s) ---"))
-    worker_call <- function(chr) {
-      do.call(safe_gwama_worker, c(list(chr = chr), common_arguments))
-    }
-
-    if (.Platform$OS.type == "windows" || worker_count == 1L) {
-      gwama_results <- lapply(1:22, worker_call)
-    } else {
-      gwama_results <- mclapply(
-        1:22,
-        worker_call,
-        mc.cores = worker_count,
-        mc.preschedule = TRUE
-      )
-    }
-  } else {
-    message("--- Running whole-genome genomic PCA GWAMA ---")
-    gwama_results <- list(do.call(
-      safe_gwama_worker,
-      c(list(chr = NULL), common_arguments)
-    ))
-  }
+  chromosomes <- if (args$splitby_chr == "split") as.list(1:22) else list(NULL)
+  worker_call <- function(chr) do.call(safe_gwama_worker, c(list(chr = chr), common_arguments))
+  gwama_results <- run_parallel_workers(chromosomes, worker_call, args$n_cores, args$outdir)
 
   run_status <- make_run_status(gwama_results)
   run_status$PCA_Matrix_Type <- args$pca_matrix
@@ -300,7 +272,7 @@ gpsca_analysis <- function(args) {
   if (any(!run_status$Success)) {
     failed <- run_status[!run_status$Success, , drop = FALSE]
     stop(
-      "One or more GWAMA runs failed:\n",
+      "Analysis stopped: GWAMA jobs still failed after 2 attempts. See GWAMA_Worker_Attempts.csv.\n",
       paste0(failed$Chromosome, ": ", failed$Error, collapse = "\n"),
       call. = FALSE
     )

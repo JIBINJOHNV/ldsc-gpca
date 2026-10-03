@@ -97,6 +97,9 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
     This is not forwarded to native LDSC's cross-product --chisq-max behavior.
 
 FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
+  Failed extraction/munging/filter jobs get one retry (2 total attempts).
+  Exhausted worker failures stop the analysis, including in drop_traits mode.
+  LDSC command retries default to 1 and remain configurable with --ldsc_retries.
   Local bcftools/Bash/awk extract variants; conda run launches isolated CBIIT LDSC.
   Setup: bash scripts/setup_environments.sh; Docker is not used.
   Extraction expects INFO/AF, INFO/EUR and FORMAT/SI, AF, EZ, LP, NEF;

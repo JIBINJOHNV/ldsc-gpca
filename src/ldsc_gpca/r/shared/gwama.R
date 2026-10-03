@@ -179,6 +179,8 @@ run_genomic_pca_gwama <- function(chr = NULL, trait_order, CTI, pca_matrix,
   } else {
     analysis_name
   }
+  output_file <- file.path(outdir, paste0(output_name, ".N_weighted_GWAMA.results.txt.gz"))
+  previous <- file.info(output_file)[, c("size", "mtime", "ctime")]
 
   # Fuertjes tutorial Step C.3. The externally supplied function must already
   # implement W = sqrt(N) * the selected tutorial PC loading. The parameter is
@@ -193,6 +195,10 @@ run_genomic_pca_gwama <- function(chr = NULL, trait_order, CTI, pca_matrix,
     output_gz = TRUE,
     check_columns = FALSE
   )
+
+  current <- file.info(output_file)[, c("size", "mtime", "ctime")]
+  if (is.na(current$size) || current$size <= 0 || identical(previous, current))
+    stop("GWAMA produced no fresh non-empty result: ", output_file, call. = FALSE)
 
   invisible(output_name)
 }
@@ -216,33 +222,5 @@ safe_gwama_worker <- function(chr = NULL, ...) {
         error = conditionMessage(e)
       )
     }
-  )
-}
-
-make_run_status <- function(gwama_results) {
-  data.frame(
-    Chromosome = vapply(
-      gwama_results,
-      function(result) {
-        if (is.null(result$chromosome)) "whole_genome" else as.character(result$chromosome)
-      },
-      character(1)
-    ),
-    Success = vapply(
-      gwama_results,
-      function(result) isTRUE(result$success),
-      logical(1)
-    ),
-    Output = vapply(
-      gwama_results,
-      function(result) as.character(result$output),
-      character(1)
-    ),
-    Error = vapply(
-      gwama_results,
-      function(result) as.character(result$error),
-      character(1)
-    ),
-    stringsAsFactors = FALSE
   )
 }
