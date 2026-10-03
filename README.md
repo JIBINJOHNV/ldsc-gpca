@@ -284,6 +284,16 @@ convention. This fixed EUR-field-specific workflow does not provide flags to
 map a different ancestry or arbitrary VCF field names. Prepare one GWAS per VCF;
 multi-sample extraction is not a supported general input layout.
 
+The AF-difference filter excludes records with missing `INFO/AF` or `INFO/EUR`,
+including absent record tags and `.` values. It never substitutes `FORMAT/AF`;
+missing INFO header declarations stop extraction. Each trait writes
+`munge_input/{traitname}_AF_Filter_QC.csv`, counting records after optional MHC
+exclusion and missing `INFO/AF`, missing `INFO/EUR`, and missing either field
+(the union, without double-counting). Counts are collected in the same VCF pass,
+before the AF-difference, SI, MAF and palindromic filters; an audit is published
+only after successful extraction. `--ldsc_only` reuses existing munged inputs;
+rerun extraction and munging to apply this policy to previous analyses.
+
 | Population prevalence | Sample size used | Sample prevalence |
 | --- | --- | --- |
 | Blank/`NA` | `NEF` | Not used |
@@ -450,7 +460,7 @@ silently removes traits. See [validation](tests/WORKER_RETRY_VALIDATION.md).
 | `--info_min FLOAT` | `0.7` | Inclusive minimum FORMAT/SI during extraction; `[0,1]`. |
 | `--maf_min FLOAT` | `0.01` | Extraction keeps FORMAT/AF between this value and `1-value`, inclusively; `(0,0.5)`. |
 | `--munge_maf_min FLOAT` | `0.005` | Additional munging MAF threshold, strictly greater than this value; `[0,0.5)`. |
-| `--max_af_difference FLOAT` | `0.2` | Maximum absolute difference between INFO/AF and INFO/EUR; `[0,1]`. Missing INFO/EUR is excluded. |
+| `--max_af_difference FLOAT` | `0.2` | Maximum absolute difference between INFO/AF and INFO/EUR; `[0,1]`. Missing either INFO field is excluded and counted; no FORMAT/AF fallback. |
 | `--remove_palindrome` | Off | During extraction, remove A/T and C/G variants within the configured AF interval. LDSC munging subsequently removes all palindromic SNPs regardless. |
 | `--paliandromaf_lower FLOAT` | `0.45` | Inclusive lower AF bound for extraction's palindromic removal. Use this exact option spelling. |
 | `--paliandromaf_upper FLOAT` | `0.55` | Inclusive upper AF bound; `0 <= lower <= upper <= 1`. |

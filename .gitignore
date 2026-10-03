@@ -64,3 +64,5 @@ results/
 !tests/test_self_pair_zero_se.py
 !tests/test_self_pair_zero_se.R
 !tests/SELF_PAIR_ZERO_SE_VALIDATION.md
+!tests/test_extraction_af.py
+!tests/AF_FILTER_VALIDATION.md

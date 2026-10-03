@@ -106,6 +106,9 @@ FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
   Setup: bash scripts/setup_environments.sh; Docker is not used.
   Extraction expects INFO/AF, INFO/EUR and FORMAT/SI, AF, EZ, LP, NEF;
   population-prevalence traits additionally require FORMAT/NC and FORMAT/NCO.
+  Missing INFO/AF or INFO/EUR records are excluded and counted in per-trait
+  munge_input/*_AF_Filter_QC.csv files; FORMAT/AF is not a fallback. Missing
+  INFO header declarations are fatal. --ldsc_only reuses prior munged data.
   LD reference prefix: <ld_ref>/<CHR>.l2.ldscore.gz and associated M files;
   weights default to --ld_ref; --ld_weights can select a separate directory.
   Each LDSC batch exports .results.csv directly from its in-memory estimates.

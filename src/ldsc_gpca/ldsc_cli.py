@@ -63,7 +63,7 @@ filter_group.add_argument('--maf_min', type=float, default=0.01,
 filter_group.add_argument('--munge_maf_min', type=float, default=0.005,
                           help='Additional LDSC munging MAF threshold (strictly greater than). Default: 0.005.')
 filter_group.add_argument('--max_af_difference', type=float, default=0.2,
-                          help='Maximum abs(INFO/AF - INFO/EUR). Default: 0.2.')
+                          help='Maximum abs(INFO/AF - INFO/EUR). Missing INFO/AF or INFO/EUR records are excluded and counted; no FORMAT/AF fallback. Default: 0.2.')
 filter_group.add_argument('--remove_palindrome', action='store_true',
                           help='Remove A/T and C/G variants in the AF interval during extraction. Default: disabled. Standard LDSC munging subsequently removes ALL palindromic SNPs regardless of this option.')
 filter_group.add_argument('--paliandromaf_lower', type=float, default=0.45,

@@ -365,6 +365,15 @@ treated as compatible observed/liability values merely because of a column name.
 | Per-trait chi-square filter, `--chisq_max` | Disabled; positive integer for fixed cutoff, or `auto` for per-trait `max(80, 0.001 * max(matched N))`; keep `Z^2 <= cutoff` |
 | `--ldsc_retries` | `1`: initial command plus one retry |
 
+Extraction excludes records with absent or `.` INFO/AF or INFO/EUR values;
+FORMAT/AF is not a fallback. Missing INFO header declarations are fatal.
+`munge_input/{traitname}_AF_Filter_QC.csv` reports `records_after_mhc`,
+`missing_info_af`, `missing_info_eur`, and `excluded_missing_either` (the union).
+These counts use the existing VCF stream after optional MHC exclusion, before
+AF-difference/SI/MAF/palindromic filtering. Audits are published only after a
+successful extraction and replaced on reruns. `--ldsc_only` reuses prior munged
+data; rerun extraction and munging to apply the policy to previous analyses.
+
 The P floor in **`prepare` does not apply to this extraction route**. Its existing
 LP-to-P transformation can underflow for extreme values; P=0 is rejected during
 LDSC munging. Review logs for resulting exclusions.
