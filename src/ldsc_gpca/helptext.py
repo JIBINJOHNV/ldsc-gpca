@@ -87,6 +87,8 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
   --ld_ref: directory of chromosome reference files; see FIXED CONTRACT below.
   --munged_dir: .sumstats.gz directory used with --ldsc_only;
     filenames: {traitname}.sumstats.gz. Required sidecars must remain alongside.
+  Managed munging writes native computed Z/N with 17 significant digits.
+    --ldsc_only preserves existing precision; rerun munging to replace rounded files.
   --chisq_max INTEGER|auto: optional per-trait Z^2 <= cutoff filtering before LDSC.
     Omitted: disabled. INTEGER must be >0; auto uses max(80, 0.001 * max(N))
     separately per trait, after complete-row matching to reference AND weight

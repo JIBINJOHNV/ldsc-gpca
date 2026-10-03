@@ -460,6 +460,26 @@ silently removes traits. See [validation](tests/WORKER_RETRY_VALIDATION.md).
 | `--bcftools EXECUTABLE` | `bcftools` | Local program/path; unnecessary with `--ldsc_only`. |
 | `--help` | Off | Show usage and exit. |
 
+Managed munging preserves native computed Z and N with **17 significant digits**
+(`%.17g`) when it first writes `.sumstats.gz`, before filtering or regression.
+It calls native `munge_sumstats(args, p=False)` and writes the returned table once;
+there is no additional file-reading pass. Native QC, allele handling, Z calculation,
+column order and missing values are preserved. No installed LDSC source is edited.
+The [native writer](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/munge_sumstats.py#L695-L718)
+otherwise rounds to three decimal places. For example, Z=8.9444 has Z²=80.00229136
+and is excluded at 80, whereas rounding to 8.944 would retain it. More digits can
+increase file size and writing time; this preserves computed floating-point
+precision, not precision already lost in the source GWAS.
+
+`LDSC_Runtime.json`, each munging log and its `.prevalence.json` sidecar record
+the managed format. Raw `ldsc-gpca munge_sumstats.py` remains an unchanged upstream
+passthrough. `--ldsc_only` reuses existing numbers and does not restore lost digits.
+To replace previously rounded results, rerun from original inputs **without
+`--ldsc_only`**, then rerun PCA/GWAMA. Restart checkpoints fingerprint both the
+munging wrapper and native source, as well as actual regression inputs, so old
+checkpoints are invalidated by this change. A restart still cannot improve the
+precision of a reused rounded file. See [validation](tests/MUNGE_PRECISION_VALIDATION.md).
+
 Choose chi-square filtering explicitly for `ldsc-gpca ldsc`:
 
 | Setting | Behavior |

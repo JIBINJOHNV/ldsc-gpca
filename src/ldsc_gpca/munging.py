@@ -9,7 +9,8 @@ import shutil
 import tempfile
 import pandas as pd
 from .utils import DEFAULT_FILTERS, is_valid_gz, run_command
-from .ldsc_runtime import ldsc_command
+from .ldsc_runtime import ldsc_munging_command
+from .ldsc_munge import FLOAT_FORMAT as MUNGE_FLOAT_FORMAT
 from .workers import run_parallel_jobs
 from .pairwise import _result_stamp
 
@@ -249,7 +250,7 @@ def parallel_munge_sumstats(n_parallel, input_df, output_folder, snp_include_fil
         if os.path.exists(metadata_file):
             os.remove(metadata_file)
         ignore = ['--ignore', 'N_CASES,N_CONTROLS,NEF'] if n_column == 'N_TOTAL' else []
-        command = shlex.join(ldsc_command('munge_sumstats.py', **(runtime or {})) + [
+        command = shlex.join(ldsc_munging_command(**(runtime or {})) + [
             '--sumstats', in_file, '--N-col', n_column, *ignore, '--snp', 'ID', '--a1', 'ALT',
             '--a2', 'REF', '--p', 'P', '--frq', 'AF', '--maf-min', str(filters['munge_maf_min']),
             '--signed-sumstats', 'EZ,0', '--merge-alleles', snp_include_file, '--out', out_prefix])
@@ -264,6 +265,7 @@ def parallel_munge_sumstats(n_parallel, input_df, output_folder, snp_include_fil
                 digest.update(chunk)
         with open(metadata_file, 'w') as handle:
             json.dump({'sample_size_column': n_column, 'sha256': digest.hexdigest(), 'filters': filters,
+                       'float_format': MUNGE_FLOAT_FORMAT,
                        'sample_prevalence': None if pd.isna(row['sample_prevalence']) else float(row['sample_prevalence'])}, handle)
         return sample_name
 

@@ -122,6 +122,7 @@ class RestartTests(unittest.TestCase):
             'threshold': lambda: self.parameters.update(chisq_max=81),
             'filters': lambda: self.parameters['filters'].update(maf_min=.02),
             'runtime': lambda: self.runtime['sources'].update({'ldsc.py': 'v2'}),
+            'munging_writer': lambda: self.runtime['sources'].update({'ldsc_munge.py': 'v2'}),
             'prevalence': lambda: self.meta.loc.__setitem__((slice(None), 'pop_prevalence'), .01),
             'sample_prevalence': lambda: self.meta.loc.__setitem__((slice(None), 'sample_prevalence'), .2),
         }
@@ -279,14 +280,20 @@ class RuntimeAndCLITests(unittest.TestCase):
             init = package / '__init__.py'; init.write_text('')
             source = package / 'regressions.py'; source.write_text('version=1\n')
             native = root / 'ldsc.py'; native.write_text('native=1\n')
+            munge = root / 'munge_sumstats.py'; munge.write_text('munging=1\n')
             with patch.dict('sys.modules', {'ldscore': types.SimpleNamespace(__file__=str(init))}), \
-                 patch.object(ldsc_provenance.shutil, 'which', return_value=str(native)), \
+                 patch.object(ldsc_provenance.shutil, 'which', side_effect=lambda script: str(root / script)), \
                  patch.object(ldsc_provenance.importlib.metadata, 'version', return_value='1.0'):
                 first = ldsc_provenance.runtime_identity()
                 source.write_text('version=2\n')
                 second = ldsc_provenance.runtime_identity()
+                munge.write_text('munging=2\n')
+                third = ldsc_provenance.runtime_identity()
             self.assertNotEqual(first['sources'], second['sources'])
+            self.assertNotEqual(second['sources']['munge_sumstats.py'], third['sources']['munge_sumstats.py'])
             self.assertIn('ldsc_export.py', first['sources'])
+            self.assertIn('ldsc_munge.py', first['sources'])
+            self.assertIn('munge_sumstats.py', first['sources'])
 
     def test_restart_flag_reaches_scheduler_and_checkpoint_configuration(self):
         with tempfile.TemporaryDirectory() as folder:

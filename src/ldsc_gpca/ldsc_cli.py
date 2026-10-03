@@ -14,6 +14,7 @@ from .pairwise import parallel_ldsc_analysis
 from .results import compile_results, check_saved_filters, prepare_compilation_outputs
 from .ldsc_runtime import check_runtime
 from .ldsc_export import FLOAT_FORMAT
+from .ldsc_munge import FLOAT_FORMAT as MUNGE_FLOAT_FORMAT
 from .interfaces import read_manifest
 
 
@@ -181,6 +182,10 @@ def main(argv=None):
             'ldsc_retries': args.ldsc_retries,
             'ld_ref': ld_ref_dir,
             'ld_weights': ld_weights_dir,
+            'munging_export': {
+                'source': 'existing_munged_files' if args.ldsc_only else 'native_in_memory_munging',
+                'float_format': None if args.ldsc_only else MUNGE_FLOAT_FORMAT,
+            },
             'result_export': {
                 'format': 'csv',
                 'float_format': FLOAT_FORMAT,

@@ -48,6 +48,8 @@ results/
 !tests/FAILURE_HANDLING_VALIDATION.md
 !tests/test_restart.py
 !tests/test_munging_filter.py
+!tests/test_munge_precision.py
+!tests/MUNGE_PRECISION_VALIDATION.md
 !tests/MISSING_Z_FILTER_VALIDATION.md
 !tests/test_chisq_auto.py
 !tests/CHISQ_AUTO_VALIDATION.md

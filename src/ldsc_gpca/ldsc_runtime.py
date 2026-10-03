@@ -20,6 +20,12 @@ def ldsc_regression_command(**runtime):
     return ldsc_command('python', **runtime) + [exporter]
 
 
+def ldsc_munging_command(**runtime):
+    """Use native munging with a precision-preserving output writer."""
+    writer = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ldsc_munge.py')
+    return ldsc_command('python', **runtime) + [writer]
+
+
 def fingerprint_runtime(**runtime):
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ldsc_provenance.py')
     result = subprocess.run(ldsc_command('python', **runtime) + [script],
@@ -58,7 +64,7 @@ def check_runtime(*, conda='conda', environment='ldsc-cbiit', prefix=None, bcfto
                 raise ValueError(f'Required extraction executable not found: {tool}')
     for script in ('ldsc.py', 'munge_sumstats.py'):
         command = (ldsc_regression_command(conda=conda, environment=environment, prefix=prefix)
-                   if script == 'ldsc.py' else ldsc_command(script, conda=conda, environment=environment, prefix=prefix))
+                   if script == 'ldsc.py' else ldsc_munging_command(conda=conda, environment=environment, prefix=prefix))
         result = subprocess.run(command + ['--help'],
                                 capture_output=True, text=True)
         if result.returncode:

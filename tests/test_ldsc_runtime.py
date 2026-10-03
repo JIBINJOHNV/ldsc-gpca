@@ -78,7 +78,8 @@ class RuntimeTests(unittest.TestCase):
         with patch.object(ldsc_runtime.shutil, 'which', return_value='/tool'), patch.object(ldsc_runtime.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
             ldsc_runtime.check_runtime(prefix='/child env')
             self.assertEqual(run.call_count, 2)
-            self.assertEqual(run.call_args.args[0][-2:], ['munge_sumstats.py', '--help'])
+            self.assertTrue(run.call_args.args[0][-2].endswith('/ldsc_munge.py'))
+            self.assertEqual(run.call_args.args[0][-1], '--help')
         with patch.object(ldsc_runtime.shutil, 'which', return_value='/tool'), patch.object(ldsc_runtime.subprocess, 'run', return_value=SimpleNamespace(returncode=1, stderr='broken import')), self.assertRaisesRegex(ValueError, 'broken import'):
             ldsc_runtime.check_runtime()
 
