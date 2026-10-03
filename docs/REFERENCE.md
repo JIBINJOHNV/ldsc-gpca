@@ -3,8 +3,14 @@
 [Back to the README](../README.md) · [Docker](../DOCKER.md) · [Nextflow / Google Batch](../examples/nextflow/README.md)
 
 Detailed input contracts, complete option tables, defaults, restart behavior,
-QC policies and output definitions for version **0.7.0**. Start with the
-[README](../README.md) to choose and run a workflow.
+QC policies and output definitions. Start with the [README](../README.md) to
+choose a workflow, then use its command guide. The [input guide](INPUTS.md)
+explains the file types and sample-size rules used across commands.
+
+For complete commands demonstrating optional settings, use the workflow guides:
+[pipeline](PIPELINE.md), [preparation](PREPARE.md), [Python LDSC](PYTHON_LDSC.md),
+[GenomicSEM LDSC](GENOMICSEM_LDSC.md), [Python GPCA/GWAMA](PYTHON_GPCA.md), or
+[GenomicSEM GPCA/GWAMA](GENOMICSEM_GPCA.md).
 
 ## Contents
 
@@ -16,6 +22,7 @@ QC policies and output definitions for version **0.7.0**. Start with the
 - [Run Python LDSC](#run-python-ldsc)
 - [Run GenomicSEM LDSC](#run-genomicsem-ldsc)
 - [Run GPCA and GWAMA](#run-gpca-and-gwama)
+- [INFO filtering, sample size and export metadata](#info-filtering-sample-size-and-export-metadata)
 - [Understand QC and scale choices](#understand-qc-and-scale-choices)
 - [Find and interpret the outputs](#find-and-interpret-the-outputs)
 - [CPU workers and numerical threads](#cpu-workers-and-numerical-threads)
@@ -232,7 +239,7 @@ Conda environments after creation.
 - A **manifest** lists traits/files; a **variant table** lists SNPs. They have
   different headers and delimiters. All managed manifests are comma-separated
   CSVs with a header, one row per trait and unique, non-empty `traitname` values.
-- Use simple identifiers such as `protein1`, with no whitespace, slashes or
+- Use simple identifiers such as `Trait_A`, with no whitespace, slashes or
   leading/trailing spaces. Keep them identical across manifests, LDSC estimates
   and per-trait filenames. GPCA requires at least two retained traits and preserves
   manifest row order in matrices, loadings and GWAMA inputs.
@@ -279,7 +286,7 @@ columns, numerical conventions and outputs.
 
 ## Run the entire analysis in one command
 
-From **v0.7.0**, `ldsc-gpca pipeline` joins the existing modules:
+`ldsc-gpca pipeline` joins the existing analysis stages:
 
 ```text
 VCF preparation, if needed
@@ -317,9 +324,10 @@ Create `/data/pipeline_traits.csv`, **comma-separated**, with a header:
 
 ```csv
 traitname,vcf_files,sample_prevalence,population_prevalence
-protein1,/data/protein1.vcf.gz,NA,NA
-protein2,/data/protein2.vcf.gz,NA,NA
-protein3,/data/protein3.vcf.gz,NA,NA
+Trait_A,/data/Trait_A.vcf.gz,NA,NA
+Trait_B,/data/Trait_B.vcf.gz,NA,NA
+Trait_C,/data/Trait_C.vcf.gz,NA,NA
+Trait_D,/data/Trait_D.vcf.gz,NA,NA
 ```
 
 At least two unique traits are required. Relative file paths resolve beside this
@@ -391,8 +399,10 @@ munging instead of generating munging tables from the VCFs. Example manifest:
 
 ```csv
 traitname,vcf_files,sumstats_file,sample_prevalence,population_prevalence
-protein1,/data/protein1.vcf.gz,/data/protein1_ldsc.tsv,NA,NA
-disease1,/data/disease1.vcf.gz,/data/disease1_ldsc.tsv,0.2,0.05
+Trait_A,/data/Trait_A.vcf.gz,/data/Trait_A_ldsc.tsv,NA,NA
+Trait_B,/data/Trait_B.vcf.gz,/data/Trait_B_ldsc.tsv,NA,NA
+Trait_C,/data/Trait_C.vcf.gz,/data/Trait_C_ldsc.tsv,NA,NA
+Trait_D,/data/Trait_D.vcf.gz,/data/Trait_D_ldsc.tsv,0.2,0.05
 ```
 
 The example prevalence values illustrate the format, not a recommended setting.
@@ -565,8 +575,10 @@ Save this comma-separated manifest as `/data/prepare_traits.csv`:
 
 ```csv
 traitname,vcf_files
-protein1,/data/protein1.vcf.gz
-protein2,/data/protein2.vcf.gz
+Trait_A,/data/Trait_A.vcf.gz
+Trait_B,/data/Trait_B.vcf.gz
+Trait_C,/data/Trait_C.vcf.gz
+Trait_D,/data/Trait_D.vcf.gz
 ```
 
 Each plain `.vcf` or compressed `.vcf.gz` must have exactly **one GWAS sample**.
@@ -662,8 +674,10 @@ Save `/data/python_ldsc_traits.csv` as a comma-separated CSV:
 
 ```csv
 traitname,vcf_files,ref,population_prevalence,sample_prevalence
-protein1,/data/protein1.vcf.gz,yes,NA,NA
-protein2,/data/protein2.vcf.gz,yes,NA,NA
+Trait_A,/data/Trait_A.vcf.gz,yes,NA,NA
+Trait_B,/data/Trait_B.vcf.gz,yes,NA,NA
+Trait_C,/data/Trait_C.vcf.gz,yes,NA,NA
+Trait_D,/data/Trait_D.vcf.gz,yes,NA,NA
 ```
 
 | Manifest column | Requirement / meaning |
@@ -1096,6 +1110,12 @@ needed by GenomicSEM. This command does not run Python LDSC, PCA or GWAMA.
 
 ### GenomicSEM LDSC inputs: choose one mode
 
+Input mode is selected explicitly, not detected from file contents or extensions.
+Without `--munged_dir` or `--munged_input`, the command expects raw paths in
+`sumstats_file` and runs munging. Those two reuse options are mutually exclusive,
+and one mode applies to every trait. `--input` is always the trait manifest CSV.
+See the [input-mode explanations and examples](GENOMICSEM_LDSC.md#choose-the-input-mode-explicitly).
+
 All three modes require at least two traits and these manifest columns:
 
 | Column | Meaning |
@@ -1113,8 +1133,10 @@ does not derive case fractions or choose NC+NCO versus NEF for you.
 
 ```csv
 traitname,sumstats_file,sample_prevalence,population_prevalence
-protein1,/data/protein1.tsv,NA,NA
-disease1,/data/disease1.tsv,0.2,0.05
+Trait_A,/data/Trait_A.tsv,NA,NA
+Trait_B,/data/Trait_B.tsv,NA,NA
+Trait_C,/data/Trait_C.tsv,NA,NA
+Trait_D,/data/Trait_D.tsv,0.2,0.05
 ```
 
 The prevalence numbers illustrate the file format; use values justified for your
@@ -1130,8 +1152,10 @@ own trait/cohort. Each GWAS file is a whitespace-delimited table with a header:
 | `INFO` | Optional recognized imputation-quality field for INFO filtering. |
 | `MAF` or recognized allele-frequency field | Optional field used for MAF filtering. |
 
-Optional manifest `N` supplies one constant per trait when file-level N is
-unavailable. Native munging interprets recognized column/sample-size conventions;
+Optional positive manifest `N` supplies one constant per trait and replaces
+raw-file N during native munging, even when that file already contains N. In
+munged reuse mode, manifest N is ignored and existing munged N is used. Native
+munging interprets recognized column/sample-size conventions;
 inspect its logs to confirm the interpretation and which filtering fields were
 available. Do not assume every form of N is passed through unchanged.
 
@@ -1140,8 +1164,10 @@ shared manifest columns above are required:
 
 ```csv
 traitname,sample_prevalence,population_prevalence
-protein1,NA,NA
-protein2,NA,NA
+Trait_A,NA,NA
+Trait_B,NA,NA
+Trait_C,NA,NA
+Trait_D,NA,NA
 ```
 
 The directory must contain exactly one `{traitname}.sumstats.gz` **or**
@@ -1151,13 +1177,17 @@ The directory must contain exactly one `{traitname}.sumstats.gz` **or**
 
 ```csv
 traitname,munged_file,sample_prevalence,population_prevalence
-protein1,/data/munged/protein1.sumstats.gz,NA,NA
-protein2,/data/other/protein2.sumstats.gz,NA,NA
+Trait_A,/data/munged/Trait_A.sumstats.gz,NA,NA
+Trait_B,/data/other/Trait_B.sumstats.gz,NA,NA
+Trait_C,/data/munged/Trait_C.sumstats.gz,NA,NA
+Trait_D,/data/munged/Trait_D.sumstats.gz,NA,NA
 ```
 
 For both reuse modes, munged files must be **tab-separated** with
 `SNP,A1,A2,N,Z` headers; column order may vary. `prepare --write_munge_inputs`
 produces unmunged files and does not satisfy this contract directly.
+The tool checks the required headers and at least one data row; that structural
+check does not establish that appropriate prior munging/QC was performed.
 
 All modes need `--ld_ref`, containing `<CHR>.l2.ldscore.gz` and
 `<CHR>.l2.M_5_50` for chromosomes 1 through `--chromosomes`. Optional
@@ -1274,8 +1304,10 @@ Save `/data/selected_traits.csv` as CSV:
 
 ```csv
 traitname
-protein1
-protein2
+Trait_A
+Trait_B
+Trait_C
+Trait_D
 ```
 
 Each row selects one trait; order is authoritative. Extra traits in the LDSC
@@ -1446,7 +1478,10 @@ record `RG_Normalization`.
 is inferred for the normalized estimate. This option addresses normalization,
 not LDSC regression-weight differences, and does not guarantee GenomicSEM equality
 or greater statistical accuracy. With covariance PCA, the selected rg is multiplied
-by self-pair h2; trait-wide mode therefore recovers the reconstructed pair covariance.
+by selected-scale self-pair h2. With observed self h2 and native-export
+normalization, this recovers the native observed covariance numerator; with
+older reconstructed normalization, it recovers that covariance on the matching
+scales. Other selected h2 scales rescale the covariance.
 
 To append the same columns to an older saved CSV without rerunning LDSC:
 
@@ -1646,6 +1681,45 @@ the combined result table. They are **user-supplied export metadata**, not new
 estimates. For example, `--gwama_output_n_eff 33000` would write 33000 into the
 summary's N_eff column for every SNP; use it only when justified. Without an
 override, the corresponding source column must exist. Retain the JSON audit.
+
+## INFO filtering, sample size and export metadata
+
+These settings act at different stages. An input threshold can change the SNPs
+used for LDSC, and an analysis sample size can change estimates or GWAMA weights.
+An export override only writes a constant into the final selected-column summary.
+
+| Setting or input | Default / source | Where it acts |
+| --- | --- | --- |
+| Python `--info_min` | `0.7`; VCF FORMAT/SI | Inclusive extraction threshold, before Python LDSC munging. Accepted values: `[0,1]`. |
+| Native `--info_filter` | `0.9`; recognized INFO field | GenomicSEM munging threshold. Accepted values: `[0,1]`; an absent field cannot be filtered. |
+| Python LDSC sample size | NEF without population prevalence; NC+NCO with it | N supplied during managed Python munging. Binary conversion also needs sample/population prevalence. |
+| GenomicSEM sample size | Recognized source N; optional manifest `N` for a per-trait constant | Native raw-table munging. Inspect logs for recognized fields and N conventions. |
+| GWAMA sample size | Each input TSV's `N`; VCF preparation copies NEF | SNP-specific GWAMA weights. The LDSC manifest N does not replace GWAMA N. |
+| `--gwama_output_info` | Preserve source INFO; bundled GWAMA omits it | Optional finite `[0,1]` constant in the summary only; required when the source has no INFO. |
+| `--gwama_output_n_eff` | Preserve source N_eff | Optional finite positive constant in the summary only. It does not estimate a new effective sample size. |
+
+There is no general managed `--sample_size` option. Choose the correct input N
+and prevalence convention before analysis. In munged-file reuse mode, extraction
+and munging INFO/MAF filters are not reapplied; native manifest N does not replace
+N already in a munged file. Preparation does not itself apply an INFO threshold.
+
+For example, **if scientifically justified for a particular downstream summary**:
+
+- `--gwama_output_info 0.9` writes INFO=0.9 for every exported summary row. It
+  does not assert that every variant passed a 0.9 imputation-quality threshold.
+- `--gwama_output_n_eff 33000` writes N_eff=33000 for every summary row. It
+  does not change GWAMA input N, weights, BETA, SE, Z or P.
+
+Neither override changes the combined GWAMA table. Omitting an override preserves
+the corresponding source column, which must exist. No universally appropriate
+INFO or N_eff constant is supplied. The workflow examples use shell variables
+`GWAMA_INFO` and `GWAMA_N_EFF` with guards so values must be chosen before running;
+remove the N_eff option when no override is intended. A trusted custom GWAMA
+source supplying INFO may omit the INFO override.
+
+See the full examples for [Python GPCA/GWAMA](PYTHON_GPCA.md#exports-and-what-to-inspect),
+[GenomicSEM GPCA/GWAMA](GENOMICSEM_GPCA.md#results-and-export-settings),
+and [pipeline mode](PIPELINE.md#change-filters-pca-and-export-settings).
 
 ## Understand QC and scale choices
 

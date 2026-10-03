@@ -32,7 +32,7 @@ required canonical fields before calling the unchanged GWAMA function.
 | `--gwama_output_n_eff` | Exported effective sample-size override |
 | `--gwama_output_info` | Exported INFO override |
 | `--gzip_level` | Final-export gzip compression, 1–9; default 1 from v0.6.1 |
-| `--prepare_workers` | Separate preparation-stage workers inside GPCA only |
+| `--prepare_workers` | Separate preparation-stage workers inside GPCA or pipeline |
 
 Standalone `prepare` uses `--n_cores`; GPCA's `--n_cores` controls GWAMA,
 concurrent chromosome reads, the default shared Polars thread pool (from v0.6.2),
@@ -121,4 +121,4 @@ Omitting it preserves the selected backend's default. Python
 `--prepare_workers` remains a separate setting. There are no compatibility aliases.
 The pipeline generates `--ldsc_results` internally; users do not supply that flag.
 It requires a fresh output directory; `--restart` remains a standalone LDSC option.
-See the [pipeline user guide](../README.md#run-the-entire-analysis-in-one-command).
+See the [pipeline user guide](PIPELINE.md).
