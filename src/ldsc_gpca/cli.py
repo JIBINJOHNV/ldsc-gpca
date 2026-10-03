@@ -32,7 +32,7 @@ NOTES
 Use ldsc-gpca <command> --help for required columns, separators, defaults and choices.
 An empty command also displays help; no input files are opened for help.""")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("command", choices=["prepare", "ldsc", "ldsc.py", "munge_sumstats.py", "gpca", "genomicsem"], nargs="?",
+    parser.add_argument("command", metavar="COMMAND", choices=["prepare", "ldsc", "ldsc.py", "munge_sumstats.py", "gpca", "genomicsem"], nargs="?",
                         help="Managed workflows or raw pinned CBIIT LDSC script passthrough")
     if argv and argv[0] in ("ldsc.py", "munge_sumstats.py"):
         from .ldsc_runtime import run_ldsc_script

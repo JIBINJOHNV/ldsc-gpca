@@ -15,6 +15,7 @@ already installed package.
 ## Contents
 
 - [Choose a workflow](#choose-a-workflow)
+- [Options, defaults and help](#options-defaults-and-help)
 - [Install and activate](#install-and-activate)
 - [File and command conventions](#file-and-command-conventions)
 - [Prepare per-trait GPCA inputs](#prepare-per-trait-gpca-inputs)
@@ -49,6 +50,66 @@ Final GWAMA export is automatic; there is no top-level `postprocess` command.
 
 If you already have LDSC results, go directly to [GPCA](#run-gpca-and-gwama).
 Begin with `--validate_only` to inspect the genetic matrix and PC1 before GWAMA.
+
+## Options, defaults and help
+
+Every managed command groups its help by purpose: required inputs, input modes,
+filters or PCA settings, diagnostics, and execution options as applicable.
+Options are separated by a blank line. Each setting shows its default or explains
+what happens when omitted; fixed choices are listed beside that option.
+Required inputs have no default. Help/version actions simply display information.
+
+```bash
+ldsc-gpca prepare --help
+ldsc-gpca ldsc --help
+ldsc-gpca genomicsem ldsc --help
+ldsc-gpca gpca --help
+ldsc-gpca genomicsem gpca --help
+```
+
+Both GPCA commands show **analysis, automatic VCF preparation and GWAMA export**
+options in `--help`. Use `--prepare_help` or `--postprocess_help` to display only
+that section. These help commands work without starting an analysis or R.
+The raw `ldsc.py` and `munge_sumstats.py` commands retain upstream help formatting.
+
+`CHOICE`, `INTEGER`, `FLOAT`, `DIRECTORY` and example filenames in help are
+placeholders; replace them with a listed choice, number or path. For example,
+write `--rg_normalization trait_wide`, not `--rg_normalization CHOICE`.
+An **off** flag is omitted; enable it with the flag alone, such as `--validate_only`.
+**Unset** means omitted, and the accompanying explanation gives its behavior.
+Environment-dependent defaults identify the environment variable or fallback.
+
+Frequently used choices and defaults:
+
+| Command | Option | Default when omitted | Accepted choices or values |
+| --- | --- | --- | --- |
+| `prepare` and both GPCA commands | `--splitby_chr` | `split` | `split`, `nosplit` |
+| Python `ldsc` | `--chisq_max` | Disabled | Positive integer, or `auto` for the per-trait automatic cutoff |
+| `genomicsem ldsc` | `--chisq_max` | Native automatic cutoff | Positive finite number; omit to use automatic mode |
+| Python `ldsc` | `--result_failure_action` | `error` | `error`, `report`, `drop_traits` |
+| `genomicsem ldsc` | `--invalid_h2_action` | `drop` | `drop`, `error` |
+| Both GPCA commands | `--failed_ldsc_action` | `error` | `error`, `drop_traits` |
+| Python-table `gpca` | `--rg_normalization` | `pair` (original Python `rg`) | `pair`, `trait_wide` (precomputed `rg_trait_wide`) |
+| Python-table `gpca` | `--heritability_scale` | `auto` | `auto`, `observed`, `liability`, `mixed` |
+| Both GPCA commands | `--pca_matrix` | `correlation` | `correlation`, `covariance` |
+| Both GPCA commands | `--pc1_orientation` | `tutorial` | `tutorial`, `as_computed` |
+| Both GPCA commands | `--rg_out_of_range_action`, `--negative_eigen_action` | `warn` | `warn`, `error` |
+| `prepare` and GPCA automatic preparation | `--gpca_id_source` | `chr_pos_ref_alt` | `chr_pos_ref_alt`, `vcf_id` |
+| `prepare` and GPCA automatic preparation | `--munge_id_source` | `vcf_id` | `chr_pos_ref_alt`, `vcf_id` |
+| Both GPCA commands, final export | `--gzip_level` | `1` | Integers 1–9; affects compression, not numeric results |
+
+Worker defaults depend on the command: `prepare --n_cores 4`, Python
+`ldsc --n_cores 5`, `genomicsem ldsc --n_cores 1`, and GPCA `--n_cores 0`
+(automatic). GPCA's optional VCF preparation separately uses `--prepare_workers 4`.
+See [worker behavior](#cpu-workers-and-numerical-threads) before increasing them.
+
+For all options, constraints and file requirements, use the tables for
+[preparation](#all-preparation-options), [Python LDSC](#all-python-ldsc-options),
+[GenomicSEM LDSC](#all-genomicsem-ldsc-options),
+[shared GPCA](#all-shared-gpca-analysis-options),
+[Python-only GPCA](#additional-options-for-python-table-gpca-only),
+[automatic preparation](#automatic-vcf-preparation), and
+[automatic export](#all-automatic-export-options).
 
 ## Install and activate
 
@@ -1168,7 +1229,7 @@ follow in separate tables; Python-table-specific options are listed afterward.
 | `--pc1_orientation MODE` | `tutorial` | `tutorial`: reverse the whole PC1 loading vector if its median is negative; `as_computed`: retain the eigenvector sign. |
 | `--negative_eigen_action ACTION` | `warn` | `warn` or `error` for substantive negative PCA eigenvalues. Raw eigenvalues remain reported. |
 | `--matrix_eigen_tolerance FLOAT` | `1e-8` | Finite positive relative cutoff for substantive negative eigenvalues. |
-| `--help` | Off | Show analysis/export help without running an analysis. |
+| `--help` | Off | Show grouped analysis, automatic preparation and export options without running an analysis. |
 | `--prepare_help` | Off | Show automatic preparation options and file requirements. |
 | `--postprocess_help` | Off | Show automatic export options. |
 
@@ -1590,6 +1651,20 @@ ldsc-gpca genomicsem gpca --postprocess_help
 it is not a per-workflow option. Managed help does not open analysis data or
 require an operational R analysis runtime. Use the installed CLI; a copied thin
 R entry script without its bundled modules is insufficient.
+
+For maintainers: Python and R help use the same formatter. R analysis help is
+also shipped as text so the package CLI can display it without launching R.
+After editing an R argument definition, regenerate and check these snapshots
+from the repository root using an environment with the package's R dependencies:
+
+```bash
+python scripts/update_cli_help.py
+python scripts/update_cli_help.py --check
+```
+
+Use `--rscript /path/to/Rscript` if Rscript is not on PATH. The check exits with
+an error if either help snapshot differs from its actual R parser output.
+This maintenance step does not change analysis defaults or upstream algorithms.
 
 Keep the command, package version/repository commit, local modifications,
 manifests, input/reference checksums, original and retained trait order, all

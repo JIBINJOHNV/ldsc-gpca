@@ -29,7 +29,7 @@ def add_prepare_options(parser, *, standalone=False):
                        help='GPCA SNPID values. Default: chr_pos_ref_alt.')
     group.add_argument('--write_munge_inputs', action='store_true',
                        help='Also write HapMap-filtered LDSC munging inputs. Default: GPCA files only; does not run munging.')
-    group.add_argument('--hm3', dest='hapmap_file', help='Tab-delimited file with a SNP header. Required only with --write_munge_inputs.')
+    group.add_argument('--hm3', dest='hapmap_file', metavar='REFERENCE.tsv', help='Tab-delimited file with a SNP header. Default: unset; required with --write_munge_inputs.')
     group.add_argument('--munge_id_source', choices=ID_CHOICES, default='vcf_id',
                        help='Munging SNP values; must match HapMap identifiers. Default: vcf_id (usually rsIDs).')
     worker_flag = '--n_cores' if standalone else '--prepare_workers'
@@ -313,10 +313,13 @@ def preparation_kwargs(opts):
 
 
 def main(argv=None):
-    parser = HelpParser(prog='ldsc-gpca prepare', description=__doc__, epilog=PREPARE_INPUT_HELP)
-    parser.add_argument('--input', required=True, help='CSV with traitname and vcf_files. Relative VCF paths resolve beside this manifest.')
-    parser.add_argument('--outdir', required=True, help='Output directory; creates gpca_inputs and optionally munge_inputs.')
-    parser.add_argument('--splitby_chr', choices=['split','nosplit'], default='split', help='Default: split (requires all chromosomes 1–22 per trait).')
+    parser = HelpParser(prog='ldsc-gpca prepare', description=__doc__,
+                        usage='%(prog)s --input MANIFEST.csv --outdir DIRECTORY [options]', epilog=PREPARE_INPUT_HELP)
+    required = parser.add_argument_group('Required inputs')
+    layout = parser.add_argument_group('Output layout')
+    required.add_argument('--input', metavar='MANIFEST.csv', required=True, help='CSV with traitname and vcf_files. Relative VCF paths resolve beside this manifest.')
+    required.add_argument('--outdir', metavar='DIRECTORY', required=True, help='Output directory; creates gpca_inputs and optionally munge_inputs.')
+    layout.add_argument('--splitby_chr', choices=['split','nosplit'], default='split', help='Per-chromosome or whole-genome output. Default: split (requires all chromosomes 1–22 per trait).')
     add_prepare_options(parser, standalone=True)
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:

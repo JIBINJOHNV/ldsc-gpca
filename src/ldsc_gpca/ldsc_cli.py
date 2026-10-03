@@ -32,22 +32,28 @@ def chisq_max_argument(value):
 
 
 # Define command-line arguments
-parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise CBIIT Python LDSC using an isolated Conda environment; no Docker.", epilog=LDSC_INPUT_HELP)
+parser = HelpParser(prog="ldsc-gpca ldsc", description="Pairwise CBIIT Python LDSC using an isolated Conda environment; no Docker.",
+                    usage="%(prog)s --input MANIFEST.csv --outdir DIRECTORY --ld_ref DIRECTORY [options]",
+                    epilog=LDSC_INPUT_HELP)
 
-parser.add_argument('--outdir', metavar='DIRECTORY', help="Output directory; LDSC tables and logs are written below it.", required=True)
-parser.add_argument('--hm3', metavar='ALLELES.tsv', help="Whitespace-separated HapMap allele table with SNP,A1,A2 headers; passed to LDSC --merge-alleles. Required unless --ldsc_only is used.")
-parser.add_argument('--input', metavar='MANIFEST.csv', help="Comma-separated trait manifest; required headers and prevalence rules below.", required=True)
-parser.add_argument('--ld_ref', metavar='DIRECTORY', help="Chromosome LD-score reference directory (not an individual file).", required=True)
-parser.add_argument('--ld_weights', metavar='DIRECTORY', help='Separate chromosome regression weights directory; default: use --ld_ref.')
-parser.add_argument('--n_cores', help="Number of parallel local workers", default=5, type=int)
+required = parser.add_argument_group('Required inputs')
+inputs = parser.add_argument_group('References and existing inputs')
+filter_group = parser.add_argument_group('Variant filters')
+execution = parser.add_argument_group('Execution, restart and failed results')
 runtime_group = parser.add_argument_group('Local tools and isolated LDSC environment')
+
+required.add_argument('--outdir', metavar='DIRECTORY', help="Output directory; LDSC tables and logs are written below it.", required=True)
+inputs.add_argument('--hm3', metavar='ALLELES.tsv', help="Whitespace-separated HapMap allele table with SNP,A1,A2 headers; passed to LDSC --merge-alleles. Default: unset; required unless --ldsc_only is used.")
+required.add_argument('--input', metavar='MANIFEST.csv', help="Comma-separated trait manifest; required headers and prevalence rules below.", required=True)
+required.add_argument('--ld_ref', metavar='DIRECTORY', help="Chromosome LD-score reference directory (not an individual file).", required=True)
+inputs.add_argument('--ld_weights', metavar='DIRECTORY', help='Separate chromosome regression weights directory; default: use --ld_ref.')
+execution.add_argument('--n_cores', metavar="INTEGER", help="Concurrent extraction, munging, filtering and LDSC workers; integer >=1.", default=5, type=int)
 runtime_group.add_argument('--conda_executable', default=os.environ.get('CONDA_EXE', 'conda'), help='Conda executable name/path; default: CONDA_EXE when set, otherwise conda on PATH.')
 target = runtime_group.add_mutually_exclusive_group()
 target.add_argument('--ldsc_env', help='Child environment name. Default: ldsc-cbiit unless the setup script configured a prefix.')
 target.add_argument('--ldsc_env_prefix', help='Child environment directory; overrides LDSC_GPCA_LDSC_PREFIX saved by setup. Default: saved prefix, otherwise use --ldsc_env.')
 runtime_group.add_argument('--bcftools', default='bcftools', help='Local bcftools executable/path. Default: bcftools on PATH; not required with --ldsc_only.')
 
-filter_group = parser.add_argument_group('Variant filters')
 filter_group.add_argument('--exclude_mhc', action='store_true',
                           help='Exclude the MHC interval. Default: disabled; MHC variants are kept.')
 parser.set_defaults(exclude_mhc=False)
@@ -79,13 +85,13 @@ filter_group.add_argument(
          'Default: disabled.')
 
 # Flags for LDSC-only execution
-parser.add_argument('--ldsc_only', action='store_true', help="Reuse existing munged files; extraction/munging filters are NOT reapplied. --chisq_max is applied to separate copies when supplied. Total-N traits require .prevalence.json; legacy NEF files are accepted with a provenance warning.")
-parser.add_argument('--munged_dir', help="Path to pre-munged sumstats.gz files.", default=None)
-parser.add_argument('--restart', action='store_true',
+inputs.add_argument('--ldsc_only', action='store_true', help="Reuse existing munged files; extraction/munging filters are NOT reapplied. --chisq_max is applied to separate copies when supplied. Total-N traits require .prevalence.json; legacy NEF files are accepted with a provenance warning.")
+inputs.add_argument('--munged_dir', metavar="DIRECTORY", help="Pre-munged sumstats.gz directory for --ldsc_only. Default: <outdir>/ldsc_input.", default=None)
+execution.add_argument('--restart', action='store_true',
                     help='Reuse completed LDSC batches in the same outdir only when checkpointed input contents, parameters, runtime and result integrity match. Recompute unverified, changed or incomplete batches. Default: disabled. Extraction/munging is skipped only with --ldsc_only.')
-parser.add_argument('--ldsc_retries', type=int, default=1,
+execution.add_argument('--ldsc_retries', type=int, default=1,
                     help='Additional attempts per failed pairwise LDSC command or malformed/incomplete export. Default: 1 (2 total attempts); 0 disables retries. Numerical estimation failures are not retried.')
-parser.add_argument('--result_failure_action', choices=('error', 'report', 'drop_traits'), default='error',
+execution.add_argument('--result_failure_action', choices=('error', 'report', 'drop_traits'), default='error',
                     help='Handling of failed LDSC results. All modes save diagnostics. error stops; report preserves failures in ldsc_results_diagnostic.csv; drop_traits excludes failed traits and writes a complete retained subset to ldsc_results.csv plus LDSC_Retained_Traits.csv and LDSC_Dropped_Traits.csv. drop_traits requires ref=yes for all traits and at least two retained traits. Structural errors and conflicting estimates still stop.')
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)

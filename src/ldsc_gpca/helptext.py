@@ -4,20 +4,7 @@ from importlib.resources import files
 import sys
 import os
 from .interfaces import validate_option_spelling, reject_conflicting_options
-
-
-class HelpFormatter(argparse.RawDescriptionHelpFormatter):
-    def _get_help_string(self, action):
-        text = action.help or ''
-        if isinstance(action, (argparse._HelpAction, argparse._VersionAction)):
-            return text
-        if action.required:
-            return text + ' [Required; no default.]'
-        if action.option_strings and 'default' not in text.lower():
-            text += ' [Default: %(default)s.]'
-        if action.choices:
-            text += ' [Choices: ' + ', '.join(map(str, action.choices)) + '.]'
-        return text
+from .help_formatter import HelpFormatter
 
 
 class HelpParser(argparse.ArgumentParser):

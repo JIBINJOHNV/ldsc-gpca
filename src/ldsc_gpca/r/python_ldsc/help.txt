@@ -3,123 +3,126 @@ usage: ldsc-gpca gpca --input MANIFEST.csv --ldsc_results LDSC.csv[.gz] --outdir
 Build genomic-PC1 weights and run the modified Fuertjes GWAMA method
 using a complete pairwise results table produced by Python ldsc.py.
 
-optional arguments:
-  -h, --help            Show this help message and exit.
+options:
+  -h, --help                    Show this help message and exit.
 
 Required inputs:
-  --input MANIFEST.csv  CSV trait manifest. Required column: 'traitname'. No
-                        other manifest columns are required; extra columns are
-                        ignored. Trait names must be unique/non-empty, and row
-                        order defines matrix and GWAMA order.
-  --ldsc_results LDSC.csv[.gz]
-                        Complete pairwise Python LDSC table in CSV/TSV format;
-                        gzip is accepted. Required columns are listed below.
-  --outdir DIRECTORY    Directory for QC audit files, matrices, weights, and
-                        GWAMA results.
+  --input MANIFEST.csv          CSV trait manifest. Required column: 'traitname'. No other
+                                manifest columns are required; extra columns are ignored. Trait
+                                names must be unique/non-empty, and row order defines matrix and
+                                GWAMA order. [Required; no default.]
+
+  --ldsc_results LDSC.csv[.gz]  Complete pairwise Python LDSC table in CSV/TSV format; gzip is
+                                accepted. Required columns are listed below. [Required; no
+                                default.]
+
+  --outdir DIRECTORY            Directory for QC audit files, matrices, weights, and GWAMA
+                                results. [Required; no default.]
 
 GWAMA inputs (not required with --validate_only):
   --gpca_input_folder DIRECTORY
-                        Directory containing the nine-column per-trait GWAMA
-                        input files.
+                                Directory containing the nine-column per-trait GWAMA input
+                                files. Default: unset; package CLI prepares from VCF unless
+                                --validate_only. Required for GWAMA when calling R directly.
+
   --source_path GWAMA_FUNCTION.R
-                        Optional custom modified GWAMA R source. Default:
-                        bundled N_weighted_GWAMA.function.1_2_6.R.
-  --splitby_chr {split,nosplit}
-                        GWAMA input layout: 'split' uses chromosomes 1-22;
-                        'nosplit' uses one whole-genome file per trait.
-                        Default: split.
+                                Optional custom modified GWAMA R source. Default: bundled
+                                N_weighted_GWAMA.function.1_2_6.R.
+
+  --splitby_chr CHOICE          GWAMA input layout: 'split' uses chromosomes 1-22; 'nosplit'
+                                uses one whole-genome file per trait. Default: split. [Choices:
+                                split, nosplit.]
 
 Trait and failed-result handling:
-  --allow_missing_traits
-                        Remove manifest traits absent from the LDSC table.
-                        Without this flag, an absent selected trait stops the
-                        run. Extra LDSC traits are ignored.
-  --failed_ldsc_action {error,drop_traits}
-                        For missing/non-finite/invalid selected pairs: 'error'
-                        stops; 'drop_traits' removes traits until a complete
-                        valid subset remains. No estimates are imputed.
-                        Default: error.
+  --allow_missing_traits        Remove manifest traits absent from the LDSC table. Without this
+                                flag, an absent selected trait stops the run. Extra LDSC traits
+                                are ignored. [Default: off.]
+
+  --failed_ldsc_action CHOICE   For missing/non-finite/invalid selected pairs: 'error' stops;
+                                'drop_traits' removes traits until a complete valid subset
+                                remains. No estimates are imputed. Default: error. [Choices:
+                                error, drop_traits.]
 
 QC comparison thresholds:
-  --duplicate_tolerance FLOAT
-                        Maximum absolute difference between duplicate
-                        orientations for rg, SE, p, and intercept estimates.
-                        Default: 0.001.
+  --duplicate_tolerance FLOAT   Maximum absolute difference between duplicate orientations for
+                                rg, SE, p, and intercept estimates. Default: 0.001.
+
   --duplicate_z_tolerance FLOAT
-                        Maximum absolute duplicate-orientation z difference.
-                        Default: 0.01.
-  --self_rg_tolerance FLOAT
-                        Maximum |self rg - 1|. With the default 0.01, values
-                        from 0.99 through 1.01 pass.
-                        Self rg SE=0 is allowed only with Z=+Inf and P=0;
-                        all other numeric and SE checks still apply.
-  --comparison_epsilon FLOAT
-                        Floating-point allowance added to boundary
-                        comparisons. Default: 1e-12.
+                                Maximum absolute duplicate-orientation z difference. Default:
+                                0.01.
+
+  --self_rg_tolerance FLOAT     Maximum |self rg - 1|. Default: 0.01 (self rg from 0.99 through
+                                1.01). Self rg SE=0 is allowed only with Z=+Inf and P=0; other
+                                checks still apply.
+
+  --comparison_epsilon FLOAT    Floating-point allowance added to boundary comparisons. Default:
+                                1e-12.
 
 PCA settings:
-  --heritability_scale {auto,liability,observed,mixed}
-                        Heritability columns used for self-pair QC and
-                        covariance PCA. 'auto' uses populated values for
-                        selected traits, ignoring empty pairs. Correlation:
-                        per-trait scale; covariance: one complete common
-                        scale. 'mixed' explicitly permits trait-specific
-                        covariance scales, only when each trait has one
-                        populated scale. Ambiguity stops; no conversion.
-                        Default: auto.
-  --rg_normalization {pair,trait_wide}
-                        Correlation source: 'pair' keeps native Python rg;
-                        'trait_wide' uses the precomputed rg_trait_wide column
-                        (normalization_status must be calculated). Original
-                        rg/SE/Z/P and CTI are preserved. Default: pair.
-  --pca_matrix {correlation,covariance}
-                        Matrix decomposed for PC1: 'correlation' uses S_Stand;
-                        'covariance' derives genetic covariance from selected
-                        rg and selected-scale self h2, following the tutorial
-                        alternative procedure. CTI is unchanged. Default:
-                        correlation.
-  --pc1_orientation {tutorial,as_computed}
-                        PC1 sign convention. 'tutorial' flips the entire
-                        loading vector when its median is negative;
-                        'as_computed' keeps R's eigenvector sign. Association
-                        strength and p-values are unchanged. Default:
-                        tutorial.
+  --heritability_scale CHOICE   Heritability columns used for self-pair QC and covariance PCA.
+                                'auto' uses populated values for selected traits, ignoring empty
+                                pairs. Correlation: per-trait scale; covariance: one complete
+                                common scale. 'mixed' explicitly permits trait-specific
+                                covariance scales, only when each trait has one populated scale.
+                                Ambiguity stops; no conversion. Default: auto. [Choices: auto,
+                                liability, observed, mixed.]
+
+  --rg_normalization CHOICE     Correlation source: 'pair' keeps native Python rg; 'trait_wide'
+                                uses the precomputed rg_trait_wide column (normalization_status
+                                must be calculated). Original rg/SE/Z/P and CTI are preserved.
+                                Default: pair. [Choices: pair, trait_wide.]
+
+  --pca_matrix CHOICE           Matrix decomposed for PC1: 'correlation' uses S_Stand;
+                                'covariance' derives genetic covariance from selected rg and
+                                selected-scale self h2, following the tutorial alternative
+                                procedure. CTI is unchanged. Default: correlation. [Choices:
+                                correlation, covariance.]
+
+  --pc1_orientation CHOICE      PC1 sign convention. 'tutorial' flips the entire loading vector
+                                when its median is negative; 'as_computed' keeps R's eigenvector
+                                sign. Association strength and p-values are unchanged. Default:
+                                tutorial. [Choices: tutorial, as_computed.]
 
 Diagnostic warning/error controls:
-  --h2_z_warn_threshold FLOAT
-                        Warn when retained self-pair h2/SE is below this
-                        value. Diagnostic only; never removes traits. Use 0 to
-                        disable. Default: 2.
+  --h2_z_warn_threshold FLOAT   Warn when retained self-pair h2/SE is below this value.
+                                Diagnostic only; never removes traits. Use 0 to disable.
+                                Default: 2.
+
   --z_consistency_tolerance FLOAT
-                        Maximum relative difference between reported z and
-                        rg/SE after duplicate collapse. Default: 0.01.
-  --z_consistency_action {warn,error}
-                        Warn or stop when z is inconsistent with rg/SE.
-                        Default: warn.
-  --rg_out_of_range_action {warn,error}
-                        Warn or stop for finite off-diagonal rg outside
-                        [-1,1]. Values are never clamped. Default: warn.
-  --negative_eigen_action {warn,error}
-                        Warn or stop for substantive negative selected-PCA-
-                        matrix eigenvalues. Raw values are reported. Default:
-                        warn.
+                                Maximum relative difference between reported z and rg/SE after
+                                duplicate collapse. Default: 0.01.
+
+  --z_consistency_action CHOICE
+                                Warn or stop when z is inconsistent with rg/SE. Default: warn.
+                                [Choices: warn, error.]
+
+  --rg_out_of_range_action CHOICE
+                                Warn or stop for finite off-diagonal rg outside [-1,1]. Values
+                                are never clamped. Default: warn. [Choices: warn, error.]
+
+  --negative_eigen_action CHOICE
+                                Warn or stop for substantive negative selected-PCA-matrix
+                                eigenvalues. Raw values are reported. Default: warn. [Choices:
+                                warn, error.]
+
   --matrix_eigen_tolerance FLOAT
-                        Relative cutoff separating substantive negative
-                        eigenvalues from floating-point noise. Default: 1e-8.
+                                Relative cutoff separating substantive negative eigenvalues from
+                                floating-point noise. Default: 1e-8.
 
 Execution and performance:
-  --validate_only       Run LDSC QC and PCA and write audit files, but do not
-                        run GWAMA.
-  --n_cores N           Workers for chromosome-split GWAMA. 0 selects up to 22
-                        based on available physical cores. Default: 0. Failed
-                        jobs retry once in fresh workers, one at a time;
-                        failure after 2 attempts stops analysis.
-  --ldsc_chunk_size N   Number of LDSC rows read per streaming chunk. Default:
-                        250000.
-  --color {auto,always,never}
-                        Help-message colour: auto for terminals, always to
-                        force it, or never to disable it. NO_COLOR is
-                        respected in auto mode. Default: auto.
+  --validate_only               Run LDSC QC and PCA and write audit files, but do not run GWAMA.
+                                [Default: off.]
+
+  --n_cores INTEGER             Workers for chromosome-split GWAMA. 0 selects up to 22 based on
+                                available physical cores. Default: 0. Failed jobs retry once in
+                                fresh workers, one at a time; failure after 2 attempts stops
+                                analysis.
+
+  --ldsc_chunk_size INTEGER     Number of LDSC rows read per streaming chunk. Default: 250000.
+
+  --color CHOICE                Help-message colour: auto for terminals, always to force it, or
+                                never to disable it. NO_COLOR is respected in auto mode.
+                                Default: auto. [Choices: auto, always, never.]
 
 INPUT FILE FORMATS
   Manifest: comma-separated CSV with a header row.

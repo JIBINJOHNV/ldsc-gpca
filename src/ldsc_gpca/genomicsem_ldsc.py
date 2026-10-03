@@ -13,7 +13,8 @@ from .interfaces import read_manifest
 
 def build_parser():
     p = HelpParser(prog='ldsc-gpca genomicsem ldsc', description=
-        'Run native GenomicSEM munge then LDSC, or LDSC alone from supplied munged files.', epilog='''INPUT FILE CONTRACT
+        'Run native GenomicSEM munge then LDSC, or LDSC alone from supplied munged files.',
+        usage='%(prog)s --input MANIFEST.csv --outdir DIRECTORY --ld_ref DIRECTORY [options]', epilog='''INPUT FILE CONTRACT
   --input: comma-separated CSV with unique traitname, sample_prevalence,
     population_prevalence. Both prevalence values must be blank/NA for quantitative
     traits, or both strictly between 0 and 1 for liability-scale binary traits.
@@ -40,23 +41,28 @@ OUTPUTS / DEPENDENCIES
   Requires local Rscript and GenomicSEM; no Docker or GWAMA source is used.
   stand=TRUE is required for GPCA output; matrices are never fabricated/repaired.
 ''')
-    p.add_argument('--input', required=True, metavar='MANIFEST.csv', help='Trait manifest; columns and separator below.')
-    p.add_argument('--outdir', required=True, metavar='DIRECTORY', help='Fresh output directory.')
-    p.add_argument('--ld_ref', required=True, metavar='DIRECTORY', help='LD scores and M reference files.')
-    p.add_argument('--ld_weights', metavar='DIRECTORY', help='Separate regression weights; unset uses --ld_ref.')
-    group = p.add_mutually_exclusive_group()
-    group.add_argument('--munged_dir', metavar='DIRECTORY', help='Use existing per-trait munged files; skip munge.')
+    required = p.add_argument_group('Required inputs')
+    inputs = p.add_argument_group('Input mode and references')
+    filters = p.add_argument_group('Munging and chi-square filters')
+    regression = p.add_argument_group('LDSC settings and failed heritabilities')
+    execution = p.add_argument_group('Execution and local tools')
+    required.add_argument('--input', required=True, metavar='MANIFEST.csv', help='Trait manifest; columns and separator below.')
+    required.add_argument('--outdir', required=True, metavar='DIRECTORY', help='Fresh output directory.')
+    required.add_argument('--ld_ref', required=True, metavar='DIRECTORY', help='LD scores and M reference files.')
+    inputs.add_argument('--ld_weights', metavar='DIRECTORY', help='Separate regression weights. Default: use --ld_ref.')
+    group = inputs.add_mutually_exclusive_group()
+    group.add_argument('--munged_dir', metavar='DIRECTORY', help='Use existing per-trait munged files; skip munge. Default: unset; run munging unless --munged_input is set.')
     group.add_argument('--munged_input', action='store_true', help='Use manifest munged_file paths; skip munge.')
-    p.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference; required unless skipping munge.')
-    p.add_argument('--n_cores', dest='n_cores', type=int, default=1,
+    inputs.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference. Default: unset; required unless skipping munge.')
+    execution.add_argument('--n_cores', dest='n_cores', type=int, default=1,
                    help='Munging workers; 1 is sequential, as on Windows. Each failed trait gets one retry (2 total attempts); exhausted failures stop before LDSC. LDSC is not parallelized by this option.')
-    p.add_argument('--info_filter', type=float, default=.9, help='GenomicSEM munging INFO threshold.')
-    p.add_argument('--maf_filter', type=float, default=.01, help='GenomicSEM munging MAF threshold.')
-    p.add_argument('--chromosomes', type=int, default=22, help='Use chromosome files 1 through this number (1–22).')
-    p.add_argument('--n_blocks', type=int, default=200, help='Requested jackknife blocks; GenomicSEM overrides this for more than 18 traits; see its log.')
-    p.add_argument('--chisq_max', type=float, help='Positive chi-square exclusion threshold; unset uses GenomicSEM automatic rule.')
-    p.add_argument('--invalid_h2_action', choices=['drop','error'], default='drop', help='Non-finite/non-positive raw h2: audit and drop before second pass, or stop.')
-    p.add_argument('--rscript', default='Rscript', help='Rscript executable name or path.')
+    filters.add_argument('--info_filter', type=float, default=.9, help='GenomicSEM munging INFO threshold.')
+    filters.add_argument('--maf_filter', type=float, default=.01, help='GenomicSEM munging MAF threshold.')
+    regression.add_argument('--chromosomes', type=int, default=22, help='Use chromosome files 1 through this number (1–22).')
+    regression.add_argument('--n_blocks', type=int, default=200, help='Requested jackknife blocks; GenomicSEM overrides this for more than 18 traits; see its log.')
+    filters.add_argument('--chisq_max', type=float, help='Positive chi-square exclusion threshold. Default: unset; use GenomicSEM automatic rule.')
+    regression.add_argument('--invalid_h2_action', choices=['drop','error'], default='drop', help='Non-finite/non-positive raw h2: audit and drop before second pass, or stop.')
+    execution.add_argument('--rscript', default='Rscript', help='Rscript executable name or path.')
     return p
 
 

@@ -14,21 +14,25 @@ def postprocess_parser(r_script='gpsca_gwama_python_ldsc.r', *, include_prepare=
     parser = HelpParser(prog=prog, add_help=False, usage=usage,
                         description='Automatic GWAMA export options. Summary output: <outdir>/harmonisation_input/.',
                         epilog='These options apply after a successful GWAMA run; --validate_only skips export. --n_cores controls concurrent chromosome reads, the default shared Polars pool, and pigz compression workers. Existing POLARS_MAX_THREADS is respected.')
-    parser.add_argument('--dataset_id', help='Dataset identifier used as the output filename prefix. Default: name of the --outdir folder.')
-    parser.add_argument('--gwama_output_n_eff', dest='n_eff', type=float, help='Override N_eff only in the exported GWAMA selected-column summary (e.g. 330000), not LDSC/GPCA calculations. Default: preserve reported values.')
-    parser.add_argument('--gwama_output_info', dest='info_value', type=float, help='Override INFO only in the exported GWAMA selected-column summary (e.g. 0.9), not variant filtering or LDSC/GPCA calculations. Default: preserve reported values.')
-    parser.add_argument('--gzip_level', type=int, choices=range(1, 10), default=1, help='Final export gzip compression level: 1 is fastest, 9 gives smaller files. Default: 1. Uses pigz with --n_cores workers when installed; otherwise single-worker Python gzip.')
-    parser.add_argument('--archive_chromosomes', action='store_true', help='Move current-run source results/logs to outdir/chromosome_wise after saving outputs. Default: keep originals.')
-    parser.add_argument('--postprocess_help', action='store_true', help='Show these options without requiring R.')
+    naming = parser.add_argument_group('Output naming')
+    overrides = parser.add_argument_group('Summary column overrides')
+    compression = parser.add_argument_group('Compression and archiving')
+    help_group = parser.add_argument_group('Help')
+    naming.add_argument('--dataset_id', help='Dataset identifier used as the output filename prefix. Default: name of the --outdir folder.')
+    overrides.add_argument('--gwama_output_n_eff', dest='n_eff', type=float, help='Override N_eff only in the exported GWAMA selected-column summary (e.g. 330000), not LDSC/GPCA calculations. Default: preserve reported values.')
+    overrides.add_argument('--gwama_output_info', dest='info_value', type=float, help='Override INFO only in the exported GWAMA selected-column summary (e.g. 0.9), not variant filtering or LDSC/GPCA calculations. Default: preserve reported values.')
+    compression.add_argument('--gzip_level', type=int, choices=range(1, 10), default=1, help='Final export gzip compression level: 1 is fastest, 9 gives smaller files. Default: 1. Uses pigz with --n_cores workers when installed; otherwise single-worker Python gzip.')
+    compression.add_argument('--archive_chromosomes', action='store_true', help='Move current-run source results/logs to outdir/chromosome_wise after saving outputs. Default: keep originals.')
+    help_group.add_argument('--postprocess_help', action='store_true', help='Show these options without requiring R.')
     if include_prepare:
         add_prepare_options(parser)
     return parser
 
 
-def preparation_help_parser(r_script):
+def preparation_help_parser(r_script, *, usage=None):
     from .prepare import add_prepare_options
     prog = 'ldsc-gpca genomicsem gpca' if r_script == 'gpsca_gwama_v2.r' else 'ldsc-gpca gpca'
-    parser = HelpParser(prog=prog, add_help=False,
+    parser = HelpParser(prog=prog, add_help=False, usage=usage,
         description='Optional automatic VCF preparation. Used only when --gpca_input_folder is omitted; skipped with --validate_only.',
         epilog=PREPARE_INPUT_HELP + '\nAnalysis uses --input MANIFEST.csv, --outdir DIRECTORY and --splitby_chr {split,nosplit} (default: split).\nSee --help for analysis inputs and options. With an existing GPCA folder these preparation options do not apply.')
     add_prepare_options(parser)
@@ -43,10 +47,11 @@ def show_gpca_help(r_script, argv, *, section='main', file=None):
         postprocess_parser(r_script).print_help(file)
     else:
         print_analysis_help(r_script, argv, file=file)
+        print('\nAUTOMATIC VCF PREPARATION\n', file=file)
+        preparation_help_parser(r_script, usage=argparse.SUPPRESS).print_help(file)
         print('\nGWAMA EXPORT\n', file=file)
         postprocess_parser(r_script, usage=argparse.SUPPRESS).print_help(file)
-        print('\nOptional VCF preparation: use --prepare_help for its options and file columns.\n'
-              'It runs only when --gpca_input_folder is omitted and --validate_only is not set.', file=file)
+        print('\nUse --prepare_help or --postprocess_help to show just that section.', file=file)
 
 
 def main(argv=None, *, r_script='gpsca_gwama_python_ldsc.r'):

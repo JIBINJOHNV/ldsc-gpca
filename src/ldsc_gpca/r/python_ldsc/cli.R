@@ -104,7 +104,7 @@ parse_command_line <- function() {
       "Build genomic-PC1 weights and run the modified Fuertjes GWAMA method\n",
       "using a complete pairwise results table produced by Python ldsc.py."
     ),
-    formatter_class = "argparse.RawDescriptionHelpFormatter",
+    formatter_class = get0("gpca_help_formatter", ifnotfound = "argparse.RawDescriptionHelpFormatter"),
     allow_abbrev = FALSE,
     epilog = paste0(
       "INPUT FILE FORMATS\n",
@@ -200,7 +200,9 @@ parse_command_line <- function() {
     "--gpca_input_folder",
     default = NULL,
     metavar = "DIRECTORY",
-    help = "Directory containing the nine-column per-trait GWAMA input files."
+    help = paste("Directory containing the nine-column per-trait GWAMA input files.",
+      "Default: unset; package CLI prepares from VCF unless --validate_only.",
+      "Required for GWAMA when calling R directly.")
   )
   gwama_inputs$add_argument(
     "--source_path",
@@ -262,8 +264,8 @@ parse_command_line <- function() {
     metavar = "FLOAT",
     default = 1e-2,
     help = paste(
-      "Maximum |self rg - 1|. With the default 0.01, values from 0.99",
-      "through 1.01 pass."
+      "Maximum |self rg - 1|. Default: 0.01 (self rg from 0.99 through 1.01).",
+      "Self rg SE=0 is allowed only with Z=+Inf and P=0; other checks still apply."
     )
   )
   qc_thresholds$add_argument(
@@ -386,7 +388,7 @@ parse_command_line <- function() {
     "--n_cores",
     dest = "n_cores",
     type = "integer",
-    metavar = "N",
+    metavar = "INTEGER",
     default = 0L,
     help = paste(
       "Workers for chromosome-split GWAMA. 0 selects up to 22 based on",
@@ -397,7 +399,7 @@ parse_command_line <- function() {
   execution$add_argument(
     "--ldsc_chunk_size",
     type = "integer",
-    metavar = "N",
+    metavar = "INTEGER",
     default = 250000L,
     help = "Number of LDSC rows read per streaming chunk. Default: 250000."
   )

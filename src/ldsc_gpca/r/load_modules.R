@@ -4,6 +4,11 @@ load_gpca_modules <- function(root, backend = c("python_ldsc", "genomicsem"),
   backend <- match.arg(backend)
   assign("bundled_gwama_path", file.path(normalizePath(root, mustWork = TRUE),
     "vendor", "N_weighted_GWAMA.function.1_2_6.R"), envir = envir)
+  # R argparse already runs Python; load the same stdlib-only formatter without
+  # importing the installed package or any numerical dependencies.
+  assign("gpca_help_formatter", paste0("__import__('runpy').run_path(",
+    encodeString(file.path(normalizePath(root, mustWork = TRUE), "..", "help_formatter.py"), quote = '"'),
+    ")[\"HelpFormatter\"]"), envir = envir)
   suppressPackageStartupMessages({
     library(argparse)
     library(data.table)
