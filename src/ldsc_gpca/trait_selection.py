@@ -27,7 +27,9 @@ def validate_duplicate_estimates(frame, order):
             values = [getattr(row, column) for row in rows]
             finite = [v for v in values if math.isfinite(v)]
             tolerance = .01 if column == 'z' else .001
-            disagreement = finite and len(finite) != len(values)
+            kinds = {'finite' if math.isfinite(v) else 'missing' if math.isnan(v)
+                     else 'positive_inf' if v > 0 else 'negative_inf' for v in values}
+            disagreement = len(kinds) > 1
             if len(finite) > 1:
                 low, high = min(finite), max(finite)
                 disagreement |= abs(high - low) > tolerance + 1e-12

@@ -9,6 +9,12 @@ def _missing_value(series):
     return series.isna() | series.astype(str).str.strip().isin(('', 'NA', 'NaN', 'nan'))
 
 
+def self_rg_zero_se(frame):
+    """Recognize native degenerate self-correlation diagnostics, without imputation."""
+    return (frame.p1.eq(frame.p2) & (frame.rg - 1).abs().le(0.01 + 1e-12)
+            & frame.se.eq(0) & frame.z.eq(math.inf) & frame.p.eq(0))
+
+
 def result_status(frame, source):
     """Classify rows; missing estimates are reportable, malformed text is fatal."""
     h2_pairs = [pair for pair in HERITABILITY_COLUMNS if set(pair) <= set(frame)]
@@ -33,13 +39,19 @@ def result_status(frame, source):
         except (ValueError, TypeError) as error:
             raise RuntimeError(f'Non-numeric LDSC {column} in {source}') from error
         frame[column] = converted
+
+    zero_self = self_rg_zero_se(frame)
+    for column in numeric:
+        converted = frame[column]
         # An empty alternative scale for this row is allowed. If neither scale
         # has an estimate, flag the row rather than treating both as unused.
         active = next((mask | no_scale for pair, mask in active_pairs.items() if column in pair),
                       pd.Series(True, index=frame.index))
-        mark(active & ~converted.map(math.isfinite), f'Non-finite LDSC {column}')
+        mark(active & ~(converted.map(math.isfinite) | (zero_self if column == 'z' else False)),
+             f'Non-finite LDSC {column}')
         if column.endswith('_se') or column == 'se':
-            mark(converted.le(0), f'Non-positive LDSC {column}')
+            mark(converted.le(0) & (~zero_self if column == 'se' else True),
+                 f'Non-positive LDSC {column}')
         if column in ('h2_obs', 'h2_liab'):
             mark(converted.le(0), f'Non-positive LDSC {column}')
     mark(frame.p.notna() & ~frame.p.between(0, 1), 'LDSC p-values outside [0,1]')
@@ -48,6 +60,7 @@ def result_status(frame, source):
          'Self-pair rg differs from 1 beyond tolerance 0.01')
     mark(~self_pair & frame.rg.map(math.isfinite) & frame.rg.abs().gt(1),
          'Estimated rg outside [-1,1]', warnings)
+    mark(zero_self, 'Self-pair rg SE=0, Z=+Inf, P=0; diagnostic exception only', warnings)
     for h2, se in h2_pairs:
         mark(self_pair & frame[h2].gt(0) & frame[se].gt(0) & (frame[h2] / frame[se]).lt(2),
              f'Low self {h2}/SE (<2); diagnostic only', warnings)

@@ -77,7 +77,7 @@ class ResultsPrecisionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'summary-table zero may be rounding'):
             self.compile(HEADER + row('A'))
 
-    def test_actual_zero_negative_or_nan_se_still_fails(self):
+    def test_inconsistent_zero_negative_or_nan_se_still_fails(self):
         for se in ('0.', '-1e-06', 'nan', 'inf'):
             content = ('Reading summary statistics from /inputs/A.sumstats.gz ...\n'
                        + block('A', se=se) + 'Summary of Genetic Correlation Results\n'

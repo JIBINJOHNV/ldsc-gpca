@@ -23,21 +23,27 @@ coerce_python_ldsc_numeric <- function(ldsc_rows) {
   ldsc_rows
 }
 
-python_ldsc_valid_row <- function(ldsc_rows) {
-  finite_numeric <- Reduce(
-    `&`,
-    lapply(ldsc_rows[, ..python_ldsc_numeric_columns], is.finite)
-  )
-  positive_se <- Reduce(
-    `&`,
-    lapply(
-      ldsc_rows[, .(se, h2_se, h2_int_se, gcov_int_se)],
-      function(value) is.finite(value) & value > 0
-    )
-  )
+# Share the narrow self-rg exception across selection, final QC and audit output.
+python_ldsc_numeric_checks <- function(ldsc_rows, self_rg_tolerance = 1e-2,
+                                        comparison_epsilon = 1e-12) {
+  zero_self <- with(ldsc_rows, p1 == p2 & is.finite(rg) &
+    abs(rg - 1) <= self_rg_tolerance + comparison_epsilon &
+    se == 0 & z == Inf & p == 0)
+  zero_self[is.na(zero_self)] <- FALSE
+  finite <- lapply(ldsc_rows[, ..python_ldsc_numeric_columns], is.finite)
+  finite$z <- finite$z | zero_self
+  positive_se <- lapply(ldsc_rows[, .(se, h2_se, h2_int_se, gcov_int_se)],
+    function(value) is.finite(value) & value > 0)
+  positive_se$se <- positive_se$se | zero_self
   valid_p <- is.finite(ldsc_rows$p) & ldsc_rows$p >= 0 & ldsc_rows$p <= 1
+  list(finite = finite, positive_se = positive_se, valid_p = valid_p,
+       zero_self = zero_self)
+}
 
-  finite_numeric & positive_se & valid_p
+python_ldsc_valid_row <- function(ldsc_rows, self_rg_tolerance = 1e-2,
+                                   comparison_epsilon = 1e-12) {
+  checks <- python_ldsc_numeric_checks(ldsc_rows, self_rg_tolerance, comparison_epsilon)
+  Reduce(`&`, checks$finite) & Reduce(`&`, checks$positive_se) & checks$valid_p
 }
 
 # Evaluate every selected trait's LDSC self-pair in one place. This function is
@@ -105,6 +111,8 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
     if (length(value) > 0L && all(is.finite(value))) mean(value) else NA_real_
   }
   summarize_self <- function(rows) {
+    checks <- python_ldsc_numeric_checks(rows, self_rg_tolerance, comparison_epsilon)
+    zero_self <- nrow(rows) > 0L && all(checks$zero_self)
     data.table(
       Self_Source_Rows = nrow(rows),
       Required_Numeric_Finite = nrow(rows) > 0L && all(
@@ -121,12 +129,15 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
           logical(1)
         )
       ),
+      Required_Numeric_Valid = nrow(rows) > 0L && all(unlist(checks$finite)),
+      Required_SE_Valid = nrow(rows) > 0L && all(unlist(checks$positive_se)),
+      Self_RG_Zero_SE_Exception = zero_self,
       P_Valid = nrow(rows) > 0L && all(
         is.finite(rows$p) & rows$p >= 0 & rows$p <= 1
       ),
       Self_RG = finite_mean(rows$rg),
       Self_RG_SE = finite_mean(rows$se),
-      Self_Z = finite_mean(rows$z),
+      Self_Z = if (zero_self) Inf else finite_mean(rows$z),
       Self_P = finite_mean(rows$p),
       Self_H2 = finite_mean(rows$h2),
       Self_H2_SE = finite_mean(rows$h2_se),
@@ -172,8 +183,8 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
 
   result[, Self_QC_Pass :=
     Self_Pair_Found &
-      Required_Numeric_Finite &
-      Required_SE_Positive &
+      Required_Numeric_Valid &
+      Required_SE_Valid &
       P_Valid &
       Self_H2_Positive &
       Self_RG_Within_Tolerance]
@@ -181,10 +192,10 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
     !Self_Pair_Found,
     "Missing LDSC self-pair",
     fifelse(
-      !Required_Numeric_Finite,
+      !Required_Numeric_Valid,
       "Non-finite required LDSC self-pair value",
       fifelse(
-        !Required_SE_Positive,
+        !Required_SE_Valid,
         "Non-positive required LDSC self-pair standard error",
         fifelse(
           !P_Valid,
@@ -202,6 +213,8 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
       )
     )
   )]
+  result[, Self_QC_Note := fifelse(Self_QC_Pass & Self_RG_Zero_SE_Exception,
+    "Self-pair rg SE=0, Z=+Inf, P=0; diagnostic exception only", "")]
   trait_scales <- trait_heritability_scales(ldsc_rows, trait_order)
   result[, `:=`(
     Heritability_Scale = trait_scales,
@@ -243,6 +256,8 @@ validate_duplicate_estimates <- function(ldsc_rows, trait_order, tolerance = 1e-
     setNames(lapply(.SD, function(x) if (any(is.finite(x))) min(x[is.finite(x)]) else NA_real_), paste0("min_", names(.SD))),
     setNames(lapply(.SD, function(x) if (any(is.finite(x))) max(x[is.finite(x)]) else NA_real_), paste0("max_", names(.SD))),
     setNames(lapply(.SD, function(x) sum(is.finite(x))), paste0("finite_", names(.SD))),
+    setNames(lapply(.SD, function(x) sum(x == Inf, na.rm = TRUE)), paste0("posinf_", names(.SD))),
+    setNames(lapply(.SD, function(x) sum(x == -Inf, na.rm = TRUE)), paste0("neginf_", names(.SD))),
     list(source_row_count = .N)
   ), by = .(pair_i, pair_j), .SDcols = duplicate_comparison_columns]
 
@@ -261,7 +276,11 @@ validate_duplicate_estimates <- function(ldsc_rows, trait_order, tolerance = 1e-
       comparison_epsilon
     )
     finite_count <- duplicate_stats[[paste0("finite_", column_name)]]
-    newly_conflicting <- (finite_count > 0L & finite_count < duplicate_stats$source_row_count) |
+    posinf_count <- duplicate_stats[[paste0("posinf_", column_name)]]
+    neginf_count <- duplicate_stats[[paste0("neginf_", column_name)]]
+    kinds <- (finite_count > 0L) + (posinf_count > 0L) + (neginf_count > 0L) +
+      (finite_count + posinf_count + neginf_count < duplicate_stats$source_row_count)
+    newly_conflicting <- kinds > 1L |
       (finite_count > 1L & !is.na(agrees) & !agrees)
     conflict[newly_conflicting] <- TRUE
     conflict_fields[newly_conflicting] <- ifelse(
@@ -341,7 +360,8 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   ldsc_rows[, pair_j := pmax(index_1, index_2)]
   validate_duplicate_estimates(ldsc_rows, trait_order, duplicate_tolerance,
     duplicate_z_tolerance, comparison_epsilon)
-  ldsc_rows[, valid_ldsc_row := python_ldsc_valid_row(.SD)]
+  ldsc_rows[, valid_ldsc_row := python_ldsc_valid_row(.SD,
+    self_rg_tolerance, comparison_epsilon)]
 
   pair_status <- ldsc_rows[, .(
     Source_Rows = .N,
@@ -575,12 +595,14 @@ resolve_incomplete_ldsc_traits <- function(ldsc_rows, trait_order,
   )
 }
 
-coerce_and_validate_numeric <- function(ldsc_rows) {
+coerce_and_validate_numeric <- function(ldsc_rows, self_rg_tolerance = 1e-2,
+                                        comparison_epsilon = 1e-12) {
   ldsc_rows <- coerce_python_ldsc_numeric(ldsc_rows)
+  checks <- python_ldsc_numeric_checks(ldsc_rows, self_rg_tolerance, comparison_epsilon)
 
   non_finite <- vapply(
-    python_ldsc_numeric_columns,
-    function(column_name) any(!is.finite(ldsc_rows[[column_name]])),
+    checks$finite,
+    function(valid) any(!valid),
     logical(1)
   )
   if (any(non_finite)) {
@@ -591,10 +613,9 @@ coerce_and_validate_numeric <- function(ldsc_rows) {
     )
   }
 
-  se_columns <- c("se", "h2_se", "h2_int_se", "gcov_int_se")
   non_positive_se <- vapply(
-    se_columns,
-    function(column_name) any(ldsc_rows[[column_name]] <= 0),
+    checks$positive_se,
+    function(valid) any(!valid),
     logical(1)
   )
   if (any(non_positive_se)) {
@@ -605,7 +626,7 @@ coerce_and_validate_numeric <- function(ldsc_rows) {
     )
   }
 
-  if (any(ldsc_rows$p < 0 | ldsc_rows$p > 1)) {
+  if (any(!checks$valid_p)) {
     stop("Selected Python LDSC p-values must lie in [0, 1].", call. = FALSE)
   }
 
@@ -688,7 +709,7 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     )
   }
 
-  ldsc_rows <- coerce_and_validate_numeric(ldsc_rows)
+  ldsc_rows <- coerce_and_validate_numeric(ldsc_rows, self_rg_tolerance, comparison_epsilon)
 
   trait_index_1 <- match(ldsc_rows$p1, trait_order)
   trait_index_2 <- match(ldsc_rows$p2, trait_order)
@@ -926,6 +947,8 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     Present_In_Python_LDSC = TRUE,
     Self_Pair_Found = self_pair_qc$Self_Pair_Found,
     Self_QC_Pass = self_pair_qc$Self_QC_Pass,
+    Self_RG_Zero_SE_Exception = self_pair_qc$Self_RG_Zero_SE_Exception,
+    Self_QC_Note = self_pair_qc$Self_QC_Note,
     Self_RG = self_pair_qc$Self_RG,
     Self_RG_Deviation = self_pair_qc$Self_RG_Deviation,
     Self_H2 = self_pair_qc$Self_H2,

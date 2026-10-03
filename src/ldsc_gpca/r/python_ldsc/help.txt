@@ -51,6 +51,8 @@ QC comparison thresholds:
   --self_rg_tolerance FLOAT
                         Maximum |self rg - 1|. With the default 0.01, values
                         from 0.99 through 1.01 pass.
+                        Self rg SE=0 is allowed only with Z=+Inf and P=0;
+                        all other numeric and SE checks still apply.
   --comparison_epsilon FLOAT
                         Floating-point allowance added to boundary
                         comparisons. Default: 1e-12.

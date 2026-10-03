@@ -6,7 +6,7 @@ import csv
 import uuid
 import pandas as pd
 from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, NATIVE_COLUMNS, write_results_csv
-from .result_qc import result_status, trait_status, _missing_value
+from .result_qc import result_status, trait_status, _missing_value, self_rg_zero_se
 from .trait_selection import select_complete_traits
 
 
@@ -84,8 +84,13 @@ def _restore_correlation_precision(rows, lines, log):
             row.update(details[pair])
         elif details and pd.notna(pd.to_numeric(row['rg'], errors='coerce')):
             raise RuntimeError(f'Missing detailed LDSC correlation for {pair} in {log}')
+    estimates = pd.DataFrame(rows)
+    for column in ('rg', 'se', 'z', 'p'):
+        estimates[column] = pd.to_numeric(estimates[column], errors='coerce')
+    for row, allowed_zero in zip(rows, self_rg_zero_se(estimates)):
         se = pd.to_numeric(row['se'], errors='coerce')
-        if not math.isfinite(se) or se <= 0:
+        if not math.isfinite(se) or (se <= 0 and not allowed_zero):
+            pair = (_trait_name(row['p1']), _trait_name(row['p2']))
             raise RuntimeError(
                 f'Non-positive or non-finite LDSC rg SE for {pair} in {log}. '
                 'A summary-table zero may be rounding; retain complete detailed logs '

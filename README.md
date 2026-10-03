@@ -924,7 +924,22 @@ conflicting duplicates fail. A raw `ldsc.py --rg A,B,C` command does not supply
 B–C, so it is insufficient by itself.
 
 Required selected numeric values must be finite, required SEs positive and P
-in range. Missing/failed estimates stop by default. No values are filled in or
+in range, with one self-correlation exception: a self-pair with finite `rg`
+within the existing tolerance of 1 may have `se=0`, `z=+Inf`, and `p=0` together.
+All other checks still apply, including positive heritability/intercept SEs.
+Zero SE for a between-trait correlation, negative SE, missing values, or a
+different zero-SE/Z/P combination remains invalid. Python result collection
+uses tolerance `0.01`; R uses `--self_rg_tolerance` (default `0.01`).
+
+The exception preserves the native values and is recorded in
+`LDSC_Pair_Status.csv` (`Warning`) and `Python_LDSC_Self_Pair_QC.csv`
+(`Self_RG_Zero_SE_Exception`, `Self_QC_Note`). The existing audit fields
+`Required_Numeric_Finite` and `Required_SE_Positive` retain their literal meaning;
+`Required_Numeric_Valid` and `Required_SE_Valid` include the exception. The PCA
+diagonal remains 1 and its calculations do not use self-correlation SE/Z/P.
+No CLI opt-in or original Python LDSC modification is needed.
+
+Missing/failed estimates stop by default. No values are filled in or
 selected using a significance threshold. Managed LDSC outputs may include both
 h2 scale pairs with unused cells empty and additional provenance columns;
 preserve these rather than deleting/relabeling them to force a scale.
