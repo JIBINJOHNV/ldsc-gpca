@@ -200,8 +200,9 @@ class RestartTests(unittest.TestCase):
 
     def test_cli_restart_with_real_chisq_filter_and_compilation(self):
         for name in ('A', 'B'):
-            self.write_sumstats(name, 'SNP A1 A2 N Z\n' + ''.join(
-                f'rs{i} A G 1000 {1 + i / 10}\n' for i in range(10)))
+            self.write_sumstats(name, 'SNP\tA1\tA2\tN\tZ\n' + ''.join(
+                f'rs{i}\tA\tG\t1000\t{1 + i / 10}\n' for i in range(10)) +
+                'rs_blank\t\t\t\t\nrs_NA\tA\tG\t1000\tNA\n')
         source = self.root / 'manifest.csv'
         source.write_text('traitname,ref,population_prevalence,sample_prevalence,extra\nA,yes,,,x\nB,yes,,,y\n')
         arguments = ['--input', str(source), '--outdir', str(self.out), '--ld_ref', str(self.ld),
@@ -218,6 +219,9 @@ class RestartTests(unittest.TestCase):
         self.assertTrue(pd.read_csv(self.out / 'ldsc_results' / 'LDSC_Batch_Status.csv').Status.eq('reused').all())
         self.assertEqual(first, (self.out / 'ldsc_results.csv').read_bytes())
         self.assertEqual(len(pd.read_csv(self.out / 'ldsc_results.csv')), 4)
+        summary = pd.read_csv(self.out / 'LDSC_ChiSquare_Filter_Summary.csv')
+        self.assertEqual(summary.variants_missing_z.tolist(), [2, 2])
+        self.assertEqual(summary.variants_after.tolist(), [12, 12])
 
 
 class RuntimeAndCLITests(unittest.TestCase):

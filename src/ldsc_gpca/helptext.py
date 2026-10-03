@@ -89,6 +89,7 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
     filenames: {traitname}.sumstats.gz. Required sidecars must remain alongside.
   --chisq_max: optional positive threshold applied independently to each munged
     trait as Z^2 <= threshold before pairwise LDSC. Original files are unchanged.
+    Missing Z placeholders are preserved and counted separately for LDSC to discard.
     This is not forwarded to native LDSC's cross-product --chisq-max behavior.
 
 FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)

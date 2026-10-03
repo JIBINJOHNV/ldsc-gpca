@@ -32,7 +32,7 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
     """Write one independently chi-square-filtered LDSC input and its exclusions."""
     filtered_temp = _temporary_path(filtered_file)
     excluded_temp = _temporary_path(excluded_file)
-    before = kept = removed = 0
+    before = kept = removed = missing_z = 0
     maximum_chisq = None
     try:
         with gzip.open(source_file, 'rt', encoding='utf-8', newline='') as source, \
@@ -56,8 +56,16 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
                     raise ValueError(
                         f'{trait}: malformed munged LDSC row {line_number}; '
                         f'expected {len(columns)} fields, observed {len(values)}')
+                before += 1
+                raw_z = values[z_index].strip()
+                # Allele merging can leave reference SNP placeholders. Native
+                # LDSC drops missing rows; preserve their text rather than impute Z.
+                if raw_z in ('', 'NA', 'NaN', 'nan', '.'):
+                    destination.write(line if line.endswith(('\n', '\r')) else line + '\n')
+                    missing_z += 1
+                    continue
                 try:
-                    z_value = float(values[z_index])
+                    z_value = float(raw_z)
                 except ValueError as error:
                     raise ValueError(
                         f'{trait}: non-numeric Z at munged LDSC row {line_number}') from error
@@ -66,7 +74,6 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
                 chisq = z_value * z_value
                 if not math.isfinite(chisq):
                     raise ValueError(f'{trait}: Z^2 overflow at munged LDSC row {line_number}')
-                before += 1
                 maximum_chisq = chisq if maximum_chisq is None else max(maximum_chisq, chisq)
                 if chisq <= chisq_max:
                     destination.write(line if line.endswith(('\n', '\r')) else line + '\n')
@@ -79,7 +86,9 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
         if before == 0:
             raise ValueError(f'{trait}: munged LDSC input contains no variants')
         if kept == 0:
-            raise ValueError(f'{trait}: --chisq-max {chisq_max:g} removed every variant')
+            raise ValueError(
+                f'{trait}: no variants with finite Z remain after --chisq-max {chisq_max:g} '
+                f'({missing_z:,} missing Z; {removed:,} above threshold)')
         os.replace(excluded_temp, excluded_file)
         os.replace(filtered_temp, filtered_file)
     except Exception:
@@ -95,7 +104,8 @@ def _filter_one_munged_sumstats(trait, source_file, filtered_file, excluded_file
         'chisq_max': chisq_max,
         'variants_before': before,
         'variants_removed': removed,
-        'variants_after': kept,
+        'variants_after': kept + missing_z,
+        'variants_missing_z': missing_z,
         'maximum_chisq': maximum_chisq,
         'source_file': os.path.abspath(source_file),
         'filtered_file': os.path.abspath(filtered_file),
@@ -159,7 +169,8 @@ def filter_munged_sumstats(n_parallel, input_df, input_folder, output_folder, ch
 
     for row in summaries:
         print(f"{row['gwas_name']}: removed {row['variants_removed']:,} of "
-              f"{row['variants_before']:,} variants with Z^2 > {chisq_max:g}")
+              f"{row['variants_before']:,} variants with Z^2 > {chisq_max:g}; "
+              f"preserved {row['variants_missing_z']:,} missing-Z rows for LDSC to discard")
     return filtered_folder
 
 

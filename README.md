@@ -428,6 +428,11 @@ filtered copies without changing the original munged files. The value is an
 explicit analysis decision, not the default and not GenomicSEM's automatic
 threshold selection. It is also different from raw Python LDSC's native
 cross-product `--chisq-max` rule; see [raw commands](#raw-ldsc-commands).
+Missing Z placeholders (blank, `NA`, `nan`, `NaN`, or `.`) pass through unchanged
+for native LDSC to discard. They are counted as `variants_missing_z` in the filter
+summary; `variants_after` includes these rows, so finite-Z survivors equal
+`variants_after - variants_missing_z`. Malformed/non-finite non-missing values
+still fail, as does a trait with no finite Z surviving the threshold.
 The `prepare --p_min` setting does not apply to Python LDSC extraction. Extreme
 LP can underflow to P=0 here and be removed by munging; inspect its logs.
 
@@ -450,7 +455,7 @@ LP can underflow to P=0 here and be removed by munging; inspect its logs.
 | `LDSC_Trait_Prevalence_Metadata.csv` | N/prevalence choices and derivation. |
 | `execution_errors.log` | Command failures, when present. |
 | `ldsc_input_chisq_filtered/` | Filtered copies when `--chisq_max` is supplied. |
-| `LDSC_ChiSquare_Filter_Summary.csv` | Before/removed/retained variant counts for that filter. |
+| `LDSC_ChiSquare_Filter_Summary.csv` | Before/removed/retained row counts and a separate `variants_missing_z` count; retained rows include missing-Z placeholders. |
 | `LDSC_ChiSquare_Excluded_Variants.tsv.gz` | Excluded `gwas_name,SNP,Z,CHISQ` records; this existing audit header is unchanged. |
 
 Managed LDSC exports each native result table numerically with `%.17g` formatting
