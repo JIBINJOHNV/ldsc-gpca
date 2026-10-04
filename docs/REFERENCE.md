@@ -340,8 +340,9 @@ still apply.
 | VCF route | Fields and limitations |
 | --- | --- |
 | Python LDSC plus automatic GWAMA preparation | Each VCF must satisfy **both** existing schemas: FORMAT `AF,ES,SE,LP,NEF` for preparation, plus FORMAT `SI,EZ` and INFO `AF,EUR` for Python extraction. Binary population-prevalence traits additionally need FORMAT `NC,NCO`. |
-| GenomicSEM from VCF alone | Quantitative traits only, with both prevalences blank/NA. Preparation needs FORMAT `AF,ES,SE,LP,NEF` and writes HapMap-selected unmunged tables for native GenomicSEM. Those tables use `N=NEF` and have **no INFO column**; use previously QCed VCFs and verify NEF's meaning. Native INFO filtering cannot act on an absent field. |
-| GenomicSEM with binary traits or separately QCed LDSC tables | Add `sumstats_file` paths to the manifest, or use existing munged inputs below. This avoids inferring a binary N convention from VCF NEF. |
+| GenomicSEM with `--vcf_input` | FORMAT `AF,ES,SE,LP,SI`, plus NEF unless manifest N overrides it. Converts VCFs to raw tables with INFO for native filtering. Binary traits require an appropriate explicit manifest N and both prevalences. Separate GWAMA preparation still needs NEF. See the [VCF guide](GENOMICSEM_LDSC.md#start-from-gwas-vcfs). |
+| Older GenomicSEM VCF fallback without `--vcf_input` or LDSC tables | Quantitative traits only, with both prevalences blank/NA. Preparation needs FORMAT `AF,ES,SE,LP,NEF` and writes HapMap-selected raw tables. Those tables use `N=NEF` and have **no INFO column**; native INFO filtering cannot act on an absent field. |
+| GenomicSEM from separately prepared LDSC tables | Add `sumstats_file` paths to the manifest, or use existing munged inputs below. These routes support quantitative and binary traits with suitable N and prevalence settings. |
 
 VCFs must have one GWAS sample and consistent ancestry/build/alleles. The pipeline
 does not harmonise alleles, infer the phenotype type or infer a defensible
@@ -1104,19 +1105,20 @@ original order; its weighting implementation is unchanged.
 
 ## Run GenomicSEM LDSC
 
-`ldsc-gpca genomicsem ldsc` runs native R/GenomicSEM munging and LDSC, or starts
-from existing munged files. It produces the native sampling covariance matrices
+`ldsc-gpca genomicsem ldsc` runs native R/GenomicSEM munging and LDSC from raw
+tables or explicitly selected VCFs, or starts from existing munged files.
+It produces the native sampling covariance matrices
 needed by GenomicSEM. This command does not run Python LDSC, PCA or GWAMA.
 
 ### GenomicSEM LDSC inputs: choose one mode
 
 Input mode is selected explicitly, not detected from file contents or extensions.
-Without `--munged_dir` or `--munged_input`, the command expects raw paths in
-`sumstats_file` and runs munging. Those two reuse options are mutually exclusive,
+Without an input-mode flag, the command expects raw paths in `sumstats_file`
+and runs munging. `--vcf_input`, `--munged_dir` and `--munged_input` are mutually exclusive,
 and one mode applies to every trait. `--input` is always the trait manifest CSV.
 See the [input-mode explanations and examples](GENOMICSEM_LDSC.md#choose-the-input-mode-explicitly).
 
-All three modes require at least two traits and these manifest columns:
+All four modes require at least two traits and these manifest columns:
 
 | Column | Meaning |
 | --- | --- |
@@ -1128,6 +1130,13 @@ Supply **both** prevalence values strictly between 0 and 1 for binary liability
 conversion, or leave both blank/`NA`. Mixed quantitative/binary rows are allowed;
 a partially supplied prevalence pair fails. Unlike Python extraction, this route
 does not derive case fractions or choose NC+NCO versus NEF for you.
+
+**VCF mode — `--vcf_input`.** Include `vcf_files`. VCFs need one GWAS sample,
+IDs and FORMAT `AF,ES,SE,LP,SI`; quantitative N defaults to NEF unless manifest
+N overrides it. Binary VCFs require an explicit appropriate N and both
+prevalences. The adapter retains INFO and allele frequency for native filters,
+writes `vcf_input/` and `GenomicSEM_VCF_*` audits, then runs the unchanged
+native workflow. See [commands, fields, sample-size rules and output columns](GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
 
 **Mode 1 — unmunged tables (default).** Also include `sumstats_file`:
 
@@ -1235,14 +1244,17 @@ ldsc-gpca genomicsem ldsc \
 
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
-| `--input CSV` | Required | Manifest appropriate for one of the three modes above. |
+| `--input CSV` | Required | Manifest appropriate for one of the four modes above. |
 | `--outdir DIRECTORY` | Required | Fresh or empty directory; existing non-empty directories are refused. |
 | `--ld_ref DIRECTORY` | Required | LD-score and M reference files. |
 | `--ld_weights DIRECTORY` | Same as `--ld_ref` | Separate regression weights. |
-| `--hm3 FILE` | Unset | Required in default munging mode; omit in either reuse mode. |
+| `--hm3 FILE` | Unset | Required for raw-table or VCF munging; omit in either reuse mode. |
 | `--munged_dir DIRECTORY` | Unset | Skip munging and find per-trait files here. Mutually exclusive with `--munged_input`. |
 | `--munged_input` | Off | Skip munging and use manifest `munged_file` paths. |
-| `--n_cores INTEGER` | `1` | Munging workers; ≥1. **Does not parallelize native LDSC.** |
+| `--vcf_input` | Off | Extract manifest `vcf_files`, then munge. Mutually exclusive with `--munged_dir` and `--munged_input`. |
+| `--bcftools EXECUTABLE` | `bcftools` | VCF query executable; used only with `--vcf_input`. |
+| `--p_min FLOAT` | `1e-300` | VCF P floor, finite and in `(0,1)`; adjusted records are audited. Can affect native Z reconstructed from P. |
+| `--n_cores INTEGER` | `1` | VCF extraction and munging workers; ≥1. **Does not parallelize native LDSC regression.** |
 | `--info_filter FLOAT` | `0.9` | Native munging INFO threshold; `[0,1]`. Requires a recognized INFO field to filter on. |
 | `--maf_filter FLOAT` | `0.01` | Native munging MAF threshold; `[0,0.5]`. Depends on recognized frequency fields. |
 | `--chromosomes INTEGER` | `22` | Read chromosomes 1 through this value; allowed 1–22. Does not change downstream split GWAMA's 22-file requirement. |
@@ -1267,7 +1279,8 @@ the run. No sampling covariance matrices are fabricated or repaired.
 | `Selected_Traits.csv` | Retained traits plus native audit fields; extract `traitname` for the GPCA manifest as shown below. |
 | `GenomicSEM_LDSC_Trait_QC.csv`, `GenomicSEM_LDSC_Events.csv` | h2 QC, removals and events. |
 | `Resolved_Manifest.csv`, logs, `sessionInfo.txt` | Resolved inputs and runtime provenance. |
-| `munge_output/` | Newly munged files in default mode. |
+| `munge_output/` | Newly munged files from raw tables or VCFs. |
+| `vcf_input/`, `GenomicSEM_VCF_QC_Summary.csv`, `GenomicSEM_VCF_QC_Issues.csv`, `GenomicSEM_VCF_Worker_Attempts.csv` | VCF mode only: extracted raw inputs, per-trait conversion counts/settings, original records affected by QC and worker attempts. [Schemas and interpretation](GENOMICSEM_LDSC.md#start-from-gwas-vcfs). |
 
 The retained-trait audit `Selected_Traits.csv` can be used directly as a GPCA
 manifest; extra internal columns are ignored. Alternatively, create a minimal

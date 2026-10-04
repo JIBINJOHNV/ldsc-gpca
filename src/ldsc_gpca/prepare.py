@@ -60,21 +60,21 @@ def manifest_inputs(path):
     return rows
 
 
-def extract_table(vcf, executable, temporary):
+def extract_table(vcf, executable, temporary, *, query=QUERY, columns=RAW_COLUMNS):
     samples = subprocess.run([executable, 'query', '-l', str(vcf)], check=True,
                              capture_output=True, text=True).stdout.splitlines()
     if len(samples) != 1:
         raise ValueError(f'{vcf.name}: expected exactly one GWAS sample; found {len(samples)}')
     with open(temporary, 'w') as handle:
-        subprocess.run([executable, 'query', '-f', QUERY, str(vcf)],
+        subprocess.run([executable, 'query', '-f', query, str(vcf)],
                        stdout=handle, stderr=subprocess.PIPE, text=True, check=True)
     if Path(temporary).stat().st_size == 0:
         raise ValueError(f'{vcf.name}: empty VCF query output')
     return pl.read_csv(temporary, separator='\t', has_header=False,
-                       schema={name: pl.String for name in RAW_COLUMNS}, null_values='.')
+                       schema={name: pl.String for name in columns}, null_values='.')
 
 
-def validate_and_transform(frame, p_min=1e-300, gpca_id_source='chr_pos_ref_alt'):
+def validate_and_transform(frame, p_min=1e-300, gpca_id_source='chr_pos_ref_alt', *, require_info=False):
     """Filter bad rows, retaining internal row indices solely for original-record audits."""
     if not math.isfinite(p_min) or not 0 < p_min < 1:
         raise ValueError('--p_min must be finite and strictly between 0 and 1')
@@ -93,6 +93,10 @@ def validate_and_transform(frame, p_min=1e-300, gpca_id_source='chr_pos_ref_alt'
     checks += [(pl.col(c).is_finite(), f'{c}: missing, non-numeric or non-finite')
                for c in ['POS','eaf_A1','beta','se','LP','N','Z']]
     checks += [(pl.col(c).str.contains(r'^[ACGTN]+$'), f'{c}: invalid sequence allele') for c in ['A1','A2']]
+    if require_info:
+        frame = frame.with_columns(pl.col('INFO').cast(pl.Float64, strict=False))
+        checks.append((pl.col('INFO').is_finite() & pl.col('INFO').is_between(0,1),
+                       'INFO: missing, non-finite or outside [0,1]'))
     if gpca_id_source == 'vcf_id':
         checks.append((~pl.col('SNP').str.contains(r'\s') & ~pl.col('SNP').is_in(['','.']), 'Invalid VCF identifier'))
     frame = frame.with_columns(pl.concat_str([

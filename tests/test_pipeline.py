@@ -175,6 +175,38 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 2)
         self.assertIn('--munged_input', self.calls[0]); self.assertNotIn('--hm3', self.calls[0])
 
+    def test_native_explicit_vcf_is_converted_in_ldsc_not_gwama_preparation(self):
+        self.assertEqual(self.run_mock(self.args('genomicsem', '--vcf_input', '--validate_only')), 0)
+        self.assertEqual([args[:2] for args in self.calls], [['genomicsem','ldsc'], ['genomicsem','gpca']])
+        self.assertIn('--vcf_input', self.calls[0])
+        self.assertIn('--hm3', self.calls[0])
+        self.assertNotIn('--vcf_input', self.calls[1])
+        columns, rows = read_manifest(self.out/'manifests/ldsc_traits.csv')
+        self.assertIn('vcf_files', columns)
+        self.assertNotIn('sumstats_file', columns)
+
+    def test_native_binary_vcf_n_validated_before_running_stages(self):
+        for row in self.rows:
+            row[2:4] = ['.5', '.1']
+        self.save_manifest()
+        with patch.object(pipeline.subprocess, 'run') as run:
+            self.assertEqual(pipeline.main(self.args('genomicsem','--vcf_input','--validate_only')), 1)
+            run.assert_not_called()
+        self.assertFalse(self.out.exists())
+        self.columns.append('N')
+        for row in self.rows:
+            row.append('35000')
+        self.save_manifest()
+        self.assertEqual(self.run_mock(self.args('genomicsem','--vcf_input',
+            '--gpca_input_folder',str(self.prepared))),0)
+        self.assertEqual(len(self.calls),2)
+        self.assertIn('--vcf_input',self.calls[0])
+
+    def test_native_vcf_mode_cannot_be_combined_with_munged_modes(self):
+        for flags in (['--munged_input'], ['--munged_dir', str(self.munged)]):
+            with self.subTest(flags=flags), self.assertRaises(SystemExit):
+                pipeline.main(self.args('genomicsem','--vcf_input',*flags))
+
     def test_validation_only_runs_ldsc_and_pca_without_gwama_preparation(self):
         args = self.args('python', '--validate_only')
         at = args.index('--gwama_output_info'); del args[at:at+2]

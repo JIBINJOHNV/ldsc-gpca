@@ -63,9 +63,11 @@ def build_parser(backend='python'):
     If ref is supplied, every value must already be yes.
   Python reuse: --ldsc_only --munged_dir; keep required prevalence sidecars.
   GenomicSEM: sumstats_file, or --munged_dir, or --munged_input + munged_file.
-    Without those LDSC inputs, quantitative VCFs can supply preparation's unmunged
-    tables (N=NEF, no INFO). Binary VCF-only conversion is refused: supply tables
-    with an appropriate N convention. No ancestry/build/allele harmonisation.
+    --vcf_input selects the native INFO-preserving VCF adapter; binary traits
+    require an appropriate explicit manifest N and both prevalences.
+    Without --vcf_input or those LDSC tables, the older quantitative VCF fallback
+    uses preparation's raw tables (N=NEF, no INFO). That fallback refuses binary
+    traits. No ancestry/build/allele harmonisation is performed.
   GWAMA: --gpca_input_folder with nine-column TSVs, or vcf_files for preparation.
     Bundled GWAMA requires a justified --gwama_output_info for final export.
   --outdir must not exist. Writes prepare/, ldsc/, gpca/, manifests/ and
@@ -116,7 +118,8 @@ def build_parser(backend='python'):
     parser._option_string_actions['--dataset_id'].help = 'Final export filename prefix. Default: pipeline --outdir directory name.'
     parser._option_string_actions['--hm3'].help = 'Whitespace reference with SNP,A1,A2 headers. Default: unset; required whenever munging or munging-table preparation runs.'
     parser._option_string_actions['--bcftools'].help = 'Local executable/path; required for VCF extraction or preparation. Default: bcftools on PATH.'
-    parser._option_string_actions['--write_munge_inputs'].help = 'Also request HapMap-selected unmunged tables. Default: off; enabled automatically for GenomicSEM VCF-only inputs.'
+    parser._option_string_actions['--write_munge_inputs'].help = 'Also request HapMap-selected raw tables. Default: off; enabled automatically for the older native VCF fallback without --vcf_input.'
+    parser._option_string_actions['--p_min'].help = 'VCF preparation P floor; also used by native --vcf_input. Default: 1e-300; range (0,1). Does not change GWAMA Z, but can affect Z reconstructed by native munging.'
     return parser
 
 
@@ -202,19 +205,23 @@ def resolve_inputs(opts):
             columns.append('ref')
         for row in rows:
             row['ref'] = 'yes'
-    native_vcf = opts.ldsc_backend == 'genomicsem' and not reuse and not any(row.get('sumstats_file') for row in rows)
+    direct_native_vcf = opts.ldsc_backend == 'genomicsem' and opts.vcf_input
+    native_vcf = opts.ldsc_backend == 'genomicsem' and not reuse and not direct_native_vcf and not any(row.get('sumstats_file') for row in rows)
     if native_vcf and any(optional_prevalence(row['population_prevalence'], row['traitname']) is not None for row in rows):
-        raise ValueError('Binary GenomicSEM VCF-only conversion cannot infer appropriate N. Supply sumstats_file or existing munged files with the correct N convention.')
+        raise ValueError('The older native VCF fallback cannot infer binary N. Use --vcf_input with an appropriate manifest N and both prevalences, or supply raw/munged native tables.')
     needs_prepare = native_vcf or opts.write_munge_inputs or (not opts.validate_only and not opts.gpca_input_folder)
     needed_columns = []
-    if needs_prepare or (opts.ldsc_backend == 'python' and not reuse):
+    if needs_prepare or direct_native_vcf or (opts.ldsc_backend == 'python' and not reuse):
         needed_columns.append('vcf_files')
-    if opts.ldsc_backend == 'genomicsem' and not opts.munged_dir and not native_vcf:
+    if opts.ldsc_backend == 'genomicsem' and not opts.munged_dir and not native_vcf and not direct_native_vcf:
         needed_columns.append('munged_file' if opts.munged_input else 'sumstats_file')
     for column in needed_columns:
         for row in rows:
             if not row.get(column) or not Path(row[column]).is_file():
                 raise ValueError(f'{row["traitname"]}: missing {column} file.')
+    if direct_native_vcf:
+        from .genomicsem_ldsc import resolve_manifest
+        resolve_manifest(opts)  # Apply the same sample-size/prevalence contract before any stage runs.
     if (not reuse or opts.write_munge_inputs or native_vcf) and not opts.hm3:
         raise ValueError('--hm3 is required for munging/optional munging-table preparation.')
     for name in ('ld_ref', 'ld_weights', 'munged_dir', 'gpca_input_folder'):

@@ -98,33 +98,98 @@ chosen checkout. The guide is not evidence of a published container image.
 
 ## Choose a workflow
 
-Use at least two traits for an analysis. `prepare` alone can process one.
-Follow the linked guide for complete examples and option tables with defaults.
+Choose based on the files you already have and the result you need. If you
+still need to run LDSC and want PC1 SNP association results, start with
+**`pipeline`**. If LDSC is already finished, go straight to
+[PCA/GWAMA](#continue-from-completed-ldsc-results).
 
-| Command and guide | What you supply | What it does | Main output |
-| --- | --- | --- | --- |
-| [`pipeline`](docs/PIPELINE.md) | Trait manifest, LD references, backend-compatible GWAS or munged files; for GWAMA, also prepared SNP tables or suitable VCFs | Runs preparation when needed, LDSC, QC/PCA, GWAMA and export | Stage folders and `Pipeline_Run_Status.json` |
-| [`prepare`](docs/PREPARE.md) | Manifest with `traitname,vcf_files`; preparation-compatible GWAS VCFs | Creates per-trait GWAMA tables; optionally raw tables for later munging | `gpca_inputs/` and preparation QC |
-| [`ldsc`](docs/PYTHON_LDSC.md) | Python LDSC manifest, references and extraction-compatible VCFs; alternatively Python munged files with `--ldsc_only` | Filters/munges VCF data when needed, runs Python LDSC, compiles estimates | `ldsc_results.csv` and LDSC QC |
-| [`gpca`](docs/PYTHON_GPCA.md) | Trait-selection manifest and **completed Python LDSC results**; SNP tables or suitable VCFs for GWAMA | Validates estimates, calculates PCA, then runs GWAMA and export | Matrices, PC1 weights, QC and SNP results |
-| [`genomicsem ldsc`](docs/GENOMICSEM_LDSC.md) | Native manifest, references and raw GWAS tables; alternatively explicitly selected native munged input mode | Munges raw tables when needed and runs native GenomicSEM LDSC with trait QC | Final `genomicPCA_LDSC.RData` and trait reports |
-| [`genomicsem gpca`](docs/GENOMICSEM_GPCA.md) | Trait-selection manifest and **completed native LDSC object**; SNP tables or suitable VCFs for GWAMA | Validates native matrices, calculates PCA, then runs GWAMA and export | Matrices, PC1 weights, QC and SNP results |
+The commands below start with `ldsc-gpca`. Each linked guide includes complete
+commands, required manifest columns, options and defaults. Use at least two
+traits for PCA/GWAMA; preparation alone can process one.
 
-Prefix each command with `ldsc-gpca`. The pipeline defaults to Python LDSC;
-`--ldsc_backend genomicsem` selects the native route. **Input modes are explicit:**
-`genomicsem ldsc` does not detect raw versus munged input from the filename and
-does not read VCFs directly. Use `--munged_dir` or `--munged_input` for native
-reuse. Python reuse uses `--ldsc_only` and a munged directory.
+### Run the complete analysis
 
-The two GPCA commands never rerun LDSC. Add `--validate_only` to stop after
-QC/PCA. In contrast, **`pipeline --validate_only` still runs LDSC**. It skips
-GWAMA and export, and skips preparation unless it is needed for LDSC inputs or
-explicitly requested. Neither validation mode checks per-SNP GWAMA tables.
+[`ldsc-gpca pipeline`](docs/PIPELINE.md) prepares inputs where needed, runs
+LDSC, checks the estimates, calculates PCA, runs PC1 GWAMA and exports SNP
+results. Supply a trait manifest and LD references, then choose the LDSC input
+route:
 
-Raw `ldsc.py` and `munge_sumstats.py` [passthroughs](docs/REFERENCE.md#raw-ldsc-commands)
-are also available. They do not perform managed pair completion, result
-compilation or pipeline orchestration. Munging and final export are integrated
-stages of the managed commands, not separate managed subcommands.
+| Your LDSC starting files | Pipeline setting | Guide |
+| --- | --- | --- |
+| GWAS summary-statistics VCFs with the required fields | Python LDSC is the default. List VCF paths in `vcf_files`. | [Python from VCFs](docs/PIPELINE.md#python-from-vcfs) |
+| Existing Python LDSC munged files | Add **both** `--ldsc_only` and `--munged_dir DIR`. | [Python from munged files](docs/PIPELINE.md#python-from-munged-files) |
+| Raw GWAS summary-statistics tables for GenomicSEM | Add `--ldsc_backend genomicsem`; list table paths in `sumstats_file`. | [GenomicSEM from raw tables](docs/PIPELINE.md#native-genomicsem-from-raw-tables) |
+| GWAS summary-statistics VCFs for GenomicSEM | Add `--ldsc_backend genomicsem --vcf_input`; list VCF paths in `vcf_files`. Binary traits need an appropriate manifest N and both prevalences. | [GenomicSEM from VCFs](docs/PIPELINE.md#native-genomicsem-with-explicit-vcf-input) |
+| Existing GenomicSEM-compatible munged files | Add `--ldsc_backend genomicsem`, then either `--munged_dir DIR` or `--munged_input` with manifest `munged_file` paths. | [GenomicSEM from munged files](docs/PIPELINE.md#native-genomicsem-from-munged-files) |
+
+For GWAMA, also supply per-trait SNP tables through `--gpca_input_folder`, or
+include VCF paths in `vcf_files` so the pipeline can prepare them. The same VCFs
+can serve both stages if they contain [all required fields](#vcf-fields-and-sample-size).
+**Munged LDSC files alone are not enough for SNP-level GWAMA.**
+
+The explicit native VCF route retains FORMAT/SI as INFO for native filtering.
+Its [sample-size rules](docs/GENOMICSEM_LDSC.md#start-from-gwas-vcfs) differ from
+Python's binary extraction. The older [quantitative VCF fallback](docs/PIPELINE.md#native-genomicsem-from-quantitative-vcfs)
+remains available without `--vcf_input`; it uses NEF and exports no INFO.
+
+A full run saves LDSC estimates in `ldsc/`, and PCA reports, PC1 weights and
+combined SNP results in `gpca/`. Choose a new output directory; pipeline requires
+one that does not already exist. See [output files](#find-and-interpret-results).
+To stop after LDSC and PCA, add `--validate_only`: LDSC still runs, while GWAMA
+and final SNP export are skipped. Preparation runs only when needed for LDSC
+inputs or explicitly requested.
+
+### Run LDSC only
+
+Use these commands when you want heritabilities, genetic correlations and
+intercepts first. Each needs a trait manifest and LD references; routes that
+perform munging also need the HapMap allele reference through `--hm3`.
+
+| Your starting files | Command and input mode | What it does and produces |
+| --- | --- | --- |
+| GWAS summary-statistics VCFs | [`ldsc-gpca ldsc`](docs/PYTHON_LDSC.md#start-from-vcf-files) | Extracts and filters VCF records, munges them, runs Python LDSC and writes `ldsc_results.csv` plus QC reports. |
+| Existing Python LDSC `{traitname}.sumstats.gz` files | [`ldsc-gpca ldsc --ldsc_only`](docs/PYTHON_LDSC.md#start-from-munged-files); use `--munged_dir DIR` to select their directory. | Skips extraction/munging, runs Python LDSC and writes the same final result format. |
+| GWAS summary-statistics VCFs for native LDSC | [`ldsc-gpca genomicsem ldsc --vcf_input`](docs/GENOMICSEM_LDSC.md#start-from-gwas-vcfs); list paths in `vcf_files`. | Converts VCFs to raw tables with INFO, runs native munging/LDSC and writes `genomicPCA_LDSC.RData`, trait reports and VCF QC. |
+| Raw GWAS text tables | [`ldsc-gpca genomicsem ldsc`](docs/GENOMICSEM_LDSC.md#basic-command-from-raw-tables); list paths in `sumstats_file`. | Munges the tables, runs native LDSC with trait QC and writes the final `genomicPCA_LDSC.RData` and `Selected_Traits.csv`. |
+| Existing GenomicSEM-compatible munged tables | [`ldsc-gpca genomicsem ldsc`](docs/GENOMICSEM_LDSC.md#reuse-munged-files) with `--munged_dir DIR`, or `--munged_input` and manifest `munged_file` paths. | Skips munging, runs native LDSC with trait QC and writes the same final RData and selected-trait manifest. |
+
+Select the input mode explicitly; the program does not choose raw versus munged
+mode from the filename. In standalone Python `ldsc`, `--munged_dir` without
+`--ldsc_only` changes where **new** munged files are written. None of these LDSC
+commands runs PCA or GWAMA.
+
+The Python LDSC guide explains the [final columns with a real-data example](docs/PYTHON_LDSC.md#results-and-next-step)
+and links to the [folder, intermediate-file and audit reference](docs/PYTHON_LDSC_OUTPUTS.md).
+
+### Continue from completed LDSC results
+
+Choose the command that matches the LDSC results you have. Both read those
+estimates, check the selected traits and calculate PCA without rerunning LDSC.
+
+| Completed result | Command | What else you need |
+| --- | --- | --- |
+| Python `ldsc_results.csv`, containing all required self-pairs and trait pairs | [`ldsc-gpca gpca`](docs/PYTHON_GPCA.md) | A trait-selection manifest; for GWAMA, per-trait SNP tables or VCFs for automatic preparation. |
+| Final native `genomicPCA_LDSC.RData`, containing `LDSCoutput` | [`ldsc-gpca genomicsem gpca`](docs/GENOMICSEM_GPCA.md) | A trait-selection manifest; for GWAMA, per-trait SNP tables or VCFs for automatic preparation. |
+
+Pass the completed result with `--ldsc_results`. For a full GWAMA run, use
+`--gpca_input_folder` for prepared tables, or include `vcf_files` in the manifest
+and omit that option to prepare them automatically. The command saves matrices,
+PC1 weights, QC reports and SNP results. Add `--validate_only` if you want only
+QC and PCA; this skips preparation, GWAMA and SNP export. Validation-only runs
+do not check per-SNP GWAMA input tables.
+
+### Prepare GWAMA inputs separately
+
+Use [`ldsc-gpca prepare`](docs/PREPARE.md) when you have GWAS VCFs and want to
+make the per-trait SNP tables for a later analysis. Supply a manifest with
+`traitname,vcf_files`. It writes nine-column tables under `gpca_inputs/` and QC
+reports. Preparation uses its own [VCF field requirements](docs/PREPARE.md#files-you-need)
+and does not run LDSC, PCA or GWAMA. With `--write_munge_inputs` and `--hm3`, it
+can also write raw tables for later munging; these are not yet munged LDSC files.
+
+For direct access to the upstream Python scripts, see the
+[raw LDSC commands](docs/REFERENCE.md#raw-ldsc-commands). These bypass the
+package's managed workflow and result collection.
 
 ## Run a complete analysis
 
@@ -243,11 +308,11 @@ N during native munging. For binary traits, supply both sample and population
 prevalence; this route does not infer the missing value.
 
 For reuse, explicitly select `--munged_dir` or `--munged_input` and omit `--hm3`;
-raw munging filters and manifest N are not reapplied. A separate
-[quantitative VCF pipeline route](docs/PIPELINE.md#native-genomicsem-from-quantitative-vcfs)
-can generate raw tables before native munging. Those tables use NEF for N and
-contain no INFO. Binary-trait VCF-only conversion is refused; use suitable raw
-or munged native inputs. See [native recipes](docs/PIPELINE.md#native-genomicsem-from-raw-tables).
+raw munging filters and manifest N are not reapplied. To start from VCFs, select
+`--vcf_input` on `genomicsem ldsc`, or combine it with `--ldsc_backend genomicsem`
+on `pipeline`. This conversion retains INFO and uses quantitative NEF unless
+manifest N overrides it; binary VCFs require an appropriate explicit N and both
+prevalences. See the [native VCF guide](docs/GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
 
 ## Use completed LDSC results
 
@@ -316,7 +381,7 @@ Python `ldsc` VCF paths, which resolve from the working directory.
 | --- | --- |
 | Pipeline manifest | `traitname,population_prevalence,sample_prevalence`, plus route-specific paths: `vcf_files`, native `sumstats_file`, or explicit munged reuse. For full GWAMA, supply prepared inputs or preparation-compatible VCFs. Python `ref`, if present, must be `yes` for every trait. |
 | Standalone Python LDSC manifest | `traitname,ref,population_prevalence,sample_prevalence`; add `vcf_files` unless using `--ldsc_only`. Set all `ref=yes` for complete GPCA coverage. Reuse expects `{traitname}.sumstats.gz`. |
-| Native LDSC manifest | `traitname,population_prevalence,sample_prevalence`; default raw mode adds `sumstats_file`. `--munged_dir` expects one `{traitname}.sumstats` or `.sumstats.gz`; `--munged_input` instead uses the manifest's `munged_file` paths. Choose one mode. |
+| Native LDSC manifest | `traitname,population_prevalence,sample_prevalence`; default raw mode adds `sumstats_file`. `--vcf_input` uses `vcf_files`. `--munged_dir` expects one `{traitname}.sumstats` or `.sumstats.gz`; `--munged_input` uses `munged_file` paths. Choose one mode. |
 | GPCA selection | `traitname` plus completed LDSC results supplied through `--ldsc_results`. Add `vcf_files` only for automatic GWAMA preparation. |
 | Python LDSC results | Headered CSV/TSV/whitespace table, optionally gzip-compressed: `p1,p2,rg,se,z,p,h2_int,h2_int_se,gcov_int,gcov_int_se`, plus at least one h2/SE pair: `h2_obs,h2_obs_se` or `h2_liab,h2_liab_se`. See [scale and pair requirements](docs/REFERENCE.md#python-ldsc-results-table). |
 | Native LDSC results | Final RData containing `LDSCoutput` with `S,I,V,S_Stand,V_Stand`. The intermediate `genomicPCA_LDSC_raw.RData` is not the final GPCA input. |
@@ -332,6 +397,7 @@ A `.vcf.gz` extension does not establish compatibility.
 | GWAMA preparation | FORMAT `AF,ES,SE,LP,NEF` | EA=ALT, OA=REF, EAF=AF, N=NEF, Z=ES/SE, P from LP. |
 | Python LDSC extraction | IDs; INFO `AF,EUR`; FORMAT `SI,AF,EZ,LP,NEF` | SI for INFO filtering, FORMAT/AF for MAF, INFO/AF versus INFO/EUR for frequency difference, EZ/LP for association statistics. |
 | Python extraction with population prevalence | Python fields above plus FORMAT `NC,NCO` | N=NC+NCO; missing sample prevalence can be inferred from median case fraction. |
+| Native LDSC with `--vcf_input` | IDs; FORMAT `AF,ES,SE,LP,SI`; NEF unless manifest N is supplied | INFO=SI; MAF from AF; P from LP and effect direction from ES. Quantitative N=NEF by default; binary traits require an appropriate explicit manifest N and both prevalences. |
 
 A Python VCF pipeline needs the union of the first two field sets, plus the
 binary fields when applicable. Its LDSC filtering does not also filter GWAMA
@@ -497,7 +563,7 @@ removals before interpreting loadings or SNP associations.
 | --- | --- |
 | `Pipeline_Run_Status.json`; `manifests/` | Overall completion, stage commands, failures and resolved trait selections. |
 | `prepare/Preparation_Status.csv`; `prepare/GPCA_Input_QC_Summary.csv` | Preparation outcomes and retained/removed variants. Prepared inputs are in `prepare/gpca_inputs/`. |
-| Python `ldsc/ldsc_results.csv`; `LDSC_Pair_Status.csv`, `LDSC_Trait_Status.csv`, `LDSC_Retained_Traits.csv` in `ldsc/` | Pair/self estimates, failures and the retained trait set. Native covariance, pair h2 and trait-wide rg columns supplement original rg. |
+| Python `ldsc/ldsc_results.csv`; `LDSC_Compilation_Status.csv`, `LDSC_Pair_Status.csv`, `LDSC_Trait_Status.csv` in `ldsc/` | Final pair/self estimates and collection/QC outcomes. [Columns and real example](docs/PYTHON_LDSC.md#results-and-next-step). `drop_traits` also writes `LDSC_Retained_Traits.csv` and `LDSC_Dropped_Traits.csv`. |
 | Native `ldsc/genomicPCA_LDSC.RData`; `Selected_Traits.csv`, `GenomicSEM_LDSC_Trait_QC.csv` in `ldsc/` | Final native estimates and traits retained after LDSC h2 QC. |
 | Python `gpca/Python_LDSC_Input_Validation_Summary.csv`; `Python_LDSC_Dropped_Missing_Traits.csv`, `Python_LDSC_Dropped_Failed_Traits.csv` in `gpca/` | Input validation and any explicit GPCA trait removals. |
 | Native `gpca/GenomicSEM_QC_Events.csv`; `GenomicSEM_QC_Removed_Traits.csv`, `GenomicSEM_Retained_Manifest.csv` in `gpca/` | Native GPCA QC and retained trait order. |

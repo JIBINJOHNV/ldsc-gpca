@@ -7,6 +7,7 @@
 - [When to use this command](#when-to-use-this-command)
 - [Choose the input mode explicitly](#choose-the-input-mode-explicitly)
 - [Files and references you need](#files-and-references-you-need)
+- [Start from GWAS VCFs](#start-from-gwas-vcfs)
 - [Basic command from raw tables](#basic-command-from-raw-tables)
 - [What happens in order](#what-happens-in-order)
 - [Filters, sample size and prevalence](#filters-sample-size-and-prevalence)
@@ -17,9 +18,10 @@
 ## When to use this command
 
 `ldsc-gpca genomicsem ldsc` runs GenomicSEM's native R LDSC workflow and produces
-the final `LDSCoutput` object for native GPCA. It accepts raw GWAS text tables or
-explicitly selected existing munged files. It does not directly read VCFs,
-prepare GWAMA tables or run PCA.
+the final `LDSCoutput` object for native GPCA. It accepts raw GWAS text tables,
+GWAS VCFs with `--vcf_input`, or existing munged files. VCF mode converts the
+records to raw tables before calling the unchanged native munging/LDSC workflow.
+This command stops after LDSC; it does not prepare GWAMA tables or run PCA.
 
 ## Choose the input mode explicitly
 
@@ -31,10 +33,13 @@ The command uses one mode for all traits:
    one `{traitname}.sumstats` or `{traitname}.sumstats.gz` per trait.
 3. **Explicit munged paths:** set `--munged_input` and supply manifest
    `munged_file` paths.
+4. **GWAS VCFs:** set `--vcf_input` and supply manifest `vcf_files` paths.
+   The command extracts raw tables with INFO and allele frequency, then munges
+   them and runs LDSC.
 
-The two reuse options are mutually exclusive. The tool does not identify raw
-versus munged data from filenames or automatically switch modes. Do not put a
-munged file under `sumstats_file` and expect munging to be skipped.
+`--vcf_input`, `--munged_dir` and `--munged_input` are mutually exclusive. The
+tool does not switch modes based on filenames. Put VCFs in `vcf_files` and
+select `--vcf_input`; put raw tables in `sumstats_file` for the default mode.
 
 ## Files and references you need
 
@@ -55,6 +60,86 @@ for raw munging, a HapMap allele reference with `SNP,A1,A2`. Reuse requires
 compatible tab-separated `SNP,A1,A2,N,Z` files and does not accept `--hm3`.
 See [references](INPUTS.md#reference-files).
 
+## Start from GWAS VCFs
+
+Use one GWAS summary-statistics VCF per trait, with exactly one GWAS sample in
+each file. Save this quantitative example as `/data/traits_native_vcf.csv`:
+
+```csv
+traitname,vcf_files,population_prevalence,sample_prevalence
+Trait_A,/data/Trait_A.vcf.gz,,
+Trait_B,/data/Trait_B.vcf.gz,,
+Trait_C,/data/Trait_C.vcf.gz,,
+Trait_D,/data/Trait_D.vcf.gz,,
+```
+
+```bash
+ldsc-gpca genomicsem ldsc \
+  --input /data/traits_native_vcf.csv \
+  --vcf_input \
+  --outdir /results/native_ldsc_vcf \
+  --ld_ref /references/eur_w_ld_chr \
+  --hm3 /references/w_hm3.snplist \
+  --info_filter 0.9 \
+  --maf_filter 0.01 \
+  --n_cores 4
+```
+
+The thresholds shown are native defaults. `--bcftools /path/to/bcftools` can
+select a local executable. Use a fresh or empty output directory.
+
+| VCF value | Raw table column / use |
+| --- | --- |
+| Variant ID | `SNP`; IDs must match the HapMap reference. |
+| CHROM, POS | `CHR,POS`; retain valid autosomal positions. |
+| ALT, REF | `A1,A2`: effect and other allele. |
+| FORMAT/ES, FORMAT/SE | `beta,se`; ES supplies direction for native munging. Both must be finite and SE positive. |
+| FORMAT/LP | `p = 10^(-LP)`, with a default floor of `1e-300`. Native munging calculates Z from this P and the effect direction. |
+| FORMAT/AF | `MAF = min(AF, 1−AF)`. Native `--maf_filter` applies during munging. |
+| FORMAT/SI | `INFO`. Native `--info_filter` applies during munging. |
+| FORMAT/NEF | Per-SNP `N` for quantitative traits, unless manifest `N` overrides it. |
+
+The adapter uses the existing preparation QC: remove invalid records, retain
+autosomes, and resolve duplicate IDs/coordinates by keeping the largest valid
+LP (first source row on a tie). Missing or invalid SI is removed and audited;
+finite SI must be in `[0,1]`. Low but valid INFO/MAF values reach native munging,
+which applies your thresholds. Extraction does not apply Python's INFO/AF–EUR
+comparison, MHC filter or Python-specific munging settings. These routes can
+therefore retain different SNPs even when starting from the same VCFs.
+
+**Sample size:** quantitative traits use NEF by default. A positive `N` column
+in the manifest replaces it with that constant and makes NEF unnecessary for
+this LDSC conversion. Binary VCFs require an explicit, appropriate manifest N
+and both prevalences. Choose N and sample prevalence together for your study's
+GenomicSEM convention; the command does not infer that convention from NEF or
+NC/NCO. For binary data needing varying per-SNP N, supply suitable raw tables or
+munged files instead. A mixture of quantitative and binary rows is supported
+when each row satisfies these rules.
+
+`--p_min` changes the VCF conversion floor and records adjusted rows. Because
+native munging derives Z from P, flooring can affect extreme Z values. Values
+come from bcftools' numeric decoding; the adapter does not reconstruct the
+original VCF's textual precision.
+
+After successful conversion and LDSC, the output includes:
+
+| File or folder | Meaning |
+| --- | --- |
+| `vcf_input/{traitname}_munge_inputs.tsv` | Tab-separated raw inputs: `SNP,CHR,POS,A1,A2,MAF,beta,se,N,p,INFO`, in that order. These are not munged files. |
+| `GenomicSEM_VCF_QC_Summary.csv` | Per-trait conversion counts, N source/override, P floor and success/error. Counts describe conversion before native INFO/MAF filtering. |
+| `GenomicSEM_VCF_QC_Issues.csv` | Original VCF record fields plus `traitname,QC_action,QC_reason` for removed or P-adjusted rows. |
+| `GenomicSEM_VCF_Worker_Attempts.csv` | `Job,Attempt,Success,Error`; each failed conversion gets one retry, for two total attempts. |
+| `Resolved_Manifest.csv` | Resolved raw-table paths, trait order, N and prevalence passed to native munging. |
+| `munge_output/` | Native munged files and munging logs. |
+| **`genomicPCA_LDSC.RData`** | Final native LDSC result for GPCA, as in the other input modes. |
+| `Selected_Traits.csv`, `GenomicSEM_LDSC_Trait_QC.csv` | Retained traits and native heritability QC. |
+
+The conversion summary columns are `traitname,vcf_files,input_rows,retained_rows,
+removed_rows,p_adjusted_rows,excluded_non_autosomal_rows,N_source,N_override,
+p_min,INFO_source,success,error`. A failure before conversion can leave counts
+unavailable. Failed conversion stops before R starts; converted tables are
+published only after every trait succeeds. Original VCFs are unchanged.
+
 ## Basic command from raw tables
 
 ```bash
@@ -71,7 +156,8 @@ Use a fresh or empty output directory. The final GPCA input will be
 ## What happens in order
 
 1. Validate the manifest and selected input mode.
-2. Munge raw tables, or use the explicitly selected munged files.
+2. In VCF mode, extract and check the raw tables first. Munge raw tables, or
+   use the explicitly selected existing munged files.
 3. Run the first LDSC pass and save its raw result.
 4. Check raw heritabilities. By default, audit and drop traits with nonfinite
    or nonpositive raw h2; `--invalid_h2_action error` stops instead.
@@ -197,8 +283,9 @@ Required options have no default. “Off” means omit the flag; include it alon
 | `--ld_ref` | Required | Directory of chromosome LD scores and M reference files. |
 | `--ld_weights` | Use `--ld_ref` | Optional separate directory of regression-weight LD scores. |
 | `--hm3` | Unset | Whitespace SNP/A1/A2 allele reference, required for raw munging; omit for munged reuse. |
-| `--munged_dir` | Unset | Select native munged reuse: exactly one {trait}.sumstats or .sumstats.gz per trait. Mutually exclusive with --munged_input. |
-| `--munged_input` | Off | Native reuse from manifest `munged_file` paths; mutually exclusive with `--munged_dir`. |
+| `--vcf_input` | Off | Read `vcf_files` from the manifest, convert VCFs to raw tables and run native munging. Mutually exclusive with both munged input modes. |
+| `--munged_dir` | Unset | Select native munged reuse: exactly one {trait}.sumstats or .sumstats.gz per trait. Mutually exclusive with `--munged_input` and `--vcf_input`. |
+| `--munged_input` | Off | Native reuse from manifest `munged_file` paths; mutually exclusive with `--munged_dir` and `--vcf_input`. |
 
 ### LDSC filtering and estimation
 
@@ -210,6 +297,13 @@ Required options have no default. “Off” means omit the flag; include it alon
 | `--chromosomes` | `22` | Native LDSC: use reference chromosomes 1 through this integer (1–22). Does not change GWAMA split-file requirements. |
 | `--n_blocks` | `200` | Native LDSC: requested jackknife blocks, integer ≥2. Pinned GenomicSEM overrides the count for more than 18 traits; inspect its log. |
 
+### VCF conversion
+
+| Option | Default | What it changes |
+| --- | --- | --- |
+| `--bcftools` | `bcftools` on PATH | VCF query executable; used only with `--vcf_input`. |
+| `--p_min` | `1e-300` | P floor for VCF LP conversion, finite and strictly between 0 and 1. Used only with `--vcf_input`; adjusted rows are audited. |
+
 ### Failures and reuse
 
 | Option | Default | What it changes |
@@ -220,7 +314,7 @@ Required options have no default. “Off” means omit the flag; include it alon
 
 | Option | Default | What it changes |
 | --- | --- | --- |
-| `--n_cores` | `1` | Positive integer; native munging workers only. Regression is sequential; Windows munging is sequential. |
+| `--n_cores` | `1` | Positive integer; VCF extraction and native munging workers. Regression is sequential; Windows munging is sequential. |
 | `--rscript` | `Rscript` | Native LDSC R executable/path. In pipeline this affects LDSC only; GPCA still needs Rscript on PATH. |
 
 ### Help

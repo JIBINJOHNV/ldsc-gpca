@@ -13,7 +13,7 @@ from .interfaces import read_manifest
 
 def build_parser():
     p = HelpParser(prog='ldsc-gpca genomicsem ldsc', description=
-        'Run native GenomicSEM munge then LDSC, or LDSC alone from supplied munged files.',
+        'Run native GenomicSEM LDSC from raw GWAS tables, GWAS VCFs or munged files.',
         usage='%(prog)s --input MANIFEST.csv --outdir DIRECTORY --ld_ref DIRECTORY [options]', epilog='''INPUT FILE CONTRACT
   --input: comma-separated CSV with unique traitname, sample_prevalence,
     population_prevalence. Both prevalence values must be blank/NA for quantitative
@@ -24,7 +24,13 @@ def build_parser():
     Optional manifest N supplies a positive constant per trait instead of file N.
     INFO and MAF/effect-allele frequency are used when recognized by GenomicSEM;
     inspect its logs for column interpretation and unavailable filtering fields.
-  --hm3: reference table with SNP,A1,A2 headers (tabs/spaces), required in default mode.
+  --hm3: SNP,A1,A2 reference table (tabs/spaces), required for raw and VCF modes.
+  --vcf_input: read manifest vcf_files, convert GWAS VCFs to raw tables, then munge.
+    Each VCF needs one GWAS sample, variant IDs and FORMAT AF,ES,SE,LP,SI.
+    Quantitative N comes from FORMAT/NEF unless manifest N overrides it.
+    Binary VCFs require an explicit appropriate manifest N and both prevalences;
+    no case-count or effective-N convention is inferred. VCF IDs must match hm3.
+    Native INFO/MAF filters apply during munging; Python extraction filters do not.
   --munged_dir: directory of {traitname}.sumstats.gz or .sumstats files.
     Alternatively --munged_input uses a munged_file column of file paths in the CSV.
     Munged files are tab-separated with SNP,A1,A2,N,Z headers.
@@ -38,6 +44,7 @@ OUTPUTS / DEPENDENCIES
   S,V,I,S_Stand,V_Stand), GenomicSEM_LDSC_Trait_QC.csv, Selected_Traits.csv,
   GenomicSEM_LDSC_Events.csv, resolved manifest, logs and sessionInfo.txt.
   Newly munged files are under outdir/munge_output. GWAMA is NOT run here.
+  VCF mode also writes vcf_input/*_munge_inputs.tsv and GenomicSEM_VCF_* QC/attempts.
   Requires local Rscript and GenomicSEM; no Docker or GWAMA source is used.
   stand=TRUE is required for GPCA output; matrices are never fabricated/repaired.
 ''')
@@ -51,11 +58,15 @@ OUTPUTS / DEPENDENCIES
     required.add_argument('--ld_ref', required=True, metavar='DIRECTORY', help='LD scores and M reference files.')
     inputs.add_argument('--ld_weights', metavar='DIRECTORY', help='Separate regression weights. Default: use --ld_ref.')
     group = inputs.add_mutually_exclusive_group()
-    group.add_argument('--munged_dir', metavar='DIRECTORY', help='Use existing per-trait munged files; skip munge. Default: unset; run munging unless --munged_input is set.')
+    group.add_argument('--munged_dir', metavar='DIRECTORY', help='Use existing per-trait munged files; skip munge. Default: unset. Mutually exclusive with --munged_input and --vcf_input.')
     group.add_argument('--munged_input', action='store_true', help='Use manifest munged_file paths; skip munge.')
+    group.add_argument('--vcf_input', action='store_true', help='Read manifest vcf_files; extract raw tables with INFO, then run native munging and LDSC. Default: off; read raw sumstats_file unless using a munged mode.')
     inputs.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference. Default: unset; required unless skipping munge.')
     execution.add_argument('--n_cores', dest='n_cores', type=int, default=1,
-                   help='Munging workers; 1 is sequential, as on Windows. Each failed trait gets one retry (2 total attempts); exhausted failures stop before LDSC. LDSC is not parallelized by this option.')
+                   help='VCF extraction and munging workers; 1 is sequential. Each failed trait gets one retry (2 total attempts); exhausted failures stop before LDSC. LDSC regression stays sequential.')
+    vcf = p.add_argument_group('VCF conversion (--vcf_input only)')
+    vcf.add_argument('--bcftools', default='bcftools', help='VCF query executable name/path. Default: bcftools on PATH; unused for raw or munged tables.')
+    vcf.add_argument('--p_min', type=float, default=1e-300, help='Floor for P calculated from FORMAT/LP; range (0,1). Default: 1e-300. Adjusted records are audited; native munging derives Z from P and effect direction.')
     filters.add_argument('--info_filter', type=float, default=.9, help='GenomicSEM munging INFO threshold.')
     filters.add_argument('--maf_filter', type=float, default=.01, help='GenomicSEM munging MAF threshold.')
     regression.add_argument('--chromosomes', type=int, default=22, help='Use chromosome files 1 through this number (1–22).')
@@ -69,8 +80,8 @@ OUTPUTS / DEPENDENCIES
 def resolve_manifest(opts):
     manifest = Path(opts.input).resolve()
     columns, rows = read_manifest(manifest)
-    mode = 'existing' if opts.munged_dir or opts.munged_input else 'munge'
-    path_column = 'munged_file' if opts.munged_input else 'sumstats_file'
+    mode = 'existing' if opts.munged_dir or opts.munged_input else 'vcf' if opts.vcf_input else 'munge'
+    path_column = 'vcf_files' if opts.vcf_input else 'munged_file' if opts.munged_input else 'sumstats_file'
     required = {'traitname', 'sample_prevalence', 'population_prevalence'}
     if not opts.munged_dir:
         required.add(path_column)
@@ -99,6 +110,9 @@ def resolve_manifest(opts):
                 prev.append(value)
         if (prev[0] is None) != (prev[1] is None):
             raise ValueError(f'{name}: supply both prevalences or neither; no sample prevalence is inferred.')
+        if mode == 'vcf' and prev[1] is not None and row['N'] == 'NA':
+            raise ValueError(f'{name}: binary VCF input requires an explicit appropriate N in the manifest; '
+                             'do not assume FORMAT/NEF or NC+NCO has the required convention.')
         if opts.munged_dir:
             candidates = [Path(opts.munged_dir).resolve() / (name + suffix) for suffix in ('.sumstats.gz','.sumstats')]
             candidates = [path for path in candidates if path.is_file()]
@@ -132,10 +146,12 @@ def main(argv=None):
             raise ValueError('info-filter must be in [0,1]; maf-filter in [0,0.5].')
         if opts.chisq_max is not None and (not math.isfinite(opts.chisq_max) or opts.chisq_max <= 0):
             raise ValueError('chisq-max must be finite and positive.')
+        if not math.isfinite(opts.p_min) or not 0 < opts.p_min < 1:
+            raise ValueError('--p_min must be finite and strictly between 0 and 1.')
         rows, mode = resolve_manifest(opts)
-        if mode == 'munge' and (not opts.hm3 or not Path(opts.hm3).is_file()):
+        if mode != 'existing' and (not opts.hm3 or not Path(opts.hm3).is_file()):
             raise ValueError('--hm3 reference file is required when running munge.')
-        if mode == 'munge':
+        if mode != 'existing':
             with Path(opts.hm3).open() as stream:
                 if not {'SNP','A1','A2'}.issubset(stream.readline().split()):
                     raise ValueError('--hm3 must have SNP,A1,A2 headers for native allele alignment.')
@@ -153,9 +169,20 @@ def main(argv=None):
         rscript = shutil.which(opts.rscript)
         if not rscript:
             raise ValueError('Rscript not found; install R and GenomicSEM, or supply --rscript.')
+        if mode == 'vcf':
+            executable = shutil.which(opts.bcftools)
+            if not executable:
+                raise ValueError('VCF input requires bcftools; install it or supply --bcftools.')
     except (ValueError, OSError) as error:
         parser.error(str(error))
     out.mkdir(parents=True, exist_ok=True)
+    if mode == 'vcf':
+        from .genomicsem_vcf import prepare_vcf_inputs
+        try:
+            rows = prepare_vcf_inputs(rows, out, executable, opts.n_cores, opts.p_min)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        mode = 'munge'
     resolved = out/'Resolved_Manifest.csv'
     with resolved.open('w', newline='') as stream:
         writer = csv.DictWriter(stream, fieldnames=['traitname','source_file','sampleprevalence','populationprevalence','N'])

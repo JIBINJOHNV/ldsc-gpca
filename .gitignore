@@ -72,3 +72,5 @@ results/
 !tests/test_pipeline.py
 !tests/test_pipeline_native.R
 !tests/PIPELINE_VALIDATION.md
+!tests/test_genomicsem_vcf.py
+!tests/GENOMICSEM_VCF_VALIDATION.md

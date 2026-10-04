@@ -49,6 +49,9 @@ Trait_D,/data/Trait_D.vcf.gz,,
 ```
 
 `prepare` needs only `traitname,vcf_files`; the extra columns above are accepted.
+The same manifest works with `genomicsem ldsc --vcf_input` for quantitative
+traits. See [native VCF sample-size and field requirements](GENOMICSEM_LDSC.md#start-from-gwas-vcfs)
+before using it for native LDSC; binary VCFs require an explicit appropriate N.
 For **standalone Python LDSC**, use `/data/traits_python.csv` with `ref` included:
 
 ```csv
@@ -138,6 +141,7 @@ compatibility.
 | GWAMA preparation (`prepare`, or automatic preparation) | Coordinates, REF, ALT; FORMAT `AF,ES,SE,LP,NEF` | EA=ALT; OA=REF; EAF=AF; Z=ES/SE; P from LP; N=NEF. |
 | Python LDSC extraction | Coordinates, alleles and IDs; INFO `AF,EUR`; FORMAT `SI,AF,EZ,LP,NEF` | SI for INFO filtering; FORMAT/AF for MAF; INFO/AF versus INFO/EUR for frequency difference; EZ and LP for association statistics. |
 | Python binary-trait extraction with population prevalence | The Python fields above, plus FORMAT `NC,NCO` | Uses NC+NCO for N; can infer sample prevalence from case fractions. |
+| Native LDSC with `--vcf_input` | Coordinates, alleles and IDs; FORMAT `AF,ES,SE,LP,SI`, plus `NEF` unless manifest N is supplied | INFO=SI; MAF from AF; P from LP with an audited floor. Quantitative N=NEF by default; binary traits need explicit manifest N and both prevalences. |
 
 A Python VCF pipeline that prepares GWAMA files needs the union of both field
 sets. The preparation path and Python extraction path have separate filtering
@@ -222,6 +226,7 @@ stages:
 | Either LDSC backend, munged reuse | N already in each munged file | Prepare appropriate munged inputs; an export override does not change them. Native manifest N is ignored in this mode. |
 | Prepared GWAMA inputs | FORMAT/NEF becomes N | Supply correct VCF NEF, or correctly prepared nine-column tables. |
 | Optional raw tables from `prepare` | FORMAT/NEF becomes N | These are unmunged tables and contain no INFO. |
+| Native LDSC with `--vcf_input` | Quantitative: FORMAT/NEF or a manifest N override. Binary: explicit manifest N required. | Supply appropriate N and prevalence conventions. For binary per-SNP N, use raw/munged tables. N here does not override separate GWAMA preparation. |
 
 For a binary trait, `sample_prevalence` is the fraction of cases in the GWAS
 sample; `population_prevalence` is the population prevalence used for liability

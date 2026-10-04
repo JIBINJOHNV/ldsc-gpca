@@ -10,6 +10,7 @@
 - [Python from munged files](#python-from-munged-files)
 - [Native GenomicSEM from raw tables](#native-genomicsem-from-raw-tables)
 - [Native GenomicSEM from munged files](#native-genomicsem-from-munged-files)
+- [Native GenomicSEM with explicit VCF input](#native-genomicsem-with-explicit-vcf-input)
 - [Native GenomicSEM from quantitative VCFs](#native-genomicsem-from-quantitative-vcfs)
 - [Run LDSC and PCA without GWAMA](#run-ldsc-and-pca-without-gwama)
 - [Change filters, PCA and export settings](#change-filters-pca-and-export-settings)
@@ -35,8 +36,8 @@ First choose what LDSC will read:
 - **Python:** supported VCFs, or existing Python munged files selected with
   both `--ldsc_only` and `--munged_dir`.
 - **GenomicSEM:** raw tables listed in `sumstats_file`, existing munged files
-  selected with `--munged_dir` or `--munged_input`, or the restricted
-  quantitative-trait VCF route below.
+  selected with `--munged_dir` or `--munged_input`, or VCFs selected with
+  `--vcf_input`. The older quantitative-trait VCF fallback is also retained.
 
 Then choose what GWAMA will read:
 
@@ -181,9 +182,40 @@ skips munging; it uses the N values already in the files and does not apply raw
 INFO/MAF filters again. To prepare GWAMA inputs instead, include VCF paths and
 omit `--gpca_input_folder` as described above.
 
+## Native GenomicSEM with explicit VCF input
+
+Select `--vcf_input` to convert VCFs directly in the native LDSC stage, retaining
+FORMAT/SI as INFO for native filtering:
+
+```bash
+ldsc-gpca pipeline \
+  --ldsc_backend genomicsem \
+  --vcf_input \
+  --input /data/traits_vcf.csv \
+  --outdir /results/native_vcf_with_info \
+  --ld_ref /references/eur_w_ld_chr \
+  --hm3 /references/w_hm3.snplist \
+  --splitby_chr nosplit \
+  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
+```
+
+The native LDSC VCFs need `AF,ES,SE,LP,SI` and NEF unless a manifest N override
+is supplied. Binary VCFs require an explicit appropriate N and both prevalences;
+see the [native VCF contract](GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
+For GWAMA, supply prepared tables through `--gpca_input_folder`, or let pipeline
+prepare them from the VCFs. That separate preparation still requires NEF and
+uses it for GWAMA N, independently of a native LDSC N override.
+
+With `--validate_only`, this route converts the VCFs for LDSC and runs LDSC/PCA
+without preparing GWAMA inputs. The conversion writes its raw inputs and
+`GenomicSEM_VCF_*` audits under `ldsc/`; native munging and final RData follow
+the existing workflow. `--p_min` applies to VCF conversion in LDSC and, when
+run, to the separate GWAMA preparation. Native extraction uses `--n_cores`;
+GWAMA preparation uses `--prepare_workers`.
+
 ## Native GenomicSEM from quantitative VCFs
 
-If no raw `sumstats_file` paths and no munged reuse mode are supplied, the native
+Without `--vcf_input`, if no raw `sumstats_file` paths and no munged reuse mode are supplied, the native
 pipeline can turn quantitative-trait VCFs into raw tables for native munging:
 
 ```bash
@@ -203,10 +235,11 @@ raw tables use N=NEF and contain **no INFO**, so `--info_filter` cannot provide
 INFO-based filtering for this route. Existing GWAMA tables can be supplied,
 but the VCFs are still needed to create the LDSC raw inputs.
 
-Binary-trait VCF-only conversion is refused because the appropriate native
-N convention cannot be inferred. Supply suitable raw or munged native LDSC
-inputs for binary traits instead. This fallback is a pipeline feature;
-standalone `genomicsem ldsc` does not directly accept VCFs.
+This older fallback refuses binary traits because the appropriate native N
+convention cannot be inferred. Use the explicit `--vcf_input` route with an
+appropriate manifest N and both prevalences, or supply raw/munged native inputs.
+The fallback is a pipeline feature; standalone `genomicsem ldsc` requires
+`--vcf_input` to read VCFs.
 
 ## Run LDSC and PCA without GWAMA
 
@@ -223,7 +256,7 @@ ldsc-gpca pipeline \
 
 This **runs LDSC**, then checks its results and calculates PCA. It skips GWAMA,
 SNP-result export and ordinary GWAMA-only preparation. It does not check GWAMA
-SNP tables. Native VCF-only input still needs preparation to create LDSC raw
+SNP tables. The older native VCF fallback still needs preparation to create LDSC raw
 tables; requesting `--write_munge_inputs` also requires preparation. For PCA
 from already completed results, use a standalone GPCA command instead.
 
@@ -337,6 +370,7 @@ Preparation settings act only when that stage runs. Raw extraction/munging filte
 | `--ldsc_only` | Python | **Off**. Reuse Python munged files; skip extraction/munging. Their INFO/MAF and other extraction filters are not reapplied. |
 | `--munged_dir` | Both | **Unset**. Python: requires --ldsc_only too. Native: selects directory reuse by itself, mutually exclusive with --munged_input. See backend file/provenance rules. |
 | `--munged_input` | GenomicSEM | **Off**. Native reuse from manifest `munged_file` paths; mutually exclusive with `--munged_dir`. |
+| `--vcf_input` | GenomicSEM | **Off**. Convert manifest `vcf_files` to raw tables with INFO during the native LDSC stage. Mutually exclusive with either munged mode; binary traits require an appropriate explicit manifest N. |
 | `--gpca_input_folder` | Both | **Unset**. Directory of existing nine-column GWAMA tables. Otherwise prepare from manifest VCFs for a full run. Not needed for ordinary validation-only runs. |
 
 ### VCF preparation and file layout
@@ -345,8 +379,8 @@ Preparation settings act only when that stage runs. Raw extraction/munging filte
 | --- | --- | --- |
 | `--splitby_chr` | Both | **`split`**. `split`: all chromosomes 1–22 per trait. `nosplit`: one autosomal table per trait. Preparation and GWAMA must use matching layouts. |
 | `--gpca_id_source` | Both | **`chr_pos_ref_alt`**. `chr_pos_ref_alt` or `vcf_id` for prepared GWAMA SNPIDs. Choose compatible IDs across traits. |
-| `--p_min` | Both | **`1e-300`**. Preparation P floor, finite and strictly between 0 and 1. Does not change the ES/SE-derived GWAMA Z. |
-| `--write_munge_inputs` | Both | **Off**. Also request HapMap-selected raw tables. Automatically enabled for native VCF-only LDSC. Requires suitable VCFs and --hm3 even in validation-only mode. |
+| `--p_min` | Both | **`1e-300`**. VCF preparation P floor, also used by native `--vcf_input`. Does not change ES/SE-derived GWAMA Z; it can change extreme Z reconstructed by native munging. Finite and strictly between 0 and 1. |
+| `--write_munge_inputs` | Both | **Off**. Also request HapMap-selected raw tables. Automatically enabled for the older native VCF fallback. Requires suitable VCFs and --hm3 even in validation-only mode. |
 | `--munge_id_source` | Both | **`vcf_id`**. `vcf_id` or `chr_pos_ref_alt` for optional raw-table SNP IDs; must match HapMap IDs. |
 | `--prepare_workers` | Both | **`4`**. Positive integer; workers for VCF preparation, separate from LDSC/GWAMA workers. |
 
