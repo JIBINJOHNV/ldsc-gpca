@@ -178,14 +178,49 @@ PC1 weights, QC reports and SNP results. Add `--validate_only` if you want only
 QC and PCA; this skips preparation, GWAMA and SNP export. Validation-only runs
 do not check per-SNP GWAMA input tables.
 
-### Prepare GWAMA inputs separately
+<a id="prepare-gwama-inputs-separately"></a>
 
-Use [`ldsc-gpca prepare`](docs/PREPARE.md) when you have GWAS VCFs and want to
-make the per-trait SNP tables for a later analysis. Supply a manifest with
-`traitname,vcf_files`. It writes nine-column tables under `gpca_inputs/` and QC
-reports. Preparation uses its own [VCF field requirements](docs/PREPARE.md#files-you-need)
-and does not run LDSC, PCA or GWAMA. With `--write_munge_inputs` and `--hm3`, it
-can also write raw tables for later munging; these are not yet munged LDSC files.
+### Prepare GPCA and LDSC inputs separately
+
+[`ldsc-gpca prepare`](docs/PREPARE.md) starts from GWAS summary-statistics VCFs
+listed in a `traitname,vcf_files` manifest. Choose the files you need for the
+next stage:
+
+| What you need | Preparation options¹ | Main output folders |
+| --- | --- | --- |
+| GPCA/GWAMA inputs | Default | `gpca_inputs/` |
+| Shared raw LDSC inputs | `--mode ldsc --raw_only` | `munge_inputs/` |
+| LDSC-ready files, munged with Python | `--mode ldsc` | `munge_inputs/`, `munged/` |
+| LDSC-ready files, munged with GenomicSEM | `--mode ldsc --munge_backend genomicsem` | `munge_inputs/`, `munged/` |
+| GPCA inputs plus shared raw LDSC inputs | `--mode both --raw_only` | `gpca_inputs/`, `munge_inputs/` |
+| All outputs | `--mode both`; add `--munge_backend genomicsem` for native R munging | All three folders |
+
+¹ Supply `--input` and `--outdir` in every mode, and `--hm3` for LDSC preparation.
+**Raw tables still need munging; `munged/{traitname}.sumstats.gz` files are ready
+for LDSC regression.** Preparation never runs LDSC regression, PCA or GWAMA.
+
+For example, make GPCA inputs and Python-munged files together:
+
+```bash
+ldsc-gpca prepare \
+  --input /data/traits_vcf.csv \
+  --outdir /results/prepared_both \
+  --mode both \
+  --hm3 /references/hm3_alleles.tsv \
+  --splitby_chr nosplit
+```
+
+The shared raw table uses `SNP,CHR,BP,A1,A2,EAF,BETA,SE,P,N,INFO`. Both mungers
+accept this format; selecting a munger chooses its processing rules. INFO comes
+from FORMAT/SI. LDSC N uses quantitative NEF unless a manifest N overrides it;
+binary rows require explicit total N and both prevalences. GPCA/GWAMA N remains
+NEF. GPCA and LDSC outputs have separate QC reports.
+
+Use `Prepared_LDSC_Manifest.csv` and the `munged/` folder for a later LDSC command;
+use `gpca_inputs/` for later GWAMA. The guide provides [field requirements](docs/PREPARE.md#files-you-need),
+[full commands](docs/PREPARE.md#produce-munged-files), [output schemas and reuse examples](docs/PREPARE.md#outputs-and-next-step),
+and [all options](docs/PREPARE.md#all-options). Existing `--write_munge_inputs`
+commands retain their [legacy raw export](docs/PREPARE.md#also-write-raw-tables-for-later-munging).
 
 For direct access to the upstream Python scripts, see the
 [raw LDSC commands](docs/REFERENCE.md#raw-ldsc-commands). These bypass the
@@ -399,6 +434,8 @@ A `.vcf.gz` extension does not establish compatibility.
 | Python extraction with population prevalence | Python fields above plus FORMAT `NC,NCO` | N=NC+NCO; missing sample prevalence can be inferred from median case fraction. |
 | Native LDSC with `--vcf_input` | IDs; FORMAT `AF,ES,SE,LP,SI`; NEF unless manifest N is supplied | INFO=SI; MAF from AF; P from LP and effect direction from ES. Quantitative N=NEF by default; binary traits require an appropriate explicit manifest N and both prevalences. |
 
+Standalone `prepare --mode ldsc` or `prepare --mode both` also needs FORMAT/SI and the [shared preparation N contract](docs/PREPARE.md#sample-size-and-binary-traits).
+
 A Python VCF pipeline needs the union of the first two field sets, plus the
 binary fields when applicable. Its LDSC filtering does not also filter GWAMA
 inputs. Preparation retains valid autosomal rows; its default P floor is
@@ -416,7 +453,7 @@ combining binary traits or reusing effective-N inputs.
 
 ### Per-trait GWAMA tables and allele handling
 
-Preparation writes tab-separated tables with these nine columns:
+GPCA/GWAMA preparation writes tab-separated tables with these nine columns:
 
 ```text
 SNPID CHR BP EA OA EAF N Z P

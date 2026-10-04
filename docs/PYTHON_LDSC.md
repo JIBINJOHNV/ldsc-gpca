@@ -238,6 +238,11 @@ mode from filenames or from `--munged_dir` alone.
 
 ### Reuse munged files or restart
 
+You can create these files with [`prepare --mode ldsc`](PREPARE.md#produce-munged-files).
+Use its `Prepared_LDSC_Manifest.csv` with `--ldsc_only --munged_dir DIR/munged`,
+and keep the provenance sidecars. Shared preparation records its own munging
+filters; Python VCF extraction filters are not applied to those files.
+
 Reuse checks saved file hashes, the N convention and recorded filter settings.
 **Extraction and munging filters are not run again.** When a sidecar records
 non-default settings, repeat those settings so the provenance check matches.

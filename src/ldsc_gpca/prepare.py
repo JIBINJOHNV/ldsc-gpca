@@ -183,14 +183,7 @@ def validate_ids(frame, column):
         raise ValueError(f'{column} identifiers must be present, whitespace-free and unique')
 
 
-def prepare_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source, munge_id_source, hm3, p_min=1e-300):
-    with tempfile.NamedTemporaryFile(dir=stage, suffix='.tsv') as temporary:
-        raw = extract_table(vcf, executable, temporary.name)
-        frame, issues, summary = validate_and_transform(raw, p_min, gpca_id_source)
-    write_original_issues(vcf, stage/'qc'/f'{name}.csv', name, issues)
-    pl.DataFrame([{'traitname':name, **summary}]).write_csv(stage/'qc'/f'{name}.summary.csv')
-    if frame.is_empty():
-        raise ValueError('No usable variants remain; see GPCA_Input_QC_Issues.csv for removal reasons')
+def write_gpca(frame, name, stage, splitby_chr, gpca_id_source):
     gpca = frame.select([
         selected_id(gpca_id_source).alias('SNPID'), 'CHR', pl.col('POS').alias('BP'),
         pl.col('A1').alias('EA'), pl.col('A2').alias('OA'), pl.col('eaf_A1').alias('EAF'),
@@ -204,6 +197,18 @@ def prepare_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source, mun
             chrom.write_csv(stage/'gpca_inputs'/f'{name}_chr{chrom["CHR"][0]}_GenomicPCA_inputs.tsv', separator='\t')
     else:
         gpca.write_csv(stage/'gpca_inputs'/f'{name}_GenomicPCA_inputs.tsv', separator='\t')
+    return gpca.height
+
+
+def prepare_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source, munge_id_source, hm3, p_min=1e-300):
+    with tempfile.NamedTemporaryFile(dir=stage, suffix='.tsv') as temporary:
+        raw = extract_table(vcf, executable, temporary.name)
+        frame, issues, summary = validate_and_transform(raw, p_min, gpca_id_source)
+    write_original_issues(vcf, stage/'qc'/f'{name}.csv', name, issues)
+    pl.DataFrame([{'traitname':name, **summary}]).write_csv(stage/'qc'/f'{name}.summary.csv')
+    if frame.is_empty():
+        raise ValueError('No usable variants remain; see GPCA_Input_QC_Issues.csv for removal reasons')
+    gpca_rows = write_gpca(frame, name, stage, splitby_chr, gpca_id_source)
     munge_rows = 0
     if hm3 is not None:
         munge = frame.with_columns(selected_id(munge_id_source).alias('SNP')).join(hm3, on='SNP', how='semi')
@@ -213,36 +218,52 @@ def prepare_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source, mun
         munge.select(['SNP','CHR','POS','A1','A2','eaf_A1','beta','se','N','p']).write_csv(
             stage/'munge_inputs'/f'{name}_munge_inputs.txt', separator=' ')
         munge_rows = munge.height
-    return {'traitname': name, 'vcf_files': str(vcf), 'gpca_rows': gpca.height,
+    return {'traitname': name, 'vcf_files': str(vcf), 'gpca_rows': gpca_rows,
             'excluded_non_autosomal_rows': summary['excluded_non_autosomal_rows'], 'munge_rows': munge_rows,
             'p_underflow_rows': int((frame['p'] == 0).sum()), 'success': True, 'error': ''}
 
 
 def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_pos_ref_alt',
                    write_munge_inputs=False, hapmap_file=None, munge_id_source='vcf_id',
-                   prepare_workers=4, bcftools='bcftools', p_min=1e-300):
+                   prepare_workers=4, bcftools='bcftools', p_min=1e-300, *, mode='gpca'):
     if not math.isfinite(p_min) or not 0 < p_min < 1:
         raise ValueError('--p_min must be finite and strictly between 0 and 1')
     if splitby_chr not in ('split','nosplit') or gpca_id_source not in ID_CHOICES or munge_id_source not in ID_CHOICES:
         raise ValueError('Invalid layout or identifier source')
     if not isinstance(prepare_workers, int) or prepare_workers < 1:
         raise ValueError('VCF preparation workers (--n_cores for prepare; --prepare_workers within gpca) must be a positive integer')
-    if write_munge_inputs != bool(hapmap_file):
-        raise ValueError('--write_munge_inputs and --hm3 must be supplied together')
+    if mode not in ('gpca', 'ldsc', 'both') or (mode != 'gpca' and write_munge_inputs):
+        raise ValueError('Use --mode ldsc or --mode both without legacy --write_munge_inputs')
+    shared = mode != 'gpca'
+    if (write_munge_inputs or shared) != bool(hapmap_file):
+        raise ValueError('--hm3 is required for LDSC preparation or --write_munge_inputs; omit it for GPCA-only preparation')
     executable = shutil.which(bcftools)
     if not executable:
         raise ValueError(f'Local bcftools executable not found: {bcftools}')
     rows = manifest_inputs(manifest)
     hm3 = None
-    if write_munge_inputs:
+    if write_munge_inputs or shared:
+        with open(hapmap_file) as stream:
+            if 'SNP' not in stream.readline().rstrip('\r\n').split('\t'):
+                raise ValueError('--hm3 must be tab-separated with a SNP header')
         hm3 = pl.read_csv(hapmap_file, separator='\t', columns=['SNP'], schema_overrides={'SNP': pl.String}).drop_nulls().unique()
         if hm3.is_empty():
             raise ValueError('HapMap SNP list is empty')
+    if shared:
+        from .prepare_ldsc import prepare_shared_trait, sample_metadata
+        metadata = sample_metadata(manifest)
     outdir = Path(outdir).resolve()
-    reports = ['GPCA_Input_QC_Issues.csv', 'GPCA_Input_QC_Summary.csv']
-    outputs = ['gpca_inputs', 'Preparation_Status.csv', 'Preparation_Settings.json', *reports]
-    if write_munge_inputs:
+    report_sets = [('qc', 'GPCA_Input')] if mode != 'ldsc' else []
+    if shared:
+        report_sets.append(('ldsc_qc', 'LDSC_Input'))
+    reports = [f'{prefix}_QC_{kind}.csv' for _, prefix in report_sets for kind in ('Issues', 'Summary')]
+    outputs = ['Preparation_Status.csv', 'Preparation_Settings.json', *reports]
+    if mode != 'ldsc':
+        outputs.insert(0, 'gpca_inputs')
+    if write_munge_inputs or shared:
         outputs.append('munge_inputs')
+    if shared:
+        outputs.append('Prepared_LDSC_Manifest.csv')
     for name in outputs:
         path = outdir/name
         if path.exists() or path.is_symlink():
@@ -250,13 +271,13 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
     outdir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.prepare-', dir=outdir) as temporary:
         stage = Path(temporary)
-        (stage/'gpca_inputs').mkdir()
-        (stage/'qc').mkdir()
-        if write_munge_inputs:
-            (stage/'munge_inputs').mkdir()
+        for folder in ['gpca_inputs'] * (mode != 'ldsc') + ['munge_inputs'] * bool(write_munge_inputs or shared) + [folder for folder, _ in report_sets]:
+            (stage/folder).mkdir()
         statuses = {}
-        values = run_parallel_jobs([(name, prepare_trait, (name, vcf, stage, executable,
-            splitby_chr, gpca_id_source, munge_id_source, hm3, p_min)) for name, vcf in rows],
+        jobs = [(name, prepare_shared_trait if shared else prepare_trait,
+                 (name, vcf, stage, executable, splitby_chr, gpca_id_source, munge_id_source, hm3, p_min) +
+                 ((mode, metadata[name]) if shared else ())) for name, vcf in rows]
+        values = run_parallel_jobs(jobs,
             prepare_workers, stage='VCF preparation', collect_failures=True,
             status_path=outdir/'Preparation_Worker_Attempts.csv')
         for (name, vcf), value in zip(rows, values):
@@ -267,18 +288,19 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
                                   'success':False, 'error':str(detail)}
             else:
                 statuses[name] = value
-                print(f'Prepared {name}: {value["gpca_rows"]} GPCA variants', flush=True)
+                print(f'Prepared {name}: {value["gpca_rows"]} GPCA variants, {value["munge_rows"]} raw LDSC variants', flush=True)
         ordered = [statuses[name] for name,_ in rows]
-        summaries = []
-        for status in ordered:
-            path = stage/'qc'/f'{status["traitname"]}.summary.csv'
-            summary = pl.read_csv(path, schema_overrides={'traitname':pl.String}).to_dicts()[0] if path.exists() else {
-                'traitname':status['traitname'], 'input_rows':None, 'retained_rows':None,
-                'removed_rows':None, 'p_adjusted_rows':None, 'excluded_non_autosomal_rows':None}
-            summaries.append({**summary, 'success':status['success'], 'error':status['error']})
-        pl.DataFrame(summaries, infer_schema_length=None).write_csv(stage/reports[1])
-        merge_issue_reports([stage/'qc'/f'{name}.csv' for name,_ in rows
-                             if (stage/'qc'/f'{name}.csv').exists()], stage/reports[0])
+        for folder, prefix in report_sets:
+            summaries = []
+            for status in ordered:
+                path = stage/folder/f'{status["traitname"]}.summary.csv'
+                summary = pl.read_csv(path, schema_overrides={'traitname':pl.String}).to_dicts()[0] if path.exists() else {
+                    'traitname':status['traitname'], 'input_rows':None, 'retained_rows':None,
+                    'removed_rows':None, 'p_adjusted_rows':None, 'excluded_non_autosomal_rows':None}
+                summaries.append({**summary, 'success':status['success'], 'error':status['error']})
+            pl.DataFrame(summaries, infer_schema_length=None).write_csv(stage/f'{prefix}_QC_Summary.csv')
+            merge_issue_reports([stage/folder/f'{name}.csv' for name,_ in rows
+                                 if (stage/folder/f'{name}.csv').exists()], stage/f'{prefix}_QC_Issues.csv')
         failed = [s for s in ordered if not s['success']]
         if failed:
             pl.DataFrame(ordered).write_csv(outdir/'Preparation_Status.csv')
@@ -295,6 +317,12 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
                     'duplicate_policy':'Largest valid LP, first original row on ties',
                     'QC_issues_source':'Original VCF fields, unchanged; union of headers across samples',
                     'bcftools':executable}
+        if shared:
+            from .prepare_ldsc import write_ldsc_manifest
+            write_ldsc_manifest(stage/'Prepared_LDSC_Manifest.csv', rows, metadata, outdir)
+            settings.update(mode=mode, LDSC_N_source='manifest N override, otherwise FORMAT/NEF',
+                            LDSC_INFO_source='FORMAT/SI', LDSC_effect_source='FORMAT/ES for ALT',
+                            LDSC_QC='basic QC and HapMap IDs; INFO/MAF thresholds applied only during munging')
         (stage/'Preparation_Settings.json').write_text(json.dumps(settings,indent=2)+'\n')
         published = []
         try:
@@ -307,8 +335,9 @@ def prepare_inputs(manifest, outdir, splitby_chr='split', gpca_id_source='chr_po
             for name in reversed(published):
                 os.rename(outdir/name, stage/name)
             raise
-    print(f'GPCA inputs: {outdir / "gpca_inputs"}')
-    return outdir/'gpca_inputs'
+    folder = outdir/('munge_inputs' if mode == 'ldsc' else 'gpca_inputs')
+    print(f'Prepared inputs: {folder}')
+    return folder
 
 
 def preparation_kwargs(opts):
@@ -316,22 +345,33 @@ def preparation_kwargs(opts):
                                                 'munge_id_source','prepare_workers','bcftools','p_min']}
 
 
-def main(argv=None):
+def build_parser():
     parser = HelpParser(prog='ldsc-gpca prepare', description=__doc__,
                         usage='%(prog)s --input MANIFEST.csv --outdir DIRECTORY [options]', epilog=PREPARE_INPUT_HELP)
     required = parser.add_argument_group('Required inputs')
     layout = parser.add_argument_group('Output layout')
     required.add_argument('--input', metavar='MANIFEST.csv', required=True, help='CSV with traitname and vcf_files. Relative VCF paths resolve beside this manifest.')
     required.add_argument('--outdir', metavar='DIRECTORY', required=True, help='Output directory; creates gpca_inputs and optionally munge_inputs.')
-    layout.add_argument('--splitby_chr', choices=['split','nosplit'], default='split', help='Per-chromosome or whole-genome output. Default: split (requires all chromosomes 1–22 per trait).')
+    layout.add_argument('--splitby_chr', choices=['split','nosplit'], default='split', help='GPCA layout only; ignored in ldsc-only mode. Default: split (requires all chromosomes 1–22 per trait); nosplit writes one autosomal table.')
     add_prepare_options(parser, standalone=True)
+    from .prepare_ldsc import add_mode_options
+    add_mode_options(parser)
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
         parser.print_help()
         return 0
     opts = parser.parse_args(argv)
     try:
-        prepare_inputs(opts.input, opts.outdir, splitby_chr=opts.splitby_chr, **preparation_kwargs(opts))
+        from .prepare_ldsc import validate_mode, munge_prepared
+        command = validate_mode(opts, argv)
+        prepare_inputs(opts.input, opts.outdir, splitby_chr=opts.splitby_chr, mode=opts.mode, **preparation_kwargs(opts))
+        if command is not None:
+            munge_prepared(opts, command)
     except (OSError, ValueError, pl.exceptions.PolarsError) as error:
         print(f'ERROR: {error}', file=sys.stderr)
         return 1

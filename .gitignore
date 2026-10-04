@@ -74,3 +74,6 @@ results/
 !tests/PIPELINE_VALIDATION.md
 !tests/test_genomicsem_vcf.py
 !tests/GENOMICSEM_VCF_VALIDATION.md
+
+!tests/test_prepare_modes.py
+!tests/PREPARE_MODES_VALIDATION.md

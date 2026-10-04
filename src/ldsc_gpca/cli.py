@@ -15,7 +15,7 @@ def main(argv=None):
         prog="ldsc-gpca", description="Python LDSC and R genomicPCA/GWAMA workflows.",
         epilog="""AVAILABLE WORKFLOWS
   pipeline         Preparation -> Python/GenomicSEM LDSC -> GPCA/GWAMA/export.
-  prepare          VCF -> GPCA inputs; optional LDSC munging input tables.
+  prepare          VCF -> GPCA inputs, shared raw LDSC tables and optional munging.
   ldsc             Run CBIIT LDSC in an isolated Conda environment.
   ldsc.py          Run the raw pinned CBIIT ldsc.py command.
   munge_sumstats.py Run the raw pinned CBIIT munge_sumstats.py command.
@@ -26,7 +26,7 @@ def main(argv=None):
 NOTES
   Numerical libraries default to one thread per worker; existing environment
   settings are preserved. Use --n_cores to choose analysis workers.
-  GenomicSEM munging is included in genomicsem ldsc, not a standalone command.
+  Preparation can stop after munging; genomicsem ldsc also runs regression.
   Raw .py passthrough commands bypass package validation, filtering and provenance.
   GWAMA postprocessing runs automatically; postprocess is not a top-level command.
 

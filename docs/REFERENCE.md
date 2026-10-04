@@ -567,101 +567,60 @@ what has not been tested on real data.
 
 ## Prepare per-trait GPCA inputs
 
-Use `ldsc-gpca prepare` to turn VCFs into the nine-column GWAMA tables. Skip this
-module if you already have correctly formatted files.
+`ldsc-gpca prepare` accepts GWAS summary-statistics VCFs. Its default still writes
+GPCA/GWAMA tables. New explicit modes can prepare shared raw LDSC tables and run
+Python or GenomicSEM munging. No preparation mode runs LDSC regression, PCA or
+GWAMA. See the [complete preparation guide](PREPARE.md).
 
 ### Preparation input
 
-Save this comma-separated manifest as `/data/prepare_traits.csv`:
-
-```csv
-traitname,vcf_files
-Trait_A,/data/Trait_A.vcf.gz
-Trait_B,/data/Trait_B.vcf.gz
-Trait_C,/data/Trait_C.vcf.gz
-Trait_D,/data/Trait_D.vcf.gz
-```
-
-Each plain `.vcf` or compressed `.vcf.gz` must have exactly **one GWAS sample**.
-The required FORMAT fields are:
-
-| VCF field | Meaning and resulting GPCA value |
-| --- | --- |
-| `AF` | ALT allele frequency; becomes `EAF` |
-| `ES` | Signed effect for ALT; used in `Z=ES/SE` |
-| `SE` | Positive standard error of ES |
-| `LP` | Non-negative `-log10(P)`; `P=max(10^(-LP), p_min)` |
-| `NEF` | Positive supplied sample-size value; copied into `N` |
-
-VCF chromosome/position, REF and ALT are also used: `EA=ALT`, `OA=REF`.
-Preparation does not infer a different N convention or perform liability conversion.
-Check what NEF means in your source data.
+Every mode needs a CSV with `traitname,vcf_files` and one GWAS sample per VCF.
+GPCA output uses FORMAT `AF,ES,SE,LP,NEF`. Shared LDSC output also needs `SI`;
+a manifest N can replace NEF for LDSC only. Binary LDSC preparation requires
+explicit total N and both prevalences. The [input examples and N rules](PREPARE.md#files-you-need)
+explain each route. LDSC preparation requires a tab-separated `--hm3` reference;
+munging also needs its `A1,A2` columns.
 
 ### Preparation commands
 
-Default chromosome-split output:
+| Output needed | Options after `ldsc-gpca prepare --input CSV --outdir DIR` |
+| --- | --- |
+| GPCA only (default) | `--splitby_chr nosplit` for whole-genome tables |
+| Shared raw LDSC tables | `--mode ldsc --raw_only --hm3 FILE` |
+| Raw and Python-munged LDSC files | `--mode ldsc --hm3 FILE` |
+| Raw and GenomicSEM-munged LDSC files | `--mode ldsc --hm3 FILE --munge_backend genomicsem` |
+| GPCA plus shared raw tables | `--mode both --raw_only --hm3 FILE --splitby_chr nosplit` |
+| GPCA, raw tables and munged files | `--mode both --hm3 FILE --splitby_chr nosplit`; add `--munge_backend genomicsem` for native R munging |
 
-```bash
-ldsc-gpca prepare \
-  --input /data/prepare_traits.csv \
-  --outdir /results/prepared \
-  --splitby_chr split \
-  --n_cores 4
-```
-
-For one whole-genome file per trait, change `--splitby_chr` to `nosplit` and later
-use `nosplit` in GPCA too. To also produce HapMap-selected **unmunged** tables:
-
-```bash
-ldsc-gpca prepare \
-  --input /data/prepare_traits.csv \
-  --outdir /results/prepared_with_munge_tables \
-  --write_munge_inputs \
-  --hm3 /references/hm3_snps.tsv \
-  --munge_id_source vcf_id
-```
+The default GPCA layout is `split` and requires valid variants on all chromosomes
+1–22 per trait. `nosplit` writes one autosomal GPCA file per trait. LDSC files are
+always unsplit. Use the guide's [complete commands](PREPARE.md#basic-command).
 
 ### All preparation options
 
-| Option | Default | Meaning / accepted values |
-| --- | --- | --- |
-| `--input CSV` | Required | Manifest with `traitname,vcf_files`. |
-| `--outdir DIRECTORY` | Required | Parent directory for prepared tables and audits. |
-| `--splitby_chr MODE` | `split` | `split`: chromosomes 1–22; `nosplit`: one file per trait. |
-| `--n_cores INTEGER` | `4` | Concurrent trait-preparation workers; integer ≥1. |
-| `--p_min FLOAT` | `1e-300` | Numerical P floor, finite and strictly between 0 and 1. Does not filter by significance. |
-| `--gpca_id_source MODE` | `chr_pos_ref_alt` | `chr_pos_ref_alt`: construct `CHR_POS_REF_ALT`; `vcf_id`: use existing VCF ID. No rsID lookup. |
-| `--write_munge_inputs` | Off | Also write HapMap-selected unmunged tables. Does not run LDSC munging. |
-| `--hm3 FILE` | Unset | Required with `--write_munge_inputs`: tab-separated list with `SNP` header. |
-| `--munge_id_source MODE` | `vcf_id` | `vcf_id` or `chr_pos_ref_alt`; IDs must match the HapMap list. Independent of the GPCA ID setting. |
-| `--bcftools EXECUTABLE` | `bcftools` | Program name on PATH or executable path. |
-| `--help` | Off | Show usage and exit. |
+See the [full options, defaults and applicability table](PREPARE.md#all-options),
+or run `ldsc-gpca prepare --help`. `--info_filter` and `--maf_filter` apply only
+when munging runs. Munging/runtime options are rejected with `--raw_only` and
+GPCA-only mode. The existing `--write_munge_inputs` option retains its
+[legacy schema and behavior](PREPARE.md#also-write-raw-tables-for-later-munging).
 
 ### Preparation outputs and filtering
 
-| Output under `--outdir` | Contents |
+| Folder/file | What it contains |
 | --- | --- |
-| `gpca_inputs/{traitname}_chr{CHR}_GenomicPCA_inputs.tsv` | Split TSVs, chromosomes 1–22 |
-| `gpca_inputs/{traitname}_GenomicPCA_inputs.tsv` | Whole-genome TSVs in `nosplit` mode |
-| `munge_inputs/{traitname}_munge_inputs.txt` | Optional **space-separated**, unmunged tables: `SNP,CHR,POS,A1,A2,eaf_A1,beta,se,N,p` |
-| `Preparation_Status.csv`, `Preparation_Settings.json` | Status and settings |
-| `GPCA_Input_QC_Summary.csv` | Per-trait retained, removed and adjusted counts |
-| `GPCA_Input_QC_Issues.csv` | Original VCF records affected, with `traitname,QC_action,QC_reason` |
+| `gpca_inputs/` | GPCA/GWAMA TSVs: `SNPID,CHR,BP,EA,OA,EAF,N,Z,P`. |
+| `munge_inputs/` in new LDSC modes | Raw TSVs: `SNP,CHR,BP,A1,A2,EAF,BETA,SE,P,N,INFO`. These still need munging. |
+| `munged/` | LDSC-ready `{traitname}.sumstats.gz` files with `SNP,A1,A2,N,Z`, plus provenance sidecars. |
+| `Prepared_LDSC_Manifest.csv` | Reusable paths, N and prevalence metadata for new LDSC modes. |
+| QC, settings and worker reports | Counts, original affected VCF rows, settings, errors and retries. |
 
-Use `/results/prepared/gpca_inputs` as `--gpca_input_folder`, not its parent.
-Only autosomes 1–22 are retained. Split mode needs at least one retained variant
-on **every chromosome for every trait**. Invalid numerical values, non-positive
-SE/N, negative LP, invalid positions/frequencies/IDs, equal alleles and
-multiallelic/symbolic alleles are removed and audited. Sequence indels may pass.
-Duplicate IDs keep the largest valid original LP, then the first source row on
-ties. A P floor adjusts numerical representation; it does not change Z=ES/SE.
-Later LDSC munging that derives Z magnitude from P can be affected by this floor.
-
-Optional HapMap selection does not restrict the GPCA files and does not align
-alleles. Zero HapMap matches fails that export. This module performs no MHC or
-imputation-score filtering, allele harmonisation or liftover. If any trait fails,
-prepared tables are not published; inspect the audits and retry in a fresh
-directory. Source VCFs are unchanged.
+See [file names, column meanings and reuse commands](PREPARE.md#outputs-and-next-step).
+GPCA and LDSC QC are independent; HapMap selection and LDSC INFO filters do not
+restrict GPCA rows. Basic preparation removes invalid rows, retains autosomes
+1–22 and resolves duplicate IDs. Selected munging software then applies its own
+filtering and allele rules. Source VCFs remain unchanged. Failed preparation
+publishes audits but no tables; failed munging retains prepared raw/GPCA tables
+and logs, without publishing `munged/`.
 
 ## Run Python LDSC
 

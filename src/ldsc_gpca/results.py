@@ -353,6 +353,10 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
 
 def check_saved_filters(metadata, filters, trait):
     """Reject changed filters; legacy files cannot establish filter provenance."""
+    if metadata.get('preparation_method') == 'shared':
+        print(f"{trait}: reusing shared preparation ({metadata['munge_backend']} munging, "
+              f"INFO={metadata['info_filter']}, MAF={metadata['maf_filter']}); VCF extraction filters are not applied.")
+        return
     saved = metadata.get('filters')
     if saved is None:
         print(f'WARNING: {trait}: previous filter settings are unknown; rerun without --ldsc_only for verified filter provenance.')

@@ -218,6 +218,11 @@ files. See [sample-size and prevalence rules](INPUTS.md#sample-size-and-prevalen
 
 ## Reuse munged files
 
+Files from [`prepare --mode ldsc`](PREPARE.md#produce-munged-files) can be reused
+here, including compatible Python-munged files. Pass the generated
+`Prepared_LDSC_Manifest.csv` and `--munged_dir DIR/munged`. To remunge shared raw
+tables, use the manifest’s `sumstats_file` paths in default raw mode instead.
+
 Use the [native reuse manifest](INPUTS.md#reusing-munged-files), with prevalence
 columns and no raw-file paths needed:
 
