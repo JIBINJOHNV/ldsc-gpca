@@ -13,12 +13,12 @@ def runtime_identity():
 
     native = shutil.which('ldsc.py')
     if native is None:
-        raise RuntimeError('Native ldsc.py is unavailable for restart provenance')
+        raise RuntimeError('Python ldsc.py is unavailable for restart provenance')
     root = Path(ldscore.__file__).resolve().parent
     sources = {'ldsc.py': Path(native), 'ldsc_export.py': Path(__file__).with_name('ldsc_export.py')}
     munge = shutil.which('munge_sumstats.py')
     if munge is None:
-        raise RuntimeError('Native munge_sumstats.py is unavailable for restart provenance')
+        raise RuntimeError('Python munge_sumstats.py is unavailable for restart provenance')
     sources.update({'munge_sumstats.py': Path(munge),
                     'ldsc_munge.py': Path(__file__).with_name('ldsc_munge.py')})
     sources.update({str(p.relative_to(root)): p for p in root.rglob('*.py')})

@@ -20,6 +20,8 @@ required canonical fields before calling the unchanged GWAMA function.
 | `--input` | Manifest CSV; all managed analyses |
 | `--outdir` | Output directory; all managed analyses |
 | `--n_cores` | Workers; all managed analyses, retaining each mode's defaults and limits |
+| `--ldsc_backend` | `python` (default) or `genomicsem`; `ldsc` and `pipeline`, selecting both munging and regression |
+| `--munge_backend` | `python` (default) or `genomicsem`; standalone `prepare --mode ldsc`/`both` when munging runs |
 | `--ld_ref` | LD-score reference directory; both LDSC backends |
 | `--ld_weights` | Regression weights directory; both LDSC backends; default: `--ld_ref` |
 | `--hm3` | HapMap reference for preparation or munging |
@@ -42,11 +44,13 @@ separate settings. Other managed options use the same underscore spelling; see
 `--help`, `--prepare_help`, or `--postprocess_help` for the complete list.
 
 Python `ldsc --munged_dir DIR` needs `--ldsc_only` to skip extraction/munging.
-For native GenomicSEM LDSC, `--munged_dir DIR` selects existing munged files.
+For GenomicSEM LDSC, `--munged_dir DIR` selects existing munged files.
 File types and statistical conventions are unchanged by their argument names.
+`ldsc-gpca genomicsem ldsc` remains available as the GenomicSEM entry point;
+it implies that backend and does not take `--ldsc_backend`.
 Only the explicit `--exclude_mhc` switch enables MHC removal; omission keeps MHC.
 
-Python `--ld_weights` goes to native LDSC's `--w-ld-chr`, and `--ld_ref` goes to
+Python `--ld_weights` goes to Python LDSC's `--w-ld-chr`, and `--ld_ref` goes to
 `--ref-ld-chr`. Their resolved paths are recorded in `LDSC_Runtime.json`.
 The upstream definitions are in [pinned CBIIT LDSC](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldsc.py).
 
@@ -60,17 +64,17 @@ The upstream definitions are in [pinned CBIIT LDSC](https://github.com/CBIIT/lds
 | `sample_prevalence` | Case fraction in the study, when applicable |
 | `population_prevalence` | Population disease prevalence, when applicable |
 | `sumstats_file` | Unmunged summary-statistic file paths |
-| `munged_file` | Already munged file paths; native GenomicSEM file-path mode |
-| `N` | Optional constant sample size for native GenomicSEM munging |
+| `munged_file` | Already munged file paths; GenomicSEM file-path mode |
+| `N` | Optional constant sample size for GenomicSEM munging |
 
 | Analysis/mode | Required headers |
 | --- | --- |
 | Preparation or automatic GPCA preparation | `traitname,vcf_files` |
 | Python LDSC from VCFs | `traitname,vcf_files,ref,population_prevalence,sample_prevalence` |
 | Python LDSC with `--ldsc_only` | `traitname,ref,population_prevalence,sample_prevalence` |
-| Native GenomicSEM LDSC from unmunged files | `traitname,sumstats_file,sample_prevalence,population_prevalence` |
-| Native GenomicSEM LDSC with `--munged_dir` | `traitname,sample_prevalence,population_prevalence` |
-| Native GenomicSEM LDSC with `--munged_input` | `traitname,munged_file,sample_prevalence,population_prevalence` |
+| GenomicSEM LDSC from unmunged files | `traitname,sumstats_file,sample_prevalence,population_prevalence` |
+| GenomicSEM LDSC with `--munged_dir` | `traitname,sample_prevalence,population_prevalence` |
+| GenomicSEM LDSC with `--munged_input` | `traitname,munged_file,sample_prevalence,population_prevalence` |
 | Either GPCA with prepared inputs or `--validate_only` | `traitname` |
 
 A master CSV can contain all the listed fields. Modes require only their relevant
@@ -81,10 +85,10 @@ Existing backend/audit report names are retained. This specification applies to
 CLI options and input manifests, not variant tables or output report schemas.
 
 The biological rules are unchanged: Python uses NEF when population prevalence
-is absent, and NC+NCO when supplied; native GenomicSEM requires both prevalences
+is absent, and NC+NCO when supplied; GenomicSEM requires both prevalences
 or neither. Python LDSC reads `{traitname}.sumstats.gz` from the munged directory;
 it does not use the `munged_file` column. Use absolute VCF paths for Python LDSC;
-preparation/native GenomicSEM resolve relative paths beside the manifest.
+preparation/GenomicSEM resolve relative paths beside the manifest.
 
 A tab-separated HapMap table with `SNP,A1,A2` works with all `--hm3` options;
 preparation uses only SNP identifiers. See [REFERENCE.md](REFERENCE.md) for
@@ -117,7 +121,7 @@ interface and writes canonical per-stage manifests. Python `--chisq_max` accepts
 a positive integer or `auto`; GenomicSEM accepts a positive finite number.
 Omitting it preserves the selected backend's default. Python
 `--rg_normalization pair|trait_wide` selects the downstream correlation source.
-`--n_cores` stays positive for pipeline (Python default 5, native default 1), and
+`--n_cores` stays positive for pipeline (Python default 5, GenomicSEM default 1), and
 `--prepare_workers` remains a separate setting. There are no compatibility aliases.
 The pipeline generates `--ldsc_results` internally; users do not supply that flag.
 It requires a fresh output directory; `--restart` remains a standalone LDSC option.

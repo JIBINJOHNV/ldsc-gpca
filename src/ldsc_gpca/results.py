@@ -164,7 +164,7 @@ def _read_numerical_csv(path, *, allow_failed=False):
             raise RuntimeError(f'Missing LDSC trait identifier {column} in {path}')
     native_columns = [c for c in NATIVE_COLUMNS if c in frame]
     if native_columns and len(native_columns) != len(NATIVE_COLUMNS):
-        raise RuntimeError(f'Incomplete native LDSC columns in {path}: require {NATIVE_COLUMNS}')
+        raise RuntimeError(f'Incomplete Python LDSC columns in {path}: require {NATIVE_COLUMNS}')
     # Preserve native exports; unrelated annotation columns remain excluded.
     frame = frame[list(BASE_RESULT_COLUMNS) + [c for pair in h2_columns for c in pair] + native_columns].copy()
     for column in native_columns:

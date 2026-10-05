@@ -2,7 +2,8 @@
 
 [README](../README.md) · [Input formats](INPUTS.md) · [Output file reference](PYTHON_LDSC_OUTPUTS.md) · [Next: GPCA/GWAMA](PYTHON_GPCA.md)
 
-`ldsc-gpca ldsc` estimates heritabilities, genetic correlations and LDSC
+`ldsc-gpca ldsc` defaults to **Python LDSC**; `--ldsc_backend python` selects it
+explicitly. It estimates heritabilities, genetic correlations and LDSC
 intercepts, then collects them in **`<outdir>/ldsc_results.csv`**. Choose the
 instructions that match the files you already have:
 
@@ -15,6 +16,20 @@ Both routes produce the same final result format. This command ends at LDSC;
 use [`gpca`](PYTHON_GPCA.md) for PCA/GWAMA, or [`pipeline`](PIPELINE.md) to run
 the stages together. Munged LDSC files are not GWAMA input tables.
 
+For **GenomicSEM LDSC**, use [`ldsc-gpca ldsc --ldsc_backend genomicsem`](GENOMICSEM_LDSC.md),
+which writes `genomicsem_LDSC.RData`. Reused munged files for that command must
+come from `prepare --mode ldsc` (or `--mode both`) with
+`--munge_backend genomicsem`, using the same `--hm3` allele reference for every
+trait. Do not pass Python-munged files directly to GenomicSEM LDSC: HapMap
+matching can retain strand-complement coding without normalizing its orientation.
+See the [preparation and reuse example](GENOMICSEM_LDSC.md#reuse-munged-files).
+
+`--ldsc_backend` selects the matching munging and regression implementation.
+Do not supply `--munge_backend` to `ldsc`; it belongs to standalone `prepare`.
+Use `ldsc-gpca ldsc --ldsc_backend python --help` or
+`ldsc-gpca ldsc --ldsc_backend genomicsem --help` for the selected backend's
+options. Backend-specific flags are not interchangeable.
+
 ## In this guide
 
 - [Start from VCF files](#start-from-vcf-files)
@@ -26,6 +41,9 @@ the stages together. Munged LDSC files are not GWAMA input tables.
 - [All options and defaults](#all-options)
 
 ## Start from VCF files
+
+This route runs Python munging and Python LDSC. To run GenomicSEM LDSC from
+VCFs, follow the [GenomicSEM VCF guide](GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
 
 ### 1. Prepare the manifest and references
 
@@ -106,12 +124,12 @@ These are optional analysis choices. By default:
 - Frequency comparison keeps records with an absolute **INFO/AF − INFO/EUR**
   difference ≤ `0.2`. Missing either value excludes the record; FORMAT/AF is
   not a substitute. `--max_af_difference` sets this limit.
-- Native munging applies its own QC and requires MAF **strictly greater than
+- Python LDSC munging applies its own QC and requires MAF **strictly greater than
   `0.005`**, controlled by `--munge_maf_min`.
 - MHC exclusion is off. `--exclude_mhc` removes the inclusive chromosome 6
   interval 25,000,000–35,000,000 by default; choose coordinates for your build.
 - `--remove_palindrome` optionally removes A/T and C/G records in the chosen
-  AF interval during extraction. Native LDSC munging later removes all
+  AF interval during extraction. Python LDSC munging later removes all
   palindromic SNPs regardless of that extraction flag.
 
 These filters apply to LDSC inputs. GWAMA preparation has its own options.
@@ -133,7 +151,7 @@ these settings.
 1. Read the manifest and verify the required tools and LDSC runtime.
 2. Extract each VCF into `munge_input/{trait}_mungeinput.tsv`, applying the
    extraction filters and recording missing allele-frequency counts.
-3. Munge each extracted table: match HapMap alleles, apply native QC and write
+3. Munge each extracted table: match HapMap alleles, apply Python LDSC QC and write
    `ldsc_input/{trait}.sumstats.gz`, its log and provenance sidecar.
 4. If `--chisq_max` is supplied, create separately filtered munged copies and
    exclusion reports. Original munged files remain available.
@@ -160,7 +178,7 @@ A successful run with default folder settings has this layout. `{trait}` and
 │   └── {trait}_AF_Filter_QC.csv            ← missing INFO/AF and INFO/EUR counts
 ├── ldsc_input/
 │   ├── {trait}.sumstats.gz                ← munged SNP/N/Z/allele table
-│   ├── {trait}.log                        ← native munging log
+│   ├── {trait}.log                        ← Python LDSC munging log
 │   └── {trait}.prevalence.json            ← file hash, filters and N convention
 └── ldsc_results/
     ├── {batch}.results.csv                ← numerical LDSC batch estimates
@@ -315,7 +333,7 @@ its output directory. Optional outputs are described next.
 | `--bcftools` | Used for extraction. | Not required or used for extraction. |
 | `--munged_dir` | **Output directory** for new munged files. | **Input directory** holding existing munged files. |
 | `--info_min`, `--maf_min`, `--max_af_difference`, `--exclude_mhc`, `--mhc_*`, `--remove_palindrome`, `--paliandromaf_*` | Apply during VCF extraction. | Do not filter again; must match recorded settings when sidecar filter metadata exists. |
-| `--munge_maf_min` | Apply during native munging. | Do not munge again; must match recorded settings when available. |
+| `--munge_maf_min` | Apply during Python LDSC munging. | Do not munge again; must match recorded settings when available. |
 | Manifest prevalence | Controls extracted N and requested liability conversion. | Must match the existing N convention; also controls requested liability conversion. |
 | `--chisq_max` | Optional filtering after munging. | Optional filtering of existing munged inputs. |
 | `--ld_ref`, `--ld_weights`, runtime, workers, retries, result policy | Used for LDSC. | Used for LDSC. |
@@ -334,11 +352,11 @@ retain SNPs with Z² <= cutoff
 Automatic N is calculated after matching both reference and weight LD-score
 SNPs and dropping incomplete matched rows. A maximum matched N of 50,000 gives
 a cutoff of 80; 200,000 gives 200. Filtering runs separately for each trait,
-including reused munged inputs. Missing Z rows remain for native LDSC's
+including reused munged inputs. Missing Z rows remain for Python LDSC's
 missing-value handling; they are counted separately in the audit.
 
 This step writes filtered copies and preserves the source munged files. It is
-separate from native Python LDSC's cross-product filtering and does not make
+separate from Python LDSC's cross-product filtering and does not make
 Python and GenomicSEM estimates identical. Fractions and zero are not accepted
 as explicit managed cutoffs.
 
@@ -496,13 +514,15 @@ the column does not select it for PCA, and P values do not filter or weight PCA.
 ## All options
 
 Required options have no default. “Off” means omit the flag; include the flag
-alone to enable it. These options belong to `ldsc-gpca ldsc`; preparation,
+alone to enable it. These options apply to `ldsc-gpca ldsc --ldsc_backend python`;
+omitting the selector also chooses Python. Preparation,
 PCA and GWAMA export settings belong to their respective commands.
 
 ### Files and input modes
 
 | Option | Default | Meaning and input-mode applicability |
 | --- | --- | --- |
+| `--ldsc_backend` | `python` | `python` or `genomicsem`; selects matching munging/regression and backend-specific options. This guide covers Python. |
 | `--input` | Required | Manifest CSV: VCF route needs `vcf_files`; reuse does not. |
 | `--outdir` | Required | Results directory for either route. Use a new directory for a separate analysis. |
 | `--ld_ref` | Required | Chromosome LD-score/M-file reference directory for either route. |
@@ -520,13 +540,13 @@ recorded provenance and do not filter the files again.
 | --- | --- | --- |
 | `--info_min` | `0.7` | Inclusive minimum FORMAT/SI; accepted range `[0,1]`. |
 | `--maf_min` | `0.01` | Keep FORMAT/AF between this value and 1 minus it, inclusive. Threshold must be strictly between 0 and 0.5. |
-| `--munge_maf_min` | `0.005` | Native munging keeps MAF strictly greater than this value; threshold range `[0,0.5)`. |
+| `--munge_maf_min` | `0.005` | Python LDSC munging keeps MAF strictly greater than this value; threshold range `[0,0.5)`. |
 | `--max_af_difference` | `0.2` | Maximum absolute INFO/AF − INFO/EUR difference; range `[0,1]`. Missing either value excludes the record. |
 | `--exclude_mhc` | Off | Remove the inclusive interval defined below. |
 | `--mhc_chr` | `6` | Chromosome for MHC exclusion. |
 | `--mhc_start` | `25000000` | Inclusive start; positive integer. Check genome build. |
 | `--mhc_end` | `35000000` | Inclusive end; at least the start position. |
-| `--remove_palindrome` | Off | Remove A/T and C/G records in the extraction AF interval below. Native munging later removes all palindromic SNPs. |
+| `--remove_palindrome` | Off | Remove A/T and C/G records in the extraction AF interval below. Python LDSC munging later removes all palindromic SNPs. |
 | `--paliandromaf_lower` | `0.45` | Lower AF bound; use this exact flag spelling. Bounds must satisfy 0 ≤ lower ≤ upper ≤ 1. |
 | `--paliandromaf_upper` | `0.55` | Upper AF bound; use this exact flag spelling. |
 

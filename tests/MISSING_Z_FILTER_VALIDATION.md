@@ -22,7 +22,7 @@ Separate test copies received five additional missing-Z placeholder rows.
 | NOISE / IDO1_P14902_OID30563_v1_Inflammation_II | 1,189,765 | Exact decompressed content match | Same 1,189,765 valid rows, exact values |
 
 The old filter rejected the added blank row; the fixed filter preserved all five
-missing rows and counted them correctly. The unchanged [pinned native LDSC parser](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldscore/parse.py)
+missing rows and counted them correctly. The unchanged [pinned Python LDSC parser](https://github.com/CBIIT/ldsc/blob/6c673952cee74bd5c57aef1555a03b1c015399a0/ldscore/parse.py)
 then discarded the placeholders, producing exactly the original finite input
 tables. Source hashes were unchanged. This validates filtering/parser behavior
 on representative full trait files, not a new full-dataset LDSC/GWAMA rerun.

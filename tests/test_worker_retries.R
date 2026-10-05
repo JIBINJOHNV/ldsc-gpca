@@ -85,7 +85,7 @@ for(backend in c("python_ldsc", "genomicsem")) {
             all(grepl("simulated GWAMA",status$Error)))
 }
 
-# Native GenomicSEM munging uses the same retry runner; exhausted failures never reach LDSC.
+# GenomicSEM munging uses the same retry runner; exhausted failures never reach LDSC.
 source(file.path(root,"src/ldsc_gpca/r/genomicsem/ldsc_pipeline.R"))
 folder <- file.path(out,"native_munge"); dir.create(folder)
 resolved <- file.path(out,"resolved.csv")

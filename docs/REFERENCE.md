@@ -45,7 +45,7 @@ ldsc-gpca pipeline --help
 ldsc-gpca pipeline --ldsc_backend genomicsem --help
 ldsc-gpca prepare --help
 ldsc-gpca ldsc --help
-ldsc-gpca genomicsem ldsc --help
+ldsc-gpca ldsc --ldsc_backend genomicsem --help
 ldsc-gpca gpca --help
 ldsc-gpca genomicsem gpca --help
 ```
@@ -66,10 +66,11 @@ Frequently used choices and defaults:
 
 | Command | Option | Default when omitted | Accepted choices or values |
 | --- | --- | --- | --- |
-| `pipeline` | `--ldsc_backend` | `python` | `python`, `genomicsem` |
+| `ldsc` and `pipeline` | `--ldsc_backend` | `python` | `python`, `genomicsem`; selects matching munging and regression |
+| `prepare --mode ldsc`/`both` | `--munge_backend` | `python` | `python`, `genomicsem`; standalone munging only, omit with `--raw_only` |
 | `prepare` and both GPCA commands | `--splitby_chr` | `split` | `split`, `nosplit` |
 | Python `ldsc` | `--chisq_max` | Disabled | Positive integer, or `auto` for the per-trait automatic cutoff |
-| `genomicsem ldsc` | `--chisq_max` | Native automatic cutoff | Positive finite number; omit to use automatic mode |
+| `genomicsem ldsc` | `--chisq_max` | GenomicSEM automatic cutoff | Positive finite number; omit to use automatic mode |
 | Python `ldsc` | `--result_failure_action` | `error` | `error`, `report`, `drop_traits` |
 | `genomicsem ldsc` | `--invalid_h2_action` | `drop` | `drop`, `error` |
 | Both GPCA commands | `--failed_ldsc_action` | `error` | `error`, `drop_traits` |
@@ -271,11 +272,11 @@ Conda environments after creation.
 | Preparation manifest | CSV, comma | `traitname,vcf_files` |
 | Python LDSC VCF manifest | CSV, comma | `traitname,vcf_files,ref,population_prevalence,sample_prevalence` |
 | Python LDSC reuse manifest | CSV, comma | `traitname,ref,population_prevalence,sample_prevalence` |
-| Native GenomicSEM manifest | CSV, comma | `traitname,sample_prevalence,population_prevalence`, plus `sumstats_file` or `munged_file` when that mode needs it |
+| GenomicSEM manifest | CSV, comma | `traitname,sample_prevalence,population_prevalence`, plus `sumstats_file` or `munged_file` when that mode needs it |
 | GPCA manifest, either backend | CSV, comma | `traitname`; also `vcf_files` for automatic preparation |
 | GWAMA per-trait input | TSV, tabs | Required: `SNPID,CHR,BP,EA,OA,EAF,N,Z,P`; extra columns/order accepted |
 | Python pairwise LDSC results | CSV, TSV or whitespace; `.gz` accepted | Pair identifiers, estimates, SEs and h2 columns; [full schema below](#python-ldsc-results-table) |
-| Native LDSC results | Binary `.RData` | Object `LDSCoutput` containing `S,V,I,S_Stand,V_Stand` |
+| GenomicSEM LDSC results | Binary `.RData` | Object `LDSCoutput` containing `S,V,I,S_Stand,V_Stand` |
 | Munged LDSC summary statistics | TSV, normally `.sumstats.gz` | `SNP,A1,A2,N,Z`; these are not GWAMA inputs |
 | HapMap list for `prepare` | TSV, tabs | `SNP`; other columns ignored |
 | HapMap reference for either LDSC workflow | Whitespace, tabs/spaces | `SNP,A1,A2` |
@@ -291,7 +292,7 @@ columns, numerical conventions and outputs.
 ```text
 VCF preparation, if needed
           ↓
-Python LDSC or native GenomicSEM munging/LDSC
+Python LDSC or GenomicSEM munging/LDSC
           ↓
 LDSC QC → PCA → chromosome/whole-genome PC1 GWAMA
           ↓
@@ -302,7 +303,7 @@ Choose `--ldsc_backend python` or `--ldsc_backend genomicsem`. All scientific
 calculations run through the existing modules; the original GWAMA function and
 variant headers are unchanged. Stages run sequentially, with each stage using
 its supported internal parallelism. This simplifies execution; it does not make
-native GenomicSEM LDSC parallel or make the two implementations statistically
+GenomicSEM LDSC parallel or make the two implementations statistically
 identical.
 
 After updating the clone, install the new command into your main environment:
@@ -340,8 +341,8 @@ still apply.
 | VCF route | Fields and limitations |
 | --- | --- |
 | Python LDSC plus automatic GWAMA preparation | Each VCF must satisfy **both** existing schemas: FORMAT `AF,ES,SE,LP,NEF` for preparation, plus FORMAT `SI,EZ` and INFO `AF,EUR` for Python extraction. Binary population-prevalence traits additionally need FORMAT `NC,NCO`. |
-| GenomicSEM with `--vcf_input` | FORMAT `AF,ES,SE,LP,SI`, plus NEF unless manifest N overrides it. Converts VCFs to raw tables with INFO for native filtering. Binary traits require an appropriate explicit manifest N and both prevalences. Separate GWAMA preparation still needs NEF. See the [VCF guide](GENOMICSEM_LDSC.md#start-from-gwas-vcfs). |
-| Older GenomicSEM VCF fallback without `--vcf_input` or LDSC tables | Quantitative traits only, with both prevalences blank/NA. Preparation needs FORMAT `AF,ES,SE,LP,NEF` and writes HapMap-selected raw tables. Those tables use `N=NEF` and have **no INFO column**; native INFO filtering cannot act on an absent field. |
+| GenomicSEM with `--vcf_input` | FORMAT `AF,ES,SE,LP,SI`, plus NEF unless manifest N overrides it. Converts VCFs to raw tables with INFO for GenomicSEM filtering. Binary traits require an appropriate explicit manifest N and both prevalences. Separate GWAMA preparation still needs NEF. See the [VCF guide](GENOMICSEM_LDSC.md#start-from-gwas-vcfs). |
+| Older GenomicSEM VCF fallback without `--vcf_input` or LDSC tables | Quantitative traits only, with both prevalences blank/NA. Preparation needs FORMAT `AF,ES,SE,LP,NEF` and writes HapMap-selected raw tables. Those tables use `N=NEF` and have **no INFO column**; GenomicSEM INFO filtering cannot act on an absent field. |
 | GenomicSEM from separately prepared LDSC tables | Add `sumstats_file` paths to the manifest, or use existing munged inputs below. These routes support quantitative and binary traits with suitable N and prevalence settings. |
 
 VCFs must have one GWAS sample and consistent ancestry/build/alleles. The pipeline
@@ -395,7 +396,7 @@ ldsc-gpca pipeline \
   --gwama_output_info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
 ```
 
-If `sumstats_file` is populated for every trait, those files supply native LDSC
+If `sumstats_file` is populated for every trait, those files supply GenomicSEM LDSC
 munging instead of generating munging tables from the VCFs. Example manifest:
 
 ```csv
@@ -407,14 +408,14 @@ Trait_D,/data/Trait_D.vcf.gz,/data/Trait_D_ldsc.tsv,0.2,0.05
 ```
 
 The example prevalence values illustrate the format, not a recommended setting.
-Follow the [native unmunged-table requirements](#genomicsem-ldsc-inputs-choose-one-mode)
+Follow the [GenomicSEM unmunged-table requirements](#genomicsem-ldsc-inputs-choose-one-mode)
 for columns, N and allele conventions. Partly supplied `sumstats_file` paths are
 rejected; the pipeline does not guess a different input mode for each trait.
 
-The native backend still performs its existing two LDSC passes. Pipeline reads
+The GenomicSEM backend still performs its existing two LDSC passes. Pipeline reads
 the retained-trait audit and automatically writes a clean `traitname`-only GPCA
 manifest in original manifest order. No manual `Selected_Traits.csv` conversion
-is needed in pipeline mode. The native default `--invalid_h2_action drop` can
+is needed in pipeline mode. The GenomicSEM default `--invalid_h2_action drop` can
 remove invalid-h2 traits before GPCA; use `error` to stop instead.
 
 ### Starting with munged and prepared files
@@ -422,8 +423,10 @@ remove invalid-h2 traits before GPCA; use `error` to stop instead.
 You can skip repeated preparation/munging. Use a CSV with
 `traitname,sample_prevalence,population_prevalence`; VCF paths are unnecessary
 when an existing GWAMA input folder is supplied. Python's munged directory must
-retain its required prevalence sidecars; native munged filenames/schema follow
-the existing GenomicSEM rules.
+retain its required prevalence sidecars. For GenomicSEM reuse, produce files with
+`prepare --mode ldsc --munge_backend genomicsem` (or `--mode both`), using the
+same `--hm3` allele reference for all traits. Do not directly reuse Python-munged
+files; matching HapMap SNPs does not guarantee GenomicSEM-compatible allele orientation.
 
 Python:
 
@@ -468,9 +471,9 @@ use the [separate GPCA command](#run-gpca-and-gwama) to avoid rerunning LDSC.
 ### Chi-square cutoff and pipeline options
 
 `--chisq_max 80` removes variants with **`Z² > 80` from LDSC inputs**, independently
-for each trait. GenomicSEM applies its native per-trait filter after merging LD
+for each trait. GenomicSEM applies its per-trait filter after merging LD
 references; managed Python filters copies of munged files before regression.
-The explicit threshold is forwarded to both native LDSC passes. It is **not** a
+The explicit threshold is forwarded to both GenomicSEM LDSC passes. It is **not** a
 PCA significance filter and does **not** remove variants from the GPCA/GWAMA input
 files. Equivalent thresholds do not guarantee identical SNP sets or estimates
 because other backend filters/conventions can differ. See the
@@ -481,12 +484,12 @@ because other backend filters/conventions can differ. See the
 | `--ldsc_backend` | `python` | `python` or `genomicsem`; chooses LDSC and its matching GPCA reader. |
 | `--input` | Required | CSV described above; at least two traits, exact names/order. |
 | `--outdir` | Required | A directory that **does not yet exist**; completed/partial runs are never overwritten. |
-| `--chisq_max` | Unset | Python: positive integer or `auto`. GenomicSEM: positive finite number; omit for automatic mode. When omitted, Python's extra filter is disabled and GenomicSEM uses its native automatic rule; the audit records which policy applied. |
+| `--chisq_max` | Unset | Python: positive integer or `auto`. GenomicSEM: positive finite number; omit for automatic mode. When omitted, Python's extra filter is disabled and GenomicSEM uses its automatic rule; the audit records which policy applied. |
 | `--rg_normalization` | `pair` | Python backend only: `pair` uses original `rg`; `trait_wide` uses the newly computed `rg_trait_wide` column for PCA/GWAMA. |
-| `--n_cores` | Python `5`; GenomicSEM `1` | Positive worker count passed to LDSC and GPCA/export. Native LDSC itself remains sequential. `0` is not accepted by pipeline. |
+| `--n_cores` | Python `5`; GenomicSEM `1` | Positive worker count passed to LDSC and GPCA/export. GenomicSEM LDSC itself remains sequential. `0` is not accepted by pipeline. |
 | `--prepare_workers` | `4` | Positive trait-preparation worker count, separate from LDSC/GWAMA workers. |
 | `--gpca_input_folder` | Unset | Reuse existing nine-column GWAMA tables. Otherwise prepare from VCFs. |
-| `--validate_only` | Off | Still run upstream LDSC, then QC/PCA; skip GWAMA and export. Preparation still runs if needed to generate native LDSC munging tables or explicitly requested munging exports. |
+| `--validate_only` | Off | Still run upstream LDSC, then QC/PCA; skip GWAMA and export. Preparation still runs if needed to generate GenomicSEM LDSC munging tables or explicitly requested munging exports. |
 | `--dataset_id` | Pipeline output-directory basename | Final filename prefix under `gpca/`. |
 | `--splitby_chr` | `split` | `split` needs all chromosomes 1–22 per trait; `nosplit` uses one whole-genome file per trait. |
 | `--gwama_output_info` | Unset | Required up front for a full pipeline using bundled GWAMA. A custom source supplying INFO may omit it. |
@@ -496,10 +499,10 @@ because other backend filters/conventions can differ. See the
 The remaining options reuse their existing names, defaults and meanings:
 
 - [Python LDSC options](#all-python-ldsc-options) or
-  [native LDSC options](#all-genomicsem-ldsc-options), according to the backend.
+  [GenomicSEM LDSC options](#all-genomicsem-ldsc-options), according to the backend.
   `--hm3` always needs `SNP,A1,A2` in pipeline mode. It is unnecessary when neither
   munging nor optional munging-table preparation is needed. `--rscript` configures
-  native LDSC only; the GPCA stage uses `Rscript` on PATH. `--restart` belongs to
+  GenomicSEM LDSC only; the GPCA stage uses `Rscript` on PATH. `--restart` belongs to
   standalone Python `ldsc` and is rejected by `pipeline`, which requires a fresh
   output directory.
 - [Shared GPCA settings](#all-shared-gpca-analysis-options), except
@@ -535,11 +538,11 @@ its missing-trait policy permits removal.
     hm3_snps.tsv                 # only when preparation needs SNP selection
   prepare/                      # only when preparation runs
     gpca_inputs/
-    munge_inputs/               # when requested/needed for native VCF input
+    munge_inputs/               # when requested/needed for GenomicSEM VCF input
     ... preparation QC reports
   ldsc/
     ldsc_results.csv            # Python backend
-    genomicPCA_LDSC.RData        # GenomicSEM backend instead
+    genomicsem_LDSC.RData        # GenomicSEM backend instead
     ... backend audits/intermediates
   gpca/
     ... matrix, PC and GWAMA reports
@@ -590,7 +593,7 @@ munging also needs its `A1,A2` columns.
 | Raw and Python-munged LDSC files | `--mode ldsc --hm3 FILE` |
 | Raw and GenomicSEM-munged LDSC files | `--mode ldsc --hm3 FILE --munge_backend genomicsem` |
 | GPCA plus shared raw tables | `--mode both --raw_only --hm3 FILE --splitby_chr nosplit` |
-| GPCA, raw tables and munged files | `--mode both --hm3 FILE --splitby_chr nosplit`; add `--munge_backend genomicsem` for native R munging |
+| GPCA, raw tables and munged files | `--mode both --hm3 FILE --splitby_chr nosplit`; add `--munge_backend genomicsem` for GenomicSEM R munging |
 
 The default GPCA layout is `split` and requires valid variants on all chromosomes
 1–22 per trait. `nosplit` writes one autosomal GPCA file per trait. LDSC files are
@@ -624,9 +627,11 @@ and logs, without publishing `munged/`.
 
 ## Run Python LDSC
 
-`ldsc-gpca ldsc` extracts VCFs, munges them with CBIIT LDSC, runs requested
+`ldsc-gpca ldsc --ldsc_backend python` extracts VCFs, munges them with CBIIT LDSC, runs requested
 pairwise LDSC batches and compiles numerical estimates into `ldsc_results.csv`.
-It can also reuse existing munged files.
+It can also reuse existing munged files. Python is the default when
+`--ldsc_backend` is omitted. This option selects both munging and regression;
+`--munge_backend` belongs only to standalone `prepare`.
 
 ### Python LDSC input
 
@@ -745,7 +750,7 @@ Every new CLI run writes an atomic `.results.csv.checkpoint.json` after each
 batch exits successfully and its numerical table has all requested comparisons.
 `--restart` checks SHA-256 fingerprints of effective munged contents, LD scores
 and M files, regression weights, the batch command/prevalences, filter settings,
-the native LDSC/exporter source and runtime versions, and the saved result file.
+the Python LDSC/exporter source and runtime versions, and the saved result file.
 It reuses matching batches and reruns missing, interrupted, corrupt or changed
 batches. Checkpoints are independent, so an interrupted job does not invalidate
 other completed jobs. Results are recompiled and QC is reapplied in manifest order.
@@ -814,6 +819,7 @@ silently removes traits. See [validation](../tests/WORKER_RETRY_VALIDATION.md).
 
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
+| `--ldsc_backend CHOICE` | `python` | Select `python` for these options; `genomicsem` selects the GenomicSEM parser and workflow. No separate `--munge_backend` is accepted. |
 | `--input CSV` | Required | Trait manifest described above. |
 | `--outdir DIRECTORY` | Required | Results, intermediate files and logs. Reuse the same directory with `--restart`. |
 | `--ld_ref DIRECTORY` | Required | Chromosome LD-score reference directory. |
@@ -881,7 +887,7 @@ before excluding large Z² values and before intersecting trait pairs.
 [GenomicSEM source](https://github.com/GenomicSEM/GenomicSEM/blob/6b65ca5db39fdade08b0d811477be1cdd57b5039/R/ldsc.R#L172-L195).
 
 Both settings keep `Z² <= cutoff` and write separate filtered copies, preserving
-source files. LD matching determines the automatic cutoff; native LDSC still
+source files. LD matching determines the automatic cutoff; Python LDSC still
 performs its usual LD matching and missing-row removal on the copies. The summary
 `LDSC_ChiSquare_Filter_Summary.csv` records each trait's `threshold_mode`, numeric
 `chisq_max`, `maximum_matched_n`, and `complete_ld_matched_rows`; the last two are
@@ -917,7 +923,7 @@ other differences between Python LDSC and GenomicSEM.
 The managed option uses per-trait filtering and is not forwarded to raw Python
 LDSC's cross-product `--chisq-max`; see [raw commands](#raw-ldsc-commands).
 Missing Z placeholders (blank, `NA`, `nan`, `NaN`, or `.`) pass through unchanged
-for native LDSC to discard. They are counted as `variants_missing_z` in the filter
+for Python LDSC to discard. They are counted as `variants_missing_z` in the filter
 summary; `variants_after` includes these rows, so finite-Z survivors equal
 `variants_after - variants_missing_z`. Malformed/non-finite non-missing values
 still fail, as does a trait with no finite Z surviving the threshold.
@@ -1064,10 +1070,15 @@ original order; its weighting implementation is unchanged.
 
 ## Run GenomicSEM LDSC
 
-`ldsc-gpca genomicsem ldsc` runs native R/GenomicSEM munging and LDSC from raw
+`ldsc-gpca ldsc --ldsc_backend genomicsem` runs GenomicSEM munging and LDSC from raw
 tables or explicitly selected VCFs, or starts from existing munged files.
-It produces the native sampling covariance matrices
+It produces the GenomicSEM sampling covariance matrices
 needed by GenomicSEM. This command does not run Python LDSC, PCA or GWAMA.
+
+The existing `ldsc-gpca genomicsem ldsc` entry point remains available with the
+same workflow. In unified `ldsc`, select `--ldsc_backend genomicsem` explicitly;
+its raw-table and VCF modes use GenomicSEM munging automatically. Reuse modes
+skip munging. No separate `--munge_backend` override is accepted.
 
 ### GenomicSEM LDSC inputs: choose one mode
 
@@ -1093,9 +1104,9 @@ does not derive case fractions or choose NC+NCO versus NEF for you.
 **VCF mode — `--vcf_input`.** Include `vcf_files`. VCFs need one GWAS sample,
 IDs and FORMAT `AF,ES,SE,LP,SI`; quantitative N defaults to NEF unless manifest
 N overrides it. Binary VCFs require an explicit appropriate N and both
-prevalences. The adapter retains INFO and allele frequency for native filters,
+prevalences. The adapter retains INFO and allele frequency for GenomicSEM filters,
 writes `vcf_input/` and `GenomicSEM_VCF_*` audits, then runs the unchanged
-native workflow. See [commands, fields, sample-size rules and output columns](GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
+GenomicSEM workflow. See [commands, fields, sample-size rules and output columns](GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
 
 **Mode 1 — unmunged tables (default).** Also include `sumstats_file`:
 
@@ -1121,8 +1132,8 @@ own trait/cohort. Each GWAS file is a whitespace-delimited table with a header:
 | `MAF` or recognized allele-frequency field | Optional field used for MAF filtering. |
 
 Optional positive manifest `N` supplies one constant per trait and replaces
-raw-file N during native munging, even when that file already contains N. In
-munged reuse mode, manifest N is ignored and existing munged N is used. Native
+raw-file N during GenomicSEM munging, even when that file already contains N. In
+munged reuse mode, manifest N is ignored and existing munged N is used. GenomicSEM
 munging interprets recognized column/sample-size conventions;
 inspect its logs to confirm the interpretation and which filtering fields were
 available. Do not assume every form of N is passed through unchanged.
@@ -1152,10 +1163,15 @@ Trait_D,/data/munged/Trait_D.sumstats.gz,NA,NA
 ```
 
 For both reuse modes, munged files must be **tab-separated** with
-`SNP,A1,A2,N,Z` headers; column order may vary. `prepare --write_munge_inputs`
+`SNP,A1,A2,N,Z` headers; column order may vary. Produce them with
+`prepare --mode ldsc --munge_backend genomicsem` (or `--mode both`), using the
+same `--hm3` allele reference for all traits. Do not directly reuse Python-munged
+files: even with the same HapMap reference, strand-complement coding can remain
+and be misaligned by GenomicSEM LDSC. `prepare --write_munge_inputs`
 produces unmunged files and does not satisfy this contract directly.
-The tool checks the required headers and at least one data row; that structural
-check does not establish that appropriate prior munging/QC was performed.
+The tool checks the required headers and at least one data row; it does not
+verify the preparation backend, allele orientation or sidecar provenance.
+See the [GenomicSEM preparation and reuse example](GENOMICSEM_LDSC.md#reuse-munged-files).
 
 All modes need `--ld_ref`, containing `<CHR>.l2.ldscore.gz` and
 `<CHR>.l2.M_5_50` for chromosomes 1 through `--chromosomes`. Optional
@@ -1168,7 +1184,7 @@ to `--ld_ref`. Default munging additionally requires a whitespace-separated
 From unmunged tables:
 
 ```bash
-ldsc-gpca genomicsem ldsc \
+ldsc-gpca ldsc --ldsc_backend genomicsem \
   --input /data/genomicsem_traits.csv \
   --hm3 /references/hm3_alleles.tsv \
   --ld_ref /references/eur_ld_chr \
@@ -1180,7 +1196,7 @@ ldsc-gpca genomicsem ldsc \
 From a munged directory:
 
 ```bash
-ldsc-gpca genomicsem ldsc \
+ldsc-gpca ldsc --ldsc_backend genomicsem \
   --input /data/genomicsem_reuse_traits.csv \
   --munged_dir /data/munged \
   --ld_ref /references/eur_ld_chr \
@@ -1191,7 +1207,7 @@ ldsc-gpca genomicsem ldsc \
 From explicit munged paths:
 
 ```bash
-ldsc-gpca genomicsem ldsc \
+ldsc-gpca ldsc --ldsc_backend genomicsem \
   --input /data/genomicsem_munged_paths.csv \
   --munged_input \
   --ld_ref /references/eur_ld_chr \
@@ -1203,29 +1219,30 @@ ldsc-gpca genomicsem ldsc \
 
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
+| `--ldsc_backend CHOICE` | `python` on `ldsc` | Set `genomicsem` for these options. The existing `genomicsem ldsc` command implies GenomicSEM and does not take this selector. |
 | `--input CSV` | Required | Manifest appropriate for one of the four modes above. |
 | `--outdir DIRECTORY` | Required | Fresh or empty directory; existing non-empty directories are refused. |
 | `--ld_ref DIRECTORY` | Required | LD-score and M reference files. |
 | `--ld_weights DIRECTORY` | Same as `--ld_ref` | Separate regression weights. |
 | `--hm3 FILE` | Unset | Required for raw-table or VCF munging; omit in either reuse mode. |
-| `--munged_dir DIRECTORY` | Unset | Skip munging and find per-trait files here. Mutually exclusive with `--munged_input`. |
-| `--munged_input` | Off | Skip munging and use manifest `munged_file` paths. |
+| `--munged_dir DIRECTORY` | Unset | Reuse per-trait files from `prepare --munge_backend genomicsem`; skip munging. Mutually exclusive with `--munged_input`. |
+| `--munged_input` | Off | Reuse manifest `munged_file` paths from `prepare --munge_backend genomicsem`; skip munging. |
 | `--vcf_input` | Off | Extract manifest `vcf_files`, then munge. Mutually exclusive with `--munged_dir` and `--munged_input`. |
 | `--bcftools EXECUTABLE` | `bcftools` | VCF query executable; used only with `--vcf_input`. |
-| `--p_min FLOAT` | `1e-300` | VCF P floor, finite and in `(0,1)`; adjusted records are audited. Can affect native Z reconstructed from P. |
-| `--n_cores INTEGER` | `1` | VCF extraction and munging workers; ≥1. **Does not parallelize native LDSC regression.** |
-| `--info_filter FLOAT` | `0.9` | Native munging INFO threshold; `[0,1]`. Requires a recognized INFO field to filter on. |
-| `--maf_filter FLOAT` | `0.01` | Native munging MAF threshold; `[0,0.5]`. Depends on recognized frequency fields. |
+| `--p_min FLOAT` | `1e-300` | VCF P floor, finite and in `(0,1)`; adjusted records are audited. Can affect GenomicSEM Z reconstructed from P. |
+| `--n_cores INTEGER` | `1` | VCF extraction and munging workers; ≥1. **Does not parallelize GenomicSEM LDSC regression.** |
+| `--info_filter FLOAT` | `0.9` | GenomicSEM munging INFO threshold; `[0,1]`. Requires a recognized INFO field to filter on. |
+| `--maf_filter FLOAT` | `0.01` | GenomicSEM munging MAF threshold; `[0,0.5]`. Depends on recognized frequency fields. |
 | `--chromosomes INTEGER` | `22` | Read chromosomes 1 through this value; allowed 1–22. Does not change downstream split GWAMA's 22-file requirement. |
 | `--n_blocks INTEGER` | `200` | Requested jackknife blocks; ≥2. GenomicSEM overrides the count for more than 18 traits; inspect its log. |
-| `--chisq_max FLOAT` | Unset | Finite positive threshold. Unset uses native GenomicSEM's automatic chi-square rule. |
+| `--chisq_max FLOAT` | Unset | Finite positive threshold. Unset uses GenomicSEM's automatic chi-square rule. |
 | `--invalid_h2_action ACTION` | `drop` | `drop`: audit/remove non-positive or non-finite raw h2 traits before the second pass; `error`: stop. This default differs from downstream GPCA's strict default. |
-| `--rscript EXECUTABLE` | `Rscript` | Native Rscript program name/path. This option belongs to `genomicsem ldsc`; GPCA uses Rscript on PATH. |
+| `--rscript EXECUTABLE` | `Rscript` | GenomicSEM Rscript program name/path. This option belongs to `genomicsem ldsc`; GPCA uses Rscript on PATH. |
 | `--help` | Off | Show usage and exit. |
 
 Munging filters are not reapplied in reuse modes. The wrapper runs an initial
 `stand=FALSE` LDSC, audits h2 and applies `--invalid_h2_action`, then reruns
-`stand=TRUE` on retained traits. Thus, it performs two native LDSC passes.
+`stand=TRUE` on retained traits. Thus, it performs two GenomicSEM LDSC passes.
 Fewer than two retained traits, failed munging or invalid final matrices stops
 the run. No sampling covariance matrices are fabricated or repaired.
 
@@ -1233,9 +1250,9 @@ the run. No sampling covariance matrices are fabricated or repaired.
 
 | Output under `--outdir` | Use |
 | --- | --- |
-| `genomicPCA_LDSC.RData` | Final `LDSCoutput` with `S,V,I,S_Stand,V_Stand`; input to `genomicsem gpca`. |
-| `genomicPCA_LDSC_raw.RData` | Preliminary first-pass object; **do not use as GPCA input**. |
-| `Selected_Traits.csv` | Retained traits plus native audit fields; extract `traitname` for the GPCA manifest as shown below. |
+| `genomicsem_LDSC.RData` | Final `LDSCoutput` with `S,V,I,S_Stand,V_Stand`; input to `genomicsem gpca`. |
+| `genomicsem_LDSC_raw.RData` | Preliminary first-pass object; **do not use as GPCA input**. |
+| `Selected_Traits.csv` | Retained traits plus GenomicSEM audit fields; extract `traitname` for the GPCA manifest as shown below. |
 | `GenomicSEM_LDSC_Trait_QC.csv`, `GenomicSEM_LDSC_Events.csv` | h2 QC, removals and events. |
 | `Resolved_Manifest.csv`, logs, `sessionInfo.txt` | Resolved inputs and runtime provenance. |
 | `munge_output/` | Newly munged files from raw tables or VCFs. |
@@ -1266,7 +1283,7 @@ later, add matching `vcf_files` paths to this clean manifest. Otherwise, supply
 ## Run GPCA and GWAMA
 
 Use `ldsc-gpca gpca` for a Python pairwise table or
-`ldsc-gpca genomicsem gpca` for native GenomicSEM RData. Each command reads
+`ldsc-gpca genomicsem gpca` for GenomicSEM RData. Each command reads
 existing LDSC estimates, computes PCA and optionally runs PC1 GWAMA; neither
 reruns LDSC. The common options and outputs below apply to both.
 
@@ -1469,14 +1486,14 @@ output is useful for comparisons. Repeated annotation recalculates the three col
 See [normalization validation](../tests/NORMALIZATION_VALIDATION.md) and
 [native-export validation](../tests/NATIVE_EXPORT_VALIDATION.md) for real-data results.
 
-### Native GenomicSEM results object
+### GenomicSEM results object
 
 For `ldsc-gpca genomicsem gpca --ldsc_results`, use a binary `.RData` containing
 an object named `LDSCoutput` with `S,V,I,S_Stand,V_Stand`, appropriate trait names
 and matching dimensions. The managed `genomicsem ldsc` command produces this as
-`genomicPCA_LDSC.RData`. For external native results, obtain a standardized
+`genomicsem_LDSC.RData`. For external GenomicSEM results, obtain a standardized
 `stand=TRUE` output and save the correctly named object. A renamed CSV or the
-first-pass `genomicPCA_LDSC_raw.RData` is not suitable.
+first-pass `genomicsem_LDSC_raw.RData` is not suitable.
 
 ### Start with QC/PCA only
 
@@ -1490,12 +1507,12 @@ ldsc-gpca gpca \
   --validate_only
 ```
 
-Native results:
+GenomicSEM results:
 
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /results/genomicsem_ldsc/Selected_Traits_for_GPCA.csv \
-  --ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
+  --ldsc_results /results/genomicsem_ldsc/genomicsem_LDSC.RData \
   --outdir /results/genomicsem_gpca_qc \
   --validate_only
 ```
@@ -1529,12 +1546,12 @@ ldsc-gpca gpca \
   --gwama_output_info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
 ```
 
-Native GenomicSEM backend:
+GenomicSEM backend:
 
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /results/genomicsem_ldsc/Selected_Traits_for_GPCA.csv \
-  --ldsc_results /results/genomicsem_ldsc/genomicPCA_LDSC.RData \
+  --ldsc_results /results/genomicsem_ldsc/genomicsem_LDSC.RData \
   --gpca_input_folder /results/prepared/gpca_inputs \
   --outdir /results/genomicsem_gpca_gwama \
   --splitby_chr split \
@@ -1557,7 +1574,7 @@ follow in separate tables; Python-table-specific options are listed afterward.
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
 | `--input CSV` | Required | Selected-trait manifest; `traitname` required. |
-| `--ldsc_results FILE` | Required | Python table for `gpca`; native RData for `genomicsem gpca`. |
+| `--ldsc_results FILE` | Required | Python table for `gpca`; GenomicSEM RData for `genomicsem gpca`. |
 | `--outdir DIRECTORY` | Required | QC, PCA, GWAMA and export destination. Use a fresh directory. |
 | `--gpca_input_folder DIRECTORY` | Unset | Existing nine-column per-trait tables. Omit for automatic VCF preparation, or for `--validate_only`. |
 | `--source_path FILE` | Bundled `N_weighted_GWAMA.function.1_2_6.R` | Optional trusted R source defining the already-modified `my_GWAMA` or `multivariate_GWAMA` function. Normally unnecessary. |
@@ -1568,7 +1585,7 @@ follow in separate tables; Python-table-specific options are listed afterward.
 | `--failed_ldsc_action ACTION` | `error` | `error` stops on invalid selected traits/pairs; `drop_traits` applies audited deterministic trait removal to seek a usable subset. |
 | `--h2_z_warn_threshold FLOAT` | `2` | Warn for retained h2/SE below this value; finite ≥0. `0` disables. Does not remove traits. |
 | `--rg_out_of_range_action ACTION` | `warn` | `warn` or `error` for finite off-diagonal rg outside `[-1,1]`; never clamp. |
-| `--pca_matrix MODE` | `correlation` | `correlation` uses standardized genetic correlations; `covariance` uses native S or reconstructed covariance. Scale interpretation differs. |
+| `--pca_matrix MODE` | `correlation` | `correlation` uses standardized genetic correlations; `covariance` uses GenomicSEM S or reconstructed covariance. Scale interpretation differs. |
 | `--pc1_orientation MODE` | `tutorial` | `tutorial`: reverse the whole PC1 loading vector if its median is negative; `as_computed`: retain the eigenvector sign. |
 | `--negative_eigen_action ACTION` | `warn` | `warn` or `error` for substantive negative PCA eigenvalues. Raw eigenvalues remain reported. |
 | `--matrix_eigen_tolerance FLOAT` | `1e-8` | Finite positive relative cutoff for substantive negative eigenvalues. |
@@ -1663,16 +1680,16 @@ An export override only writes a constant into the final selected-column summary
 | Setting or input | Default / source | Where it acts |
 | --- | --- | --- |
 | Python `--info_min` | `0.7`; VCF FORMAT/SI | Inclusive extraction threshold, before Python LDSC munging. Accepted values: `[0,1]`. |
-| Native `--info_filter` | `0.9`; recognized INFO field | GenomicSEM munging threshold. Accepted values: `[0,1]`; an absent field cannot be filtered. |
+| GenomicSEM `--info_filter` | `0.9`; recognized INFO field | GenomicSEM munging threshold. Accepted values: `[0,1]`; an absent field cannot be filtered. |
 | Python LDSC sample size | NEF without population prevalence; NC+NCO with it | N supplied during managed Python munging. Binary conversion also needs sample/population prevalence. |
-| GenomicSEM sample size | Recognized source N; optional manifest `N` for a per-trait constant | Native raw-table munging. Inspect logs for recognized fields and N conventions. |
+| GenomicSEM sample size | Recognized source N; optional manifest `N` for a per-trait constant | GenomicSEM raw-table munging. Inspect logs for recognized fields and N conventions. |
 | GWAMA sample size | Each input TSV's `N`; VCF preparation copies NEF | SNP-specific GWAMA weights. The LDSC manifest N does not replace GWAMA N. |
 | `--gwama_output_info` | Preserve source INFO; bundled GWAMA omits it | Optional finite `[0,1]` constant in the summary only; required when the source has no INFO. |
 | `--gwama_output_n_eff` | Preserve source N_eff | Optional finite positive constant in the summary only. It does not estimate a new effective sample size. |
 
 There is no general managed `--sample_size` option. Choose the correct input N
 and prevalence convention before analysis. In munged-file reuse mode, extraction
-and munging INFO/MAF filters are not reapplied; native manifest N does not replace
+and munging INFO/MAF filters are not reapplied; GenomicSEM manifest N does not replace
 N already in a munged file. Preparation does not itself apply an INFO threshold.
 
 For example, **if scientifically justified for a particular downstream summary**:
@@ -1695,11 +1712,11 @@ and [pipeline mode](PIPELINE.md#change-filters-pca-and-export-settings).
 
 ## Understand QC and scale choices
 
-| Quantity | Python-table backend | Native backend |
+| Quantity | Python-table backend | GenomicSEM backend |
 | --- | --- | --- |
 | Correlation PCA matrix | Diagonal 1; off-diagonal original rg by default, or explicitly selected `rg_trait_wide` | `S_Stand` |
-| Covariance PCA matrix | Self h2 on diagonal; off-diagonal `selected rg × sqrt(h2_i × h2_j)` | Native `S`, on its supplied scales |
-| GWAMA CTI/error covariance | Self `h2_int` on diagonal; pairwise `gcov_int` off-diagonal | Native `I` |
+| Covariance PCA matrix | Self h2 on diagonal; off-diagonal `selected rg × sqrt(h2_i × h2_j)` | GenomicSEM `S`, on its supplied scales |
+| GWAMA CTI/error covariance | Self `h2_int` on diagonal; pairwise `gcov_int` off-diagonal | GenomicSEM `I` |
 
 CTI must be symmetric and positive definite; it is not the genetic correlation
 matrix. PCA uses symmetric eigendecomposition. PC1 loadings equal the PC1
@@ -1755,12 +1772,12 @@ The Python table QC requires finite selected numerical values, positive required
 SEs and result p in `[0,1]`, with one self-pair exception: finite rg
 within tolerance of 1, SE=0, Z=+Inf and P=0 is accepted and audited
 when all other checks pass; this **result-table** rule differs from munging's input
-P requirement `0 < P <= 1`. Native standardized diagonal checks use absolute
+P requirement `0 < P <= 1`. GenomicSEM standardized diagonal checks use absolute
 tolerance `1e-8`, not the Python self-pair tolerance.
 
 Removal is not guaranteed to retain the largest possible subset. Python removes
 failed self traits first, then traits with the most remaining failed pairs; ties
-use lower self h2/SE and then later manifest position. Native pair-removal ties
+use lower self h2/SE and then later manifest position. GenomicSEM pair-removal ties
 use manifest order. Removing traits changes the matrix and can change PC1/GWAMA;
 inspect audits and compare sensitivity analyses rather than assuming negligible impact.
 Structural errors and ambiguous scale selection are not solved by enabling removal.
@@ -1781,13 +1798,13 @@ reaches the corresponding stage, including in validation-only runs:
 | `GenomicPCA_CTI_Used.csv` | Exact LDSC intercept/error-covariance matrix used. |
 | `GenomicPCA_Correlation_Matrix_Used.csv` | Selected genetic-correlation matrix. |
 | `GenomicPCA_PCA_Matrix_Used.csv` | Exact matrix decomposed; check this when choosing covariance PCA. |
-| `GenomicPCA_Covariance_Matrix_Used.csv` | Covariance matrix when available; Python writes it for covariance mode, native reporting includes S. |
+| `GenomicPCA_Covariance_Matrix_Used.csv` | Covariance matrix when available; Python writes it for covariance mode, GenomicSEM reporting includes S. |
 | `GenomicPCA_PC1_Weights_Used.csv` | Signed PC1 loadings and orientation used for GWAMA. |
 | `GenomicPCA_Selected_Traits_Eigenvalues.csv` | Raw eigenvalues and loading-guard diagnostics. |
 | `GenomicPCA_All_PCs_Variance_Explained.csv` | Every PC's eigenvalue, raw/cumulative percentages, positive-normalized percentages and negative-eigenvalue flags. |
 | `GenomicPCA_PC1_QC.csv` | PC1 validity/direction and reasons; not overall run status. |
 | `GenomicPCA_PC1_Protein_Contributions.csv` | Retained traits in manifest order, signed coefficients/loadings, contribution percentages and ranks. |
-| `Global_Heritability_Estimates.csv`, `Global_Genetic_Correlations.csv` | Heritability/correlation summaries; native reports cover the retained selected set. |
+| `Global_Heritability_Estimates.csv`, `Global_Genetic_Correlations.csv` | Heritability/correlation summaries; GenomicSEM reports cover the retained selected set. |
 | `GWAMA_Run_Status.csv` | Per-chromosome or whole-genome GWAMA success/failure and output paths when GWAMA runs. |
 
 Raw explained percentage is `100 × eigenvalue / sum(all eigenvalues)`. Negative
@@ -1808,7 +1825,7 @@ Python-specific audits include:
 - `Python_LDSC_RG_SE_Matrix.csv`, `Python_LDSC_Intercept_SE_Matrix.csv`
 - `Python_LDSC_Dropped_Missing_Traits.csv`, `Python_LDSC_Dropped_Failed_Traits.csv`
 
-Native audits include `GenomicSEM_QC_Events.csv`, `GenomicSEM_QC_Warnings.csv`,
+GenomicSEM audits include `GenomicSEM_QC_Events.csv`, `GenomicSEM_QC_Warnings.csv`,
 `GenomicSEM_QC_Removed_Traits.csv`, `GenomicSEM_Trait_QC_Summary.csv`,
 `GenomicSEM_Retained_Manifest.csv`, `GenomicSEM_LDSC_Used.RData` and settings/session
 files. Audit availability depends on how far the run reached; early input/scale
@@ -1855,7 +1872,7 @@ inspect the error and files before retrying.
 | --- | --- | --- |
 | `prepare` | `4` | Preparation of separate traits. |
 | `ldsc` | `5` | Separate extraction/munging tasks and pairwise LDSC batches. |
-| `genomicsem ldsc` | `1` | Munging only. Its two native LDSC passes remain sequential. |
+| `genomicsem ldsc` | `1` | Munging only. Its two GenomicSEM LDSC passes remain sequential. |
 | Either GPCA, split GWAMA | `0` = auto | Up to 22 chromosome jobs; auto uses `min(22, max(1, detected physical cores - 1))`, falling back to 1 if detection fails. |
 | Either GPCA, whole-genome GWAMA | `0` = auto | One GWAMA job. Windows GWAMA is sequential even in split mode. |
 | Either GPCA, automatic preparation | Separate `--prepare_workers 4` | Preparation workers, independent of GWAMA/export concurrency. |
@@ -1974,7 +1991,7 @@ ldsc-gpca ldsc.py \
 | `--w-ld-chr PREFIX` | Chromosome regression-weight prefix. |
 | `--out PREFIX` | Output filename prefix, unlike managed `--outdir`. |
 
-For **all native options and defaults**, use the installed scripts' own help:
+For **all upstream Python options and defaults**, use the installed scripts' own help:
 
 ```bash
 ldsc-gpca munge_sumstats.py --help
@@ -1988,7 +2005,7 @@ child automatically. Unlike managed help, raw help needs the child runtime.
 
 Raw launchers bypass package manifest checks, extraction, retries, per-trait
 chi-square filtering, completeness checks, provenance and numerical CSV
-compilation. Raw `ldsc.py --rg ... --chisq-max VALUE` uses native cross-product
+compilation. Raw `ldsc.py --rg ... --chisq-max VALUE` uses Python LDSC cross-product
 filtering, not managed `--chisq_max`'s per-trait rule. For the complete managed
 LDSC-to-GPCA workflow, use `ldsc-gpca ldsc`.
 
@@ -2056,7 +2073,7 @@ ldsc-gpca pipeline --help
 ldsc-gpca pipeline --ldsc_backend genomicsem --help
 ldsc-gpca prepare --help
 ldsc-gpca ldsc --help
-ldsc-gpca genomicsem ldsc --help
+ldsc-gpca ldsc --ldsc_backend genomicsem --help
 ldsc-gpca gpca --help
 ldsc-gpca gpca --prepare_help
 ldsc-gpca gpca --postprocess_help
@@ -2105,7 +2122,7 @@ Additional documentation: [workflow reference](#contents),
 
 - [Fürtjes genomicPCA tutorial](https://annafurtjes.github.io/genomicPCA/25082021_geneticPCA_explanation.html): PC1 procedure and GWAMA modification.
 - [Pinned CBIIT LDSC source](https://github.com/CBIIT/ldsc/tree/6c673952cee74bd5c57aef1555a03b1c015399a0): Python LDSC implementation; derived from [Bulik-Sullivan LDSC](https://github.com/bulik/ldsc).
-- [Pinned GenomicSEM source](https://github.com/GenomicSEM/GenomicSEM/tree/6b65ca5db39fdade08b0d811477be1cdd57b5039): native munging and LDSC; see [ldsc.R](https://github.com/GenomicSEM/GenomicSEM/blob/6b65ca5db39fdade08b0d811477be1cdd57b5039/R/ldsc.R) for native defaults and automatic rules.
+- [Pinned GenomicSEM source](https://github.com/GenomicSEM/GenomicSEM/tree/6b65ca5db39fdade08b0d811477be1cdd57b5039): GenomicSEM munging and LDSC; see [ldsc.R](https://github.com/GenomicSEM/GenomicSEM/blob/6b65ca5db39fdade08b0d811477be1cdd57b5039/R/ldsc.R) for GenomicSEM defaults and automatic rules.
 - [bcftools manual](https://samtools.github.io/bcftools/bcftools.html): VCF querying/filtering.
 - [Polars 0.20 CSV reader](https://docs.pola.rs/api/python/version/0.20/reference/api/polars.read_csv.html) and [thread pool](https://docs.pola.rs/api/python/version/0.20/reference/api/polars.thread_pool_size.html): string parsing and concurrency controls.
 - [pigz manual](https://zlib.net/pigz/pigz.pdf) and [Python gzip documentation](https://docs.python.org/3.10/library/gzip.html): compression behavior.

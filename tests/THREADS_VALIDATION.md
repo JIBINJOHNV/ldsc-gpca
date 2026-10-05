@@ -26,9 +26,9 @@ are preserved, including values which may be invalid for the actual library.
 Conda activation hooks or the libraries themselves can override these values.
 An environment variable is not a runtime measurement of the active thread pool.
 
-Per-mode defaults are unchanged: Python LDSC 5 workers, preparation 4, native
+Per-mode defaults are unchanged: Python LDSC 5 workers, preparation 4,
 GenomicSEM munging 1, split GPCA 0/auto (up to 22 chromosomes). Whole-genome GPCA
-and Windows GWAMA remain sequential. Native GenomicSEM LDSC remains serial;
+and Windows GWAMA remain sequential. GenomicSEM LDSC remains serial;
 its worker setting applies to munging. No production speedup is claimed.
 
 For earlier threadpool measurements and full historical logs, see the v0.5.4

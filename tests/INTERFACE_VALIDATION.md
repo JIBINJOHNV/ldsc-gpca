@@ -10,7 +10,7 @@ the statistical calculations are unchanged.
 | Check | Data / expected behavior | Observed |
 | --- | --- | --- |
 | 16 interface tests (15 Python tests and one real R test harness) | Two-trait manifests with names `002`,`001`; single names accepted; previous spellings rejected even alongside valid names; malformed/duplicate/missing input rejected; row order/leading zeros retained | Passed |
-| Native GenomicSEM modes | Unmunged paths, munged paths and munged directory; quantitative and binary prevalence rows; partial prevalence rejected; canonical reference/weight/worker options forwarded to a captured R invocation | Passed; R estimation itself not run in this invocation test |
+| GenomicSEM modes | Unmunged paths, munged paths and munged directory; quantitative and binary prevalence rows; partial prevalence rejected; canonical reference/weight/worker options forwarded to a captured R invocation | Passed; R estimation itself not run in this invocation test |
 | Both real R parsers | Current GPCA flags parse; removed flags and abbreviations fail; manifest names and unsupported headers checked | Passed |
 | 10 worker/thread tests | Defaults, overrides, early initialization, child environment inheritance, raw passthrough, real R worker values and invalid inputs | Passed |
 | 39 existing precision/export/runtime tests | Existing result reading, precise numeric export, compilation, invocation and failure cases; real bcftools extraction fixture | Passed |
@@ -32,7 +32,7 @@ behavior was not changed by this release.
 ## Scope and reproducibility
 
 The following modules match the v0.5.5 baseline byte-for-byte: pairwise LDSC,
-munging, extraction, native GenomicSEM LDSC pipeline, shared matrix validation,
+munging, extraction, GenomicSEM LDSC pipeline, shared matrix validation,
 shared PCA, shared GWAMA and the original vendor GWAMA function. The vendor SHA256
 remains `99c041b1e31366e62f1650088e750615d2284047163a55edceeafdf00fcb34d2`.
 No variant table was renamed or rewritten. The existing 15 templates retain their
@@ -40,7 +40,7 @@ schemas; input guides and command examples use only current names.
 
 Real native CBIIT regressions were already tested for v0.5.5, including separate
 weights. They were not rerun for this name-removal update, which does not change
-those modules. Full native GenomicSEM estimation, Nextflow execution and the
+those modules. Full GenomicSEM estimation, Nextflow execution and the
 180-trait production analysis were not rerun. No speedup claim is made.
 
 Run with declared Python dependencies:

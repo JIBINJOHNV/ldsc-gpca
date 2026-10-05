@@ -82,7 +82,7 @@ class PipelineTests(unittest.TestCase):
                     (out/'munge_inputs'/f'{row["traitname"]}_munge_inputs.txt').write_text(self.raw.read_text())
         elif name == 'ldsc':
             if args[0] == 'genomicsem':
-                (out/'genomicPCA_LDSC.RData').write_bytes(b'native result fixture')
+                (out/'genomicsem_LDSC.RData').write_bytes(b'GenomicSEM result fixture')
                 # Deliberately shuffled: pipeline must restore original row order.
                 csv_file(out/'Selected_Traits.csv', ['traitname', 'traits', 'sampleprevalence'],
                          [['001', 'file1', 'NA'], ['002', 'file2', 'NA']])
@@ -126,6 +126,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(report['chisq_policy'], 'explicit_per_trait')
         self.assertTrue(all(stage['status'] == 'completed' for stage in report['stages']))
         self.assertEqual(self.calls[-1][self.calls[-1].index('--dataset_id')+1], 'output')
+        gpca = self.calls[-1]
+        self.assertEqual(gpca[gpca.index('--ldsc_results')+1], str(self.out/'ldsc/ldsc_results.csv'))
 
     def test_native_unmunged_handoff_and_cutoff(self):
         self.columns.append('sumstats_file')
@@ -139,6 +141,8 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn('--chisq_max', self.calls[-1])
         report = json.loads((self.out/'Pipeline_Run_Status.json').read_text())
         self.assertEqual(report['removed_before_gpca'], ['003'])
+        gpca = self.calls[-1]
+        self.assertEqual(gpca[gpca.index('--ldsc_results')+1], str(self.out/'ldsc/genomicsem_LDSC.RData'))
 
     def test_native_quantitative_vcf_uses_existing_preparation_exports(self):
         self.assertEqual(self.run_mock(self.args('genomicsem')), 0)

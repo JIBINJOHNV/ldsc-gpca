@@ -48,6 +48,10 @@ PREPARE_INPUT_HELP = """INPUT FILE CONTRACT
   Required VCF FORMAT fields: AF, ES, SE, LP, NEF. LP means -log10(P).
   --hm3: tab-separated text with SNP header; required only with
   --write_munge_inputs. Identifier selection only; no allele alignment.
+  These options prepare GPCA/raw tables. For GenomicSEM LDSC munged-file reuse, run
+  standalone prepare --mode ldsc (or --mode both) --munge_backend genomicsem
+  with the same --hm3 allele reference for all traits. Do not directly reuse
+  Python-munged files in GenomicSEM.
 
 OUTPUTS AND FIXED INPUT CONTRACT
   GPCA output is tab-separated: SNPID,CHR,BP,EA,OA,EAF,N,Z,P (in that order).
@@ -58,6 +62,9 @@ OUTPUTS AND FIXED INPUT CONTRACT
 """
 
 LDSC_INPUT_HELP = """INPUT FILE CONTRACT
+  This command runs Python LDSC and writes ldsc_results.csv.
+  For GenomicSEM LDSC and genomicsem_LDSC.RData, use ldsc --ldsc_backend genomicsem
+  (the existing genomicsem ldsc command also remains available).
   --input: comma-separated CSV. VCF workflow headers:
     traitname,vcf_files,ref,population_prevalence,sample_prevalence
   With --ldsc_only, vcf_files is optional; all other headers remain required.
@@ -74,8 +81,11 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
   --ld_ref: directory of chromosome reference files; see FIXED CONTRACT below.
   --munged_dir: .sumstats.gz directory used with --ldsc_only;
     filenames: {traitname}.sumstats.gz. Required sidecars must remain alongside.
-  Managed munging writes native computed Z/N with 17 significant digits.
+  Managed munging writes Python LDSC computed Z/N with 17 significant digits.
     --ldsc_only preserves existing precision; rerun munging to replace rounded files.
+    Python-munged files are for Python LDSC. For GenomicSEM reuse, prepare
+    files separately with --mode ldsc (or --mode both) --munge_backend genomicsem.
+    Matching the same HapMap reference does not guarantee GenomicSEM-compatible allele orientation.
   --chisq_max INTEGER|auto: optional per-trait Z^2 <= cutoff filtering before LDSC.
     Omitted: disabled. INTEGER must be >0; auto uses max(80, 0.001 * max(N))
     separately per trait, after complete-row matching to reference AND weight
@@ -83,7 +93,7 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
     Each cutoff and matched maximum N are saved in LDSC_ChiSquare_Filter_Summary.csv.
     Original files are unchanged. Applies to both VCF and --ldsc_only inputs.
     Missing Z placeholders are preserved and counted separately for LDSC to discard.
-    This is not forwarded to native LDSC's cross-product --chisq-max behavior.
+    This is not forwarded to Python LDSC's cross-product --chisq-max behavior.
 
 FIXED CONTRACT (NOT CONFIGURABLE BY THESE OPTIONS)
   Failed extraction/munging/filter jobs get one retry (2 total attempts).

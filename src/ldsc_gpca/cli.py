@@ -16,17 +16,21 @@ def main(argv=None):
         epilog="""AVAILABLE WORKFLOWS
   pipeline         Preparation -> Python/GenomicSEM LDSC -> GPCA/GWAMA/export.
   prepare          VCF -> GPCA inputs, shared raw LDSC tables and optional munging.
-  ldsc             Run CBIIT LDSC in an isolated Conda environment.
+  ldsc             Munging/LDSC with --ldsc_backend python (default) or genomicsem.
   ldsc.py          Run the raw pinned CBIIT ldsc.py command.
   munge_sumstats.py Run the raw pinned CBIIT munge_sumstats.py command.
   gpca             Python-LDSC results -> PCA/GWAMA.
   genomicsem gpca  Existing GenomicSEM RData -> PCA/GWAMA.
-  genomicsem ldsc  Native munge -> LDSC, or start from existing munged files.
+  genomicsem ldsc  GenomicSEM munge -> LDSC, or start from existing munged files.
 
 NOTES
   Numerical libraries default to one thread per worker; existing environment
   settings are preserved. Use --n_cores to choose analysis workers.
-  Preparation can stop after munging; genomicsem ldsc also runs regression.
+  Preparation can stop after munging; ldsc also runs the selected regression.
+  ldsc/pipeline use --ldsc_backend for both munging and regression.
+  Standalone prepare uses --munge_backend; do not supply it to ldsc/pipeline.
+  For GenomicSEM LDSC reuse, prepare files with --mode ldsc (or both) and
+  --munge_backend genomicsem. Do not directly reuse Python-munged files.
   Raw .py passthrough commands bypass package validation, filtering and provenance.
   GWAMA postprocessing runs automatically; postprocess is not a top-level command.
 
@@ -47,7 +51,7 @@ An empty command also displays help; no input files are opened for help.""")
         elif argv[0] == "prepare":
             from .prepare import main as run
         elif argv[0] == "ldsc":
-            from .ldsc_cli import main as run
+            from .ldsc import main as run
         else:
             from .gpca import main as run
         return run(argv[1:])

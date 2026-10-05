@@ -82,7 +82,7 @@ cross-product `--chisq-max` option is never forwarded. Existing fixed-mode tests
 and PCA/GWAMA acceptance tests are included in the full suite.
 
 The final full suite ran 160 tests in 159.70 seconds: 157 passed and three
-optional native LDSC CLI integrations were skipped because their child runtime
+optional Python LDSC CLI integrations were skipped because their child runtime
 was unavailable. All PCA/GWAMA acceptance tests in the suite passed.
 
 ```bash
@@ -90,7 +90,7 @@ PYTHONPATH=src:tests python -m unittest test_chisq_auto test_munging_filter test
 PYTHONPATH=src LDSC_GPCA_TEST_RSCRIPT=/path/to/Rscript python -m unittest discover -s tests -v
 ```
 
-Validation used Python 3.12.14, pandas 2.3.3 and R 4.4.2. Three optional native
+Validation used Python 3.12.14, pandas 2.3.3 and R 4.4.2. Three optional Python
 LDSC CLI integrations require an explicitly configured usable child runtime;
 that runtime is unavailable in this workspace. The direct comparison above
 executes the upstream GenomicSEM filtering block, not the whole estimator.

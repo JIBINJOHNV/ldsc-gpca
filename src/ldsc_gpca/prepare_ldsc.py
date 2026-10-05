@@ -1,4 +1,4 @@
-"""Shared raw LDSC preparation and optional native munging; no regressions."""
+"""Shared raw LDSC preparation and optional backend munging; no regressions."""
 import csv
 import json
 import math
@@ -25,7 +25,7 @@ def add_mode_options(parser):
     group.add_argument('--raw_only', action='store_true',
                        help='With ldsc/both, stop after writing shared raw LDSC tables; skip munging.')
     group.add_argument('--munge_backend', choices=['python', 'genomicsem'], default='python',
-                       help='Program used for munging only. Omit with --raw_only or gpca mode.')
+                       help='Program used for standalone preparation munging only. ldsc/pipeline use --ldsc_backend instead. Select genomicsem for later GenomicSEM LDSC reuse. Omit with --raw_only or gpca mode.')
     group = parser.add_argument_group('Munging filters (ldsc/both, without --raw_only)')
     group.add_argument('--info_filter', type=float, default=.9, help='INFO threshold for the selected munger; does not filter GPCA tables.')
     group.add_argument('--maf_filter', type=float, default=.01, help='MAF threshold; Python uses >, GenomicSEM uses >=. Does not filter GPCA tables.')
@@ -56,9 +56,13 @@ LDSC MODES
   Binary rows require explicit total N and both sample_prevalence and
   population_prevalence. Quantitative rows leave both prevalences blank.
   In both mode, GWAMA still uses NEF; the N override is LDSC-only.
-  --raw_only stops before munging; otherwise native Python munging is the default.
-  --munge_backend genomicsem selects native R munging. Backend choices do not
+  --raw_only stops before munging; otherwise Python munging is the default.
+  --munge_backend genomicsem selects GenomicSEM R munging. Backend choices do not
   change the shared raw format. Munged core columns: SNP,N,Z,A1,A2.
+  For later ldsc/pipeline --ldsc_backend genomicsem (or genomicsem ldsc) reuse, select
+  --munge_backend genomicsem and the same --hm3 allele reference for all traits.
+  Do not directly reuse Python-munged files in GenomicSEM: matching the
+  same HapMap reference does not guarantee the required allele orientation.
   New LDSC modes write Prepared_LDSC_Manifest.csv and LDSC_Input_QC_* reports.
   Raw tables remain available if munging fails; final munged/ is published only
   after all traits succeed. Failed jobs receive one retry (two total attempts).
@@ -228,7 +232,7 @@ def munge_prepared(opts, command):
                     'sample_prevalence': float(row['sample_prevalence']) if row['sample_prevalence'] else None,
                     'sha256': file_digest(path), 'info_filter': opts.info_filter, 'maf_filter': opts.maf_filter,
                     'N_source': 'manifest_N' if row['N'] else 'FORMAT/NEF',
-                    'float_format': FLOAT_FORMAT if opts.munge_backend == 'python' else 'native GenomicSEM'}
+                    'float_format': FLOAT_FORMAT if opts.munge_backend == 'python' else 'GenomicSEM'}
                 path.rename(stage/path.name)
                 (stage/f'{name}.prevalence.json').write_text(json.dumps(metadata, indent=2)+'\n')
                 return {'traitname': name, 'output_rows': frame.height, 'usable_rows': valid.height,

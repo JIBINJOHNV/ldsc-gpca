@@ -58,7 +58,7 @@ qc_genomicsem <- function(x, traits, args, audit) {
   if (length(selected) < 2L) stop("Fewer than two traits remain after QC.", call. = FALSE)
   x <- subset_genomicsem(x, selected)
   for (name in c("S", "I", "S_Stand", "V", "V_Stand")) x[[name]] <- validate_symmetric_matrix(x[[name]], name)
-  # Verify standardized matrix provenance using the selected native covariance.
+  # Verify standardized matrix provenance using the selected GenomicSEM covariance.
   expected <- x$S / sqrt(outer(diag(x$S), diag(x$S)))
   if (max(abs(expected - x$S_Stand)) > 1e-8 * max(1, max(abs(expected))))
     stop("S_Stand is inconsistent with standardized S; check RData provenance.", call. = FALSE)

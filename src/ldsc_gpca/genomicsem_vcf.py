@@ -54,7 +54,7 @@ def prepare_vcf_inputs(rows, outdir, executable, workers, p_min):
         merge_issue_reports([stage/'qc'/f'{row["traitname"]}.csv' for row in rows
             if (stage/'qc'/f'{row["traitname"]}.csv').exists()], outdir/'GenomicSEM_VCF_QC_Issues.csv')
         if failures:
-            raise ValueError('VCF extraction failed after 2 attempts; native LDSC was not started. '
+            raise ValueError('VCF extraction failed after 2 attempts; GenomicSEM LDSC was not started. '
                              'See GenomicSEM_VCF_Worker_Attempts.csv.\n' + '\n'.join(failures))
         (stage/'vcf_input').rename(outdir/'vcf_input')
     return [{**row, 'source_file': str(outdir/'vcf_input'/f'{row["traitname"]}_munge_inputs.tsv')} for row in rows]

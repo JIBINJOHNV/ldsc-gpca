@@ -1,4 +1,4 @@
-# Native two-pass LDSC; injected functions permit deterministic orchestration tests.
+# GenomicSEM two-pass LDSC; injected functions permit deterministic orchestration tests.
 run_genomicsem_ldsc <- function(manifest, outdir, ld, wld, hm3, mode, cores,
                                info_filter, maf_filter, chromosomes, n_blocks,
                                chisq_max, invalid_h2_action,
@@ -60,7 +60,7 @@ run_genomicsem_ldsc <- function(manifest, outdir, ld, wld, hm3, mode, cores,
       n.blocks = n_blocks, chisq.max = chisq_max, stand = stand, ldsc.log = log_name)
     stage <- "raw_ldsc"
     LDSCoutput_raw <- estimate(dat, FALSE, "GenomicSEM_raw")
-    save(LDSCoutput_raw, file = "genomicPCA_LDSC_raw.RData")
+    save(LDSCoutput_raw, file = "genomicsem_LDSC_raw.RData")
     if (!is.matrix(LDSCoutput_raw$S) || !identical(dim(LDSCoutput_raw$S), rep(nrow(dat), 2L)) ||
         !identical(colnames(LDSCoutput_raw$S), dat$traitname))
       stop("Raw LDSC S dimensions/trait order do not match the manifest.")
@@ -82,9 +82,9 @@ run_genomicsem_ldsc <- function(manifest, outdir, ld, wld, hm3, mode, cores,
         any(diag(LDSCoutput$S) <= 0) ||
         any(vapply(LDSCoutput[c("S", "I", "V", "S_Stand", "V_Stand")], function(x) any(!is.finite(x)), logical(1))))
       stop("Final LDSC has invalid estimates or trait ordering; final RData not published.")
-    save(LDSCoutput, file = "genomicPCA_LDSC.RData")
-    record("completed", paste(nrow(dat), "traits; native standardized output saved."))
-    message("Saved ", file.path(outdir, "genomicPCA_LDSC.RData"))
+    save(LDSCoutput, file = "genomicsem_LDSC.RData")
+    record("completed", paste(nrow(dat), "traits; GenomicSEM standardized output saved."))
+    message("Saved ", file.path(outdir, "genomicsem_LDSC.RData"))
     invisible(LDSCoutput)
   }, warning = function(w) record("warning", conditionMessage(w))), error = function(e) {
     record("error", conditionMessage(e))

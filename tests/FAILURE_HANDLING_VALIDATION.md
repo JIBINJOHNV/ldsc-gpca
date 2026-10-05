@@ -116,7 +116,7 @@ Expected behavior matched observed results:
 - Inputs changed during execution: no completion checkpoint was saved. Missing
   references and invalid gzip inputs stopped before regression commands launched.
 - Runtime probe parsing, failure handling, native-source changes and CLI argument
-  propagation were tested. The native LDSC runtime itself remains unavailable
+  propagation were tested. The Python LDSC runtime itself remains unavailable
   for fresh integration testing on this host.
 
 Hashing and reference-file selection were checked against the
@@ -136,7 +136,7 @@ the retained manifest and an ordered exclusion report. Extra manifest columns
 and the original trait order are preserved.
 
 All 14 tests in `test_ldsc_drop_traits.py` passed. The full suite then ran
-131 tests in 194.502 seconds: 128 passed and the same three optional fresh-native
+131 tests in 194.502 seconds: 128 passed and the same three optional fresh-Python
 LDSC tests were skipped. The R parity test exercised seven selection scenarios
 and strict matrix validation. Expected and observed behavior agreed:
 

@@ -77,3 +77,5 @@ results/
 
 !tests/test_prepare_modes.py
 !tests/PREPARE_MODES_VALIDATION.md
+!tests/test_ldsc_dispatch.py
+!tests/LDSC_BACKEND_VALIDATION.md

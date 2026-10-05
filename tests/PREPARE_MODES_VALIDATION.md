@@ -58,7 +58,7 @@ used a temporary R package namespace containing the **unchanged pinned**
 `munge.R`, `munge_main.R`, `utils.R` and `utils_sanitychecks.R`, importing their
 installed dependencies. This exercises the actual munging functions, the new
 R entry point and the Python worker/CLI path. It does **not** establish a full
-GenomicSEM installation or validate a new native LDSC regression.
+GenomicSEM installation or validate a new GenomicSEM LDSC regression.
 
 Reference sources:
 

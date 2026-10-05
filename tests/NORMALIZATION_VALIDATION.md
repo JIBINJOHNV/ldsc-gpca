@@ -11,7 +11,7 @@ The complete suite ran 138 tests: 134 passed and four optional integrations skip
 A subsequent focused run passed nine tests, including the previously skipped R
 interface test and a new compiler integration test. Across these runs, **136 unique
 tests passed**; the three optional native-LDSC integration tests were not run because
-no runtime was configured for that suite. Native LDSC regressions were not rerun.
+no runtime was configured for that suite. Python LDSC regressions were not rerun.
 After the final reader adjustment, the plain/gzip/in-place CSV test passed again.
 
 Coverage includes a four-trait independent numerical oracle; signed and out-of-range

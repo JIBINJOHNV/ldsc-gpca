@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 import polars as pl
-from ldsc_gpca import genomicsem_ldsc, genomicsem_vcf
+from ldsc_gpca import cli, genomicsem_ldsc, genomicsem_vcf
 
 REAL_WHICH = shutil.which
 
@@ -176,7 +176,7 @@ class NativeVCFTests(unittest.TestCase):
         # Only native R execution is stubbed; bcftools and table conversion are real.
         with patch.object(genomicsem_ldsc.shutil,'which',side_effect=lambda name: '/verified/Rscript' if name=='Rscript' else REAL_WHICH(name)), \
              patch.object(genomicsem_ldsc.subprocess,'run',side_effect=dispatch):
-            self.assertEqual(genomicsem_ldsc.main(self.args('--n_cores','2')),0)
+            self.assertEqual(cli.main(['ldsc','--ldsc_backend','genomicsem',*self.args('--n_cores','2')]),0)
         self.assertEqual(len(calls),1)
         command = calls[0]
         self.assertEqual(command[7],'munge')

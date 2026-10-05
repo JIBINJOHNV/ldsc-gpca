@@ -1,4 +1,4 @@
-"""Validate and launch native GenomicSEM munging followed by two-pass LDSC."""
+"""Validate and launch GenomicSEM munging followed by two-pass LDSC."""
 import csv
 import math
 from pathlib import Path
@@ -13,7 +13,7 @@ from .interfaces import read_manifest
 
 def build_parser():
     p = HelpParser(prog='ldsc-gpca genomicsem ldsc', description=
-        'Run native GenomicSEM LDSC from raw GWAS tables, GWAS VCFs or munged files.',
+        'Run GenomicSEM LDSC from raw GWAS tables, GWAS VCFs or munged files.',
         usage='%(prog)s --input MANIFEST.csv --outdir DIRECTORY --ld_ref DIRECTORY [options]', epilog='''INPUT FILE CONTRACT
   --input: comma-separated CSV with unique traitname, sample_prevalence,
     population_prevalence. Both prevalence values must be blank/NA for quantitative
@@ -30,17 +30,23 @@ def build_parser():
     Quantitative N comes from FORMAT/NEF unless manifest N overrides it.
     Binary VCFs require an explicit appropriate manifest N and both prevalences;
     no case-count or effective-N convention is inferred. VCF IDs must match hm3.
-    Native INFO/MAF filters apply during munging; Python extraction filters do not.
+    GenomicSEM INFO/MAF filters apply during munging; Python extraction filters do not.
   --munged_dir: directory of {traitname}.sumstats.gz or .sumstats files.
     Alternatively --munged_input uses a munged_file column of file paths in the CSV.
     Munged files are tab-separated with SNP,A1,A2,N,Z headers.
+    Prepare reused files with prepare --mode ldsc (or --mode both) and
+    --munge_backend genomicsem, using the same --hm3 allele reference for all traits.
+    Do not directly reuse Python-munged files: HapMap matching can retain strand
+    complements that GenomicSEM LDSC does not align correctly. Reuse skips munging;
+    current input checks do not verify the preparation backend or allele orientation.
+    Raw-table and --vcf_input modes run GenomicSEM munging themselves.
   Relative manifest paths resolve beside the manifest. Row order is preserved.
   --ld_ref: directory with <CHR>.l2.ldscore.gz and <CHR>.l2.M_5_50 files.
   --ld_weights: optional separate directory with <CHR>.l2.ldscore.gz weights.
 
 OUTPUTS / DEPENDENCIES
   Fresh output directory required; existing non-empty directories are refused.
-  Writes genomicPCA_LDSC_raw.RData, genomicPCA_LDSC.RData (LDSCoutput with
+  Writes genomicsem_LDSC_raw.RData, genomicsem_LDSC.RData (LDSCoutput with
   S,V,I,S_Stand,V_Stand), GenomicSEM_LDSC_Trait_QC.csv, Selected_Traits.csv,
   GenomicSEM_LDSC_Events.csv, resolved manifest, logs and sessionInfo.txt.
   Newly munged files are under outdir/munge_output. GWAMA is NOT run here.
@@ -58,15 +64,15 @@ OUTPUTS / DEPENDENCIES
     required.add_argument('--ld_ref', required=True, metavar='DIRECTORY', help='LD scores and M reference files.')
     inputs.add_argument('--ld_weights', metavar='DIRECTORY', help='Separate regression weights. Default: use --ld_ref.')
     group = inputs.add_mutually_exclusive_group()
-    group.add_argument('--munged_dir', metavar='DIRECTORY', help='Use existing per-trait munged files; skip munge. Default: unset. Mutually exclusive with --munged_input and --vcf_input.')
-    group.add_argument('--munged_input', action='store_true', help='Use manifest munged_file paths; skip munge.')
-    group.add_argument('--vcf_input', action='store_true', help='Read manifest vcf_files; extract raw tables with INFO, then run native munging and LDSC. Default: off; read raw sumstats_file unless using a munged mode.')
+    group.add_argument('--munged_dir', metavar='DIRECTORY', help='Reuse files from prepare --munge_backend genomicsem; skip munge. Default: unset. Mutually exclusive with --munged_input and --vcf_input.')
+    group.add_argument('--munged_input', action='store_true', help='Reuse manifest munged_file paths from prepare --munge_backend genomicsem; skip munge.')
+    group.add_argument('--vcf_input', action='store_true', help='Read manifest vcf_files; extract raw tables with INFO, then run GenomicSEM munging and LDSC. Default: off; read raw sumstats_file unless using a munged mode.')
     inputs.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference. Default: unset; required unless skipping munge.')
     execution.add_argument('--n_cores', dest='n_cores', type=int, default=1,
                    help='VCF extraction and munging workers; 1 is sequential. Each failed trait gets one retry (2 total attempts); exhausted failures stop before LDSC. LDSC regression stays sequential.')
     vcf = p.add_argument_group('VCF conversion (--vcf_input only)')
     vcf.add_argument('--bcftools', default='bcftools', help='VCF query executable name/path. Default: bcftools on PATH; unused for raw or munged tables.')
-    vcf.add_argument('--p_min', type=float, default=1e-300, help='Floor for P calculated from FORMAT/LP; range (0,1). Default: 1e-300. Adjusted records are audited; native munging derives Z from P and effect direction.')
+    vcf.add_argument('--p_min', type=float, default=1e-300, help='Floor for P calculated from FORMAT/LP; range (0,1). Default: 1e-300. Adjusted records are audited; GenomicSEM munging derives Z from P and effect direction.')
     filters.add_argument('--info_filter', type=float, default=.9, help='GenomicSEM munging INFO threshold.')
     filters.add_argument('--maf_filter', type=float, default=.01, help='GenomicSEM munging MAF threshold.')
     regression.add_argument('--chromosomes', type=int, default=22, help='Use chromosome files 1 through this number (1–22).')
@@ -87,7 +93,7 @@ def resolve_manifest(opts):
         required.add(path_column)
     if not required.issubset(columns):
         raise ValueError('Manifest needs headers including: ' + ','.join(sorted(required)))
-    # Keep the native R runner and existing audit output schema compatible.
+    # Keep the GenomicSEM R runner and existing audit output schema compatible.
     for row in rows:
         row['sampleprevalence'] = row.pop('sample_prevalence')
         row['populationprevalence'] = row.pop('population_prevalence')
@@ -154,7 +160,7 @@ def main(argv=None):
         if mode != 'existing':
             with Path(opts.hm3).open() as stream:
                 if not {'SNP','A1','A2'}.issubset(stream.readline().split()):
-                    raise ValueError('--hm3 must have SNP,A1,A2 headers for native allele alignment.')
+                    raise ValueError('--hm3 must have SNP,A1,A2 headers for GenomicSEM allele alignment.')
         if mode == 'existing' and opts.hm3:
             raise ValueError('--hm3 is unused when munging is skipped; omit it.')
         ld = Path(opts.ld_ref).resolve()

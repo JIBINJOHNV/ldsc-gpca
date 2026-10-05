@@ -17,13 +17,13 @@ retained-trait audit. Missing/invalid audits stop the workflow. Pipeline require
 a fresh output directory; restart remains a standalone LDSC operation.
 
 The original local draft's 10 files were unchanged. All 35 checked existing R
-and analysis files matched the baseline byte for byte, including GWAMA, native
+and analysis files matched the baseline byte for byte, including GWAMA,
 GenomicSEM orchestration, LDSC adapters, preparation and export. No estimator,
 PCA formula or existing stage default was changed.
 
 ## Automated and interface checks
 
-- Full suite: **217 tests run, 214 passed, three optional native LDSC integration
+- Full suite: **217 tests run, 214 passed, three optional Python LDSC integration
   tests skipped** because no usable isolated child runtime was configured.
 - All **23 pipeline tests passed**, including a real bcftools/preparation
   subprocess on a one-variant quantitative VCF. This is a preparation check,
@@ -65,7 +65,7 @@ VCF-to-result runs**. GWAMA used reconstructed real Z/N subsets with shared
 reference EAF. INFO=1 was an explicit test override, not an imputation-quality
 estimate. The checks establish orchestration equivalence; they do not establish
 BETA/SE calibration, whole-genome performance or cross-backend equivalence.
-Native GenomicSEM was not installed in the validation R environment, and a usable
+GenomicSEM was not installed in the validation R environment, and a usable
 isolated Python LDSC runtime was not configured for fresh regressions.
 
 ## Reproduction

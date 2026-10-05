@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pandas as pd
 from ldsc_gpca.interfaces import read_manifest, REMOVED_MANIFEST_COLUMNS, REMOVED_OPTIONS
-from ldsc_gpca import genomicsem_ldsc, gpca, ldsc_cli, pairwise, prepare
+from ldsc_gpca import cli, genomicsem_ldsc, gpca, ldsc_cli, pairwise, prepare
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -147,7 +147,7 @@ class ManifestNamesTests(unittest.TestCase):
             write_csv(path,['traitname','population_prevalence','sample_prevalence','ref'],[['002','','','yes'],['001','','','yes']])
             with patch.object(ldsc_cli,'check_runtime'),patch.object(ldsc_cli,'is_valid_gz',return_value=True),patch.object(ldsc_cli,'check_saved_filters'), \
                  patch.object(ldsc_cli,'parallel_ldsc_analysis',return_value=[]) as run,patch.object(ldsc_cli,'compile_results'),contextlib.redirect_stdout(io.StringIO()):
-                ldsc_cli.main(['--input',str(path),'--outdir',str(out),'--ld_ref',str(root/'ld'),'--ld_weights',str(root/'w'),
+                cli.main(['ldsc','--ldsc_backend','python','--input',str(path),'--outdir',str(out),'--ld_ref',str(root/'ld'),'--ld_weights',str(root/'w'),
                                '--munged_dir',str(root/'munged'),'--ldsc_only'])
             frame=run.call_args.args[4];self.assertEqual(frame.gwas_name.tolist(),['002','001']);self.assertEqual(frame.sample_size_column.tolist(),['NEF','NEF'])
             self.assertTrue(frame.pop_prevalence.isna().all());self.assertEqual(run.call_args.kwargs['ld_weights_dir'],str(root/'w')+os.sep)
@@ -163,7 +163,7 @@ class ManifestNamesTests(unittest.TestCase):
             write_csv(manifest,['traitname','sample_prevalence','population_prevalence'],[['002','NA','NA'],['001','NA','NA']])
             with patch.object(genomicsem_ldsc.shutil,'which',return_value='/fake/Rscript'),patch.object(genomicsem_ldsc.subprocess,'run') as run:
                 run.return_value.returncode=0
-                self.assertEqual(genomicsem_ldsc.main(['--input',str(manifest),'--outdir',str(out),'--ld_ref',str(ld),
+                self.assertEqual(cli.main(['ldsc','--ldsc_backend','genomicsem','--input',str(manifest),'--outdir',str(out),'--ld_ref',str(ld),
                     '--ld_weights',str(weights),'--munged_dir',str(munged),'--n_cores','4','--chromosomes','1']),0)
                 args=run.call_args.args[0]
                 self.assertEqual(args[4:9],[str(ld),str(weights),'','existing','4'])

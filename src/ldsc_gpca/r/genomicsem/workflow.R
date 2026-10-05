@@ -1,4 +1,4 @@
-# Native GenomicSEM orchestration and audited analysis execution.
+# GenomicSEM orchestration and audited analysis execution.
 
 genomicsem_main <- function(arguments = commandArgs(TRUE)) {
   parser <- genomicsem_parser()

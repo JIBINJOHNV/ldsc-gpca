@@ -56,7 +56,7 @@ subset_genomicsem <- function(x, traits) {
   for (name in c("V", "V_Stand")) x[[name]] <- x[[name]][v_index, v_index, drop = FALSE]
   if (!is.null(x$N)) {
     if (length(x$N) != nrow(pair_index) * (nrow(pair_index) + 1) / 2)
-      stop("Native N has an unexpected length.", call. = FALSE)
+      stop("GenomicSEM N has an unexpected length.", call. = FALSE)
     x$N <- matrix(as.numeric(x$N)[v_index], nrow = 1L)
   }
   x

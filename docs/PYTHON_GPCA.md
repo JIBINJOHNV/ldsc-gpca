@@ -1,6 +1,6 @@
 # PCA and PC1 GWAMA from Python LDSC results
 
-[README](../README.md) · [Inputs](INPUTS.md) · [Python LDSC](PYTHON_LDSC.md) · [Native GPCA](GENOMICSEM_GPCA.md)
+[README](../README.md) · [Inputs](INPUTS.md) · [Python LDSC](PYTHON_LDSC.md) · [GenomicSEM GPCA](GENOMICSEM_GPCA.md)
 
 ## In this guide
 
@@ -141,7 +141,7 @@ ldsc-gpca gpca \
 Original rg/SE/Z/P stay unchanged. The original SE/Z/P are not uncertainty
 estimates for the new rg. CTI also stays unchanged. This normalization does
 not reproduce GenomicSEM's regression weighting and cannot ensure identical
-native results. For older result files, see
+GenomicSEM results. For older result files, see
 [the annotation utility and covariance definitions](REFERENCE.md#optional-trait-wide-correlation-normalization).
 
 To use covariance PCA with observed-scale self heritabilities:
@@ -234,7 +234,7 @@ full command. Omit it to preserve reported values. `--gzip_level 1` is fastest;
 `9` favours smaller final files. `--archive_chromosomes` moves current-run
 source results and logs into `chromosome_wise` after export.
 
-Python pairwise results do not contain native full sampling covariance matrices
+Python pairwise results do not contain GenomicSEM full sampling covariance matrices
 V/V_Stand. They are sufficient for this PC1/GWAMA calculation, but cannot be
 used to fabricate those matrices or run methods requiring them, such as paLDSC.
 See the [output catalog and interpretation](REFERENCE.md#find-and-interpret-the-outputs).

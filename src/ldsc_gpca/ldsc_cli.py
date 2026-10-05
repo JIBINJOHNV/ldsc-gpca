@@ -81,7 +81,7 @@ filter_group.add_argument(
     help='Positive integer cutoff, or auto: max(80, 0.001 * maximum N) separately per trait '
          'after matching reference and weight LD-score SNPs and removing missing rows. '
          'Keep Z^2 <= cutoff before pairwise LDSC. '
-         'Applies to VCF and --ldsc_only workflows; does not use native LDSC cross-product filtering. '
+         'Applies to VCF and --ldsc_only workflows; does not use Python LDSC cross-product filtering. '
          'Default: disabled.')
 
 # Flags for LDSC-only execution

@@ -45,7 +45,7 @@ compilation, matrices, loadings, eigenvalues and 20–22 CSV audit tables per ru
 matched exactly using round-trip float parsing and exact frame comparison.
 Every GWAMA output column also matched exactly, including Z, P, BETA, SE and N.
 
-Saved native GenomicSEM `genomicPCA_LDSC.RData` files were tested with both
+Saved GenomicSEM LDSC RData files were tested with both
 correlation and covariance PCA on each dataset. All 19 compared CSV reports per
 run and every GWAMA output column matched exactly. Thus the comparisons cover
 12 analysis configurations and 244 diagnostic CSV tables, plus compilation and
@@ -110,7 +110,7 @@ The local `run_tests.py` selects tracked Python test modules plus the new cleanu
 module, avoiding unrelated ignored tests in the workspace. The final suite log
 and machine-readable result are `tests_final.log` and `tests_summary.json`.
 The final run executed 187 tests: 184 passed, 3 skipped, no failures or errors.
-The skipped checks require an explicitly configured isolated native LDSC runtime
+The skipped checks require an explicitly configured isolated Python LDSC runtime
 (native table export, three-trait regression and separate-weight regression).
 R tests and native munging integration were enabled and passed.
 

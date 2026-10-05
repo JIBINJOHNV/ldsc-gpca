@@ -1,6 +1,6 @@
 # PCA and PC1 GWAMA from GenomicSEM LDSC results
 
-[README](../README.md) · [Inputs](INPUTS.md) · [Native LDSC](GENOMICSEM_LDSC.md) · [Python GPCA](PYTHON_GPCA.md)
+[README](../README.md) · [Inputs](INPUTS.md) · [GenomicSEM LDSC](GENOMICSEM_LDSC.md) · [Python GPCA](PYTHON_GPCA.md)
 
 ## In this guide
 
@@ -17,23 +17,23 @@
 
 ## When to use this command
 
-`ldsc-gpca genomicsem gpca` uses completed native GenomicSEM LDSC results to
+`ldsc-gpca genomicsem gpca` uses completed GenomicSEM LDSC results to
 check the selected traits and calculate PCA. A full run then uses PC1 loadings
 and the LDSC intercept matrix to combine per-SNP statistics with GWAMA.
 It does not rerun LDSC. It requires `Rscript` on PATH.
 
 ## Files you need
 
-Supply a trait-selection CSV, the final native RData and a fresh output folder.
+Supply a trait-selection CSV, the final GenomicSEM RData and a fresh output folder.
 The manifest needs only `traitname`, in the desired analysis order; use
 [the four-trait example](INPUTS.md#selecting-traits-from-completed-ldsc-results)
-or the `Selected_Traits.csv` produced by native LDSC.
+or the `Selected_Traits.csv` produced by GenomicSEM LDSC.
 
 `--ldsc_results` must load an object named `LDSCoutput` containing all five
-matrices: `S,V,I,S_Stand,V_Stand`. Use `genomicPCA_LDSC.RData` from the
-[native LDSC command](GENOMICSEM_LDSC.md). Its first-pass `_raw.RData` is an
+matrices: `S,V,I,S_Stand,V_Stand`. Use `genomicsem_LDSC.RData` from the
+[GenomicSEM LDSC command](GENOMICSEM_LDSC.md). Its first-pass `_raw.RData` is an
 audit result, not the downstream GPCA input. A Python CSV is also not a valid
-replacement for this native object.
+replacement for this GenomicSEM object.
 
 A full GWAMA run additionally needs per-trait nine-column tables via
 `--gpca_input_folder`, or suitable `vcf_files` in the manifest for automatic
@@ -44,23 +44,23 @@ preparation. See [filenames and allele requirements](INPUTS.md#gwama-tables).
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /data/selected_traits.csv \
-  --ldsc_results /results/native_ldsc/genomicPCA_LDSC.RData \
-  --outdir /results/native_pca_check \
+  --ldsc_results /results/genomicsem_ldsc/genomicsem_LDSC.RData \
+  --outdir /results/genomicsem_pca_check \
   --validate_only
 ```
 
-This checks native estimates and writes matrices, PC1 loadings and QC reports.
+This checks GenomicSEM estimates and writes matrices, PC1 loadings and QC reports.
 It does not prepare or inspect per-SNP GWAMA tables, run GWAMA or export SNP
 results. Review retained traits and warnings before the full run.
 
 ## What happens in order
 
-1. Load the native object and validate its matrices and trait names.
+1. Load the GenomicSEM object and validate its matrices and trait names.
 2. Select traits in manifest order, applying any explicitly requested missing
    or failed-estimate policies. Subset/reorder the real sampling covariance
    matrices consistently.
-3. Use native `S_Stand` for correlation PCA (default), or native `S` for
-   covariance PCA. Use native `I` for CTI in either case.
+3. Use GenomicSEM `S_Stand` for correlation PCA (default), or GenomicSEM `S` for
+   covariance PCA. Use GenomicSEM `I` for CTI in either case.
 4. Check matrices, calculate PC1 with symmetric eigen decomposition and write
    QC, eigenvalue and loading reports.
 5. Unless `--validate_only`, run GWAMA on the retained traits' per-SNP tables
@@ -68,18 +68,18 @@ results. Review retained traits and warnings before the full run.
 
 Automatic VCF preparation, when needed, occurs before R QC and trait removal.
 Only PC1 goes into GWAMA even though eigenvalue reports describe all components.
-Neither native nor Python GPCA runs paLDSC in this package.
+Neither GenomicSEM nor Python GPCA runs paLDSC in this package.
 
 ## Run PC1 GWAMA
 
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /data/selected_traits.csv \
-  --ldsc_results /results/native_ldsc/genomicPCA_LDSC.RData \
+  --ldsc_results /results/genomicsem_ldsc/genomicsem_LDSC.RData \
   --gpca_input_folder /results/prepared/gpca_inputs \
-  --outdir /results/native_pc1 \
+  --outdir /results/genomicsem_pc1 \
   --splitby_chr nosplit \
-  --dataset_id four_traits_native \
+  --dataset_id four_traits_genomicsem \
   --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
 ```
 
@@ -96,21 +96,21 @@ not change GWAMA's inherited BETA, SE or N_eff calculation.
 
 ## Choose the PCA method
 
-Correlation PCA uses native `S_Stand`, with traits on a standardized scale.
-Covariance PCA uses native `S`, preserving its original trait scales:
+Correlation PCA uses GenomicSEM `S_Stand`, with traits on a standardized scale.
+Covariance PCA uses GenomicSEM `S`, preserving its original trait scales:
 
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /data/selected_traits.csv \
-  --ldsc_results /results/native_ldsc/genomicPCA_LDSC.RData \
-  --outdir /results/native_covariance_check \
+  --ldsc_results /results/genomicsem_ldsc/genomicsem_LDSC.RData \
+  --outdir /results/genomicsem_covariance_check \
   --pca_matrix covariance \
   --pc1_orientation tutorial \
   --validate_only
 ```
 
 Covariance PCA can give more influence to traits with larger genetic variance;
-check scale compatibility before interpreting it. Native GPCA has no Python
+check scale compatibility before interpreting it. GenomicSEM GPCA has no Python
 `--rg_normalization` or `--heritability_scale` setting. It uses the matrices
 already estimated by GenomicSEM. CTI remains `I` for either PCA method.
 
@@ -126,8 +126,8 @@ With suitable `vcf_files` in the manifest, omit `--gpca_input_folder`:
 ```bash
 ldsc-gpca genomicsem gpca \
   --input /data/traits_vcf.csv \
-  --ldsc_results /results/native_ldsc/genomicPCA_LDSC.RData \
-  --outdir /results/native_pc1_auto_prepare \
+  --ldsc_results /results/genomicsem_ldsc/genomicsem_LDSC.RData \
+  --outdir /results/genomicsem_pc1_auto_prepare \
   --splitby_chr nosplit \
   --gpca_id_source chr_pos_ref_alt \
   --p_min 1e-300 \
@@ -136,7 +136,7 @@ ldsc-gpca genomicsem gpca \
 ```
 
 VCFs need FORMAT `AF,ES,SE,LP,NEF`. Their NEF supplies GWAMA N, separately from
-N used in the completed native LDSC analysis. Preparation has no INFO threshold
+N used in the completed GenomicSEM LDSC analysis. Preparation has no INFO threshold
 or constant-N override. Do not request nondefault preparation options with an
 existing `--gpca_input_folder` in this standalone command. See
 [preparation details](PREPARE.md).
@@ -147,7 +147,7 @@ The default is to stop for absent selected traits or invalid estimates.
 `--allow_missing_traits` permits audited removal of absent traits.
 `--failed_ldsc_action drop_traits` permits audited removal for failed estimates;
 it does not impute missing values. At least two valid traits must remain.
-These are downstream GPCA policies, separate from native LDSC's initial
+These are downstream GPCA policies, separate from GenomicSEM LDSC's initial
 `--invalid_h2_action drop` default.
 
 Weak h2/SE is only a warning below 2 by default. Estimated correlations outside
@@ -166,9 +166,9 @@ output directories to avoid conflicting audit or completed export files.
 Inspect QC, `GWAMA_Run_Status.csv`, the matrices and
 `GenomicPCA_PC1_Weights_Used.csv`. The full example also writes:
 
-- `four_traits_native_GWAMA_combined_results.txt.gz`.
-- `harmonisation_input/four_traits_native_GPCA_inputs.txt.gz`.
-- `four_traits_native_postprocess.json`.
+- `four_traits_genomicsem_GWAMA_combined_results.txt.gz`.
+- `harmonisation_input/four_traits_genomicsem_GPCA_inputs.txt.gz`.
+- `four_traits_genomicsem_postprocess.json`.
 
 The first file retains original GWAMA columns; the second is a 12-column PC1
 summary, not a nine-column input for another trait-level GWAMA analysis.
@@ -210,7 +210,7 @@ Preparation settings apply only when VCF preparation runs. Export settings apply
 
 | Option | Default | What it changes |
 | --- | --- | --- |
-| `--pca_matrix` | `correlation` | correlation uses native S_Stand; covariance uses native S on its original scales. CTI remains native I. |
+| `--pca_matrix` | `correlation` | correlation uses GenomicSEM S_Stand; covariance uses GenomicSEM S on its original scales. CTI remains GenomicSEM I. |
 | `--pc1_orientation` | `tutorial` | `tutorial` flips all PC1 loadings if their median is negative; `as_computed` keeps the eigenvector sign. |
 | `--allow_missing_traits` | Off | GPCA: permit audited removal of manifest traits absent from LDSC results. Otherwise stop. |
 | `--failed_ldsc_action` | `error` | GPCA: `error` or `drop_traits` for invalid/missing estimates. Dropping changes the analysed trait set; no imputation. |

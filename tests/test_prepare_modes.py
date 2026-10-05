@@ -148,7 +148,7 @@ class PreparationModesTests(unittest.TestCase):
             results.check_saved_filters({'filters': {'info_min': .7}}, {'info_min': .9}, 'A')
         results.check_saved_filters({'filters': {'info_min': .7}}, {'info_min': .7}, 'A')
 
-    @unittest.skipUnless(shutil.which('munge_sumstats.py') or (Path(sys.executable).parent/'munge_sumstats.py').exists(), 'native Python LDSC not installed')
+    @unittest.skipUnless(shutil.which('munge_sumstats.py') or (Path(sys.executable).parent/'munge_sumstats.py').exists(), 'Python LDSC not installed')
     def test_real_python_cli_matches_direct_munging_and_sidecars(self):
         # A one-SNP fixture must still pass the original BETA median sanity check.
         self.case.vcf.write_text(self.case.vcf.read_text().replace('-0.123456789', '-0.08'))

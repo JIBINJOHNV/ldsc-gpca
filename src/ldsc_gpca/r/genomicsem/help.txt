@@ -1,4 +1,4 @@
-usage: ldsc-gpca genomicsem gpca --input MANIFEST.csv --ldsc_results LDSC.RData --outdir DIRECTORY [options]
+usage: ldsc-gpca genomicsem gpca --input MANIFEST.csv --ldsc_results genomicsem_LDSC.RData --outdir DIRECTORY [options]
 
 GPCA/GWAMA from GenomicSEM LDSCoutput RData. Strict QC is the default. Warnings, removals and
 errors are saved in GenomicSEM_QC_Events.csv.
@@ -10,8 +10,9 @@ Required inputs:
   --input MANIFEST.csv          Comma-separated manifest; required header traitname. Required;
                                 no default.
 
-  --ldsc_results LDSC.RData     Native LDSCoutput RData; required objects below. Required; no
-                                default.
+  --ldsc_results genomicsem_LDSC.RData
+                                GenomicSEM LDSCoutput RData; required objects below. Required;
+                                no default.
 
   --outdir DIRECTORY            Output directory; use a fresh directory. Required; no default.
 
@@ -35,7 +36,7 @@ Trait and failed-result handling:
                                 drop_traits.]
 
 PCA settings:
-  --pca_matrix CHOICE           correlation uses S_Stand; covariance uses native S, on its
+  --pca_matrix CHOICE           correlation uses S_Stand; covariance uses GenomicSEM S, on its
                                 original scales. [Default: correlation.] [Choices: correlation,
                                 covariance.]
 
@@ -71,7 +72,8 @@ INPUT FILE CONTRACT
     Manifest row order defines matrix, loading and GWAMA input order.
     Package auto-preparation also requires vcf_files if the input folder is omitted.
   --ldsc_results: binary RData containing LDSCoutput, with S,V,I,S_Stand,V_Stand.
-    This is NOT a delimited table. Generate it upstream with stand=TRUE.
+    Use genomicsem_LDSC.RData from genomicsem ldsc, generated with stand=TRUE.
+    This is NOT a delimited table; the first-pass _raw.RData is not GPCA input.
   --gpca_input_folder: tab-separated TSV files; required columns (extra/reordered columns allowed):
     SNPID,CHR,BP,EA,OA,EAF,N,Z,P (A1/A2/p aliases accepted for EA/OA/P).
     Split: {traitname}_chr{CHR}_GenomicPCA_inputs.tsv (chromosomes 1-22).
@@ -79,6 +81,6 @@ INPUT FILE CONTRACT
   --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.
 
 AVAILABILITY
-  genomicsem ldsc runs native munge/LDSC or accepts existing munged files.
+  genomicsem ldsc runs GenomicSEM munge/LDSC or accepts existing munged files.
   Both PCA matrix choices write all-PC variance and PC1 protein contributions.
-  GWAMA uses PC1 only. Native covariance uses S on its supplied scales.
+  GWAMA uses PC1 only. GenomicSEM covariance uses S on its supplied scales.

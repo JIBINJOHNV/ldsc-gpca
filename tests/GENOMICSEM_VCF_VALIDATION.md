@@ -1,4 +1,4 @@
-# Native GenomicSEM VCF input validation
+# GenomicSEM VCF input validation
 
 Validated on 2026-10-04 using Python 3.12.14, Polars 0.20.31, pandas 2.3.3,
 NumPy 1.26.4, real bcftools and R 4.4.2 on macOS ARM64.
@@ -61,8 +61,8 @@ Rscript tests/test_failure_handling.R "$PWD"
 Rscript tests/test_pipeline_native.R "$PWD"
 ```
 
-Documentation checks passed for 319 local links/anchors, five native LDSC
-examples, nine pipeline examples and all 19 native LDSC long options. Both
+Documentation checks passed for 319 local links/anchors, five GenomicSEM LDSC
+examples, nine pipeline examples and all 19 GenomicSEM LDSC long options. Both
 backends' pipeline options are covered in the pipeline guide.
 
 The full GenomicSEM package was unavailable in this environment. No fresh

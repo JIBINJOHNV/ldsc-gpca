@@ -64,7 +64,7 @@ write_genomicsem_diagnostics <- function(x, pc1, manifest, args) {
   write.csv(data.frame(PC = seq_along(traits), Eigenvalue_Raw = global$values,
     Eigenvalue_After_pmax = pmax(global$values, 0)),
     file.path(args$outdir, "Global_PCA_Eigenvalues.csv"), row.names = FALSE)
-  # Native matrices, including correctly subset/reordered full sampling covariance.
+  # GenomicSEM matrices, including correctly subset/reordered full sampling covariance.
   LDSCoutput <- x
   save(LDSCoutput, file = file.path(args$outdir, "GenomicSEM_LDSC_Used.RData"))
   saveRDS(args, file.path(args$outdir, "GenomicSEM_Run_Settings.rds"))

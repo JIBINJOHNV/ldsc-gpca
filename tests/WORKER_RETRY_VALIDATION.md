@@ -18,7 +18,7 @@ PYTHONPATH=src LDSC_GPCA_TEST_RSCRIPT=/path/to/Rscript \
 ```
 
 Observed: **167 tests ran; 164 passed, 3 skipped** (166.660 seconds). The skipped
-tests require an explicitly configured native Python LDSC child runtime, which
+tests require an explicitly configured Python LDSC child runtime, which
 was unavailable in this test environment. Python 3.12.14, pandas 2.3.3, Polars
 0.20.31 and R 4.4.2 were used. An additional check of recovered GenomicSEM munging
 was then added inside the existing R test; the seven retry tests passed again
@@ -43,7 +43,7 @@ passed (93.701 seconds), including the real R parsers and subprocess settings.
 | All 22 chromosome workers fail in either GPCA backend | Both attempts recorded; both workflows stop with chromosome/error details. |
 | Python munging interruption | Only failed trait retries; persistent failure stops instead of silently dropping the trait. |
 | Unchanged old munging output | Rejected after both attempts; no stale success accepted. |
-| Native GenomicSEM munging orchestration | Failed traits retry; permanent failures stop before LDSC; recovered traits reach LDSC in manifest order. |
+| GenomicSEM munging orchestration | Failed traits retry; permanent failures stop before LDSC; recovered traits reach LDSC in manifest order. |
 | Audit cannot be written | Audit error propagates; analysis cannot silently report success. |
 | Empty job list / invalid Python worker count | Empty list returns no jobs; invalid counts fail clearly. |
 | LDSC execution failure with `drop_traits` | Five failed batches each attempted twice; four successful batches run once; compilation and selected-manifest publication do not run. |
@@ -52,13 +52,13 @@ passed (93.701 seconds), including the real R parsers and subprocess settings.
 GenomicSEM is not installed in this environment. Its munging tests inject a
 function with the upstream API, including a successful gzip output, and check
 scheduling, arguments, freshness, order and the LDSC handoff. They do not test
-the native GenomicSEM statistical implementation. The GenomicSEM GPCA failure
+the GenomicSEM statistical implementation. The GenomicSEM GPCA failure
 test also replaces the read/QC boundary with a small validated matrix fixture;
 it exercises the actual GWAMA orchestration and fatal error handling.
 
 ## Real-data GWAMA checks
 
-Reused the existing native LDSC tables and reconstructed real Z/N GWAMA subsets
+Reused the existing Python LDSC tables and reconstructed real Z/N GWAMA subsets
 from the earlier normalization/covariance validation. No new LDSC regressions
 were fitted for this check.
 
@@ -100,7 +100,7 @@ execution. Terminating the controller itself cannot be recovered within that
 process. Preflight errors, sequential publication and archival are not worker
 retries. No upstream LDSC, GenomicSEM or GWAMA estimator was modified.
 
-Native GenomicSEM munging is now called per trait with upstream `parallel=FALSE`;
+GenomicSEM munging is now called per trait with upstream `parallel=FALSE`;
 the package owns scheduling. This can repeat the upstream HapMap reference read
 per trait. Its performance has not been benchmarked with the native package.
 

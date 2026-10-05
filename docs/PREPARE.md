@@ -22,8 +22,8 @@ Use `ldsc-gpca prepare` to turn GWAS summary-statistics VCFs into inputs for a
 later analysis. You can make GPCA/GWAMA tables, shared raw LDSC tables, or
 LDSC-ready munged files. Preparation accepts one or more traits.
 
-**Raw munging inputs still need munging. Munged files are ready for LDSC
-regression. Neither is a completed LDSC result.** This command stops before
+**Raw munging inputs still need munging. Munged files are ready for the selected
+LDSC backend. Neither is a completed LDSC result.** This command stops before
 LDSC regression, PCA and GWAMA. No LD-score directory is needed here.
 
 ## Choose what to prepare
@@ -46,9 +46,16 @@ Every mode writes QC reports. Use `--splitby_chr nosplit` for whole-genome GPCA
 files unless your traits have valid records on every chromosome 1–22.
 
 `--munge_backend` selects the program performing munging. The raw table format
-is shared. Omit this option with `--raw_only` or `--mode gpca`; irrelevant
-munging options are rejected. Compatible Python-munged files can also be used
-by native GenomicSEM LDSC, with appropriate N and prevalence settings.
+is shared. This option belongs to standalone preparation. For `ldsc` or
+`pipeline`, use `--ldsc_backend` instead; it selects both the matching munger and
+regression implementation, with no separate munging override. Omit
+`--munge_backend` with `--raw_only` or `--mode gpca`; irrelevant
+munging options are rejected. **For later GenomicSEM LDSC reuse, select
+`--munge_backend genomicsem`**, using the same `--hm3` allele reference for all
+traits. Do not directly reuse Python-munged files in GenomicSEM: Python
+HapMap matching can retain strand complements rather than rewriting all alleles
+to the reference orientation. The GenomicSEM reuse check does not verify this
+orientation or the preparation backend. See the [GenomicSEM reuse guide](GENOMICSEM_LDSC.md#reuse-munged-files).
 
 ## Files you need
 
@@ -182,7 +189,7 @@ ldsc-gpca prepare \
   --n_cores 4
 ```
 
-To make all three outputs using native GenomicSEM munging:
+To make all three outputs using GenomicSEM munging:
 
 ```bash
 ldsc-gpca prepare \
@@ -209,7 +216,7 @@ implementations are unchanged. Python uses a strict MAF
 `>` comparison and has its own low-N and ambiguous-SNP handling. GenomicSEM uses
 `>=` and aligns output to reference alleles. Both reconstruct Z from P and effect
 direction. Matching thresholds and a shared format therefore do not guarantee
-identical SNP sets or estimates. Inspect each trait's native log.
+identical SNP sets or estimates. Inspect each trait's munging log.
 
 ## What happens in order
 
@@ -261,7 +268,7 @@ not reconstructed.
 | `Preparation_Worker_Attempts.csv` | Extraction/preparation worker attempts: `Job,Attempt,Success,Error`. |
 | `Preparation_Munging_Status.csv` | Munging success/error plus output, usable and missing row counts. Counts may be unavailable for failures. |
 | `Preparation_Munging_Worker_Attempts.csv` | Munging attempts: `Job,Attempt,Success,Error`. |
-| `munge_logs/` | Exact per-trait command JSON, console output and native logs. Console output includes retries. |
+| `munge_logs/` | Exact per-trait command JSON, console output and munging logs. Console output includes retries. |
 
 QC summaries contain `traitname,input_rows,retained_rows,removed_rows,
 p_adjusted_rows,excluded_non_autosomal_rows,success,error`. LDSC summaries also
@@ -283,19 +290,22 @@ ldsc-gpca ldsc \
 Python reuse verifies the checksum and N convention. Shared-preparation provenance
 is reported; original Python VCF extraction filters are not reapplied.
 
-To run **GenomicSEM LDSC**, the same type of completed munged files can be reused:
+To run **GenomicSEM LDSC**, reuse files produced with
+`--mode ldsc --munge_backend genomicsem` or
+`--mode both --munge_backend genomicsem`, using the same allele reference for
+all traits. Use the GenomicSEM preparation directory, not the Python-munged output:
 
 ```bash
-ldsc-gpca genomicsem ldsc \
+ldsc-gpca ldsc --ldsc_backend genomicsem \
   --input /results/prepared_native/Prepared_LDSC_Manifest.csv \
   --munged_dir /results/prepared_native/munged \
   --ld_ref /references/eur_w_ld_chr \
-  --outdir /results/native_ldsc
+  --outdir /results/genomicsem_ldsc
 ```
 
 Use appropriate LD references and the same N/prevalence convention. For shared
-raw tables, their `sumstats_file` manifest can instead be passed to native LDSC
-with `--hm3`; omit munged-reuse options so native munging runs there.
+raw tables, their `sumstats_file` manifest can instead be passed to GenomicSEM LDSC
+with `--hm3`; omit munged-reuse options so GenomicSEM munging runs there.
 
 ## Also write raw tables for later munging
 
@@ -322,7 +332,7 @@ Required options have no default. Boolean switches are off unless supplied.
 | `--outdir` | Required | Output directory; existing named outputs are protected. |
 | `--mode` | `gpca` | `gpca`, `ldsc` or `both`. LDSC modes run munging unless raw-only. |
 | `--raw_only` | Off | `ldsc`/`both`: stop before munging. |
-| `--munge_backend` | `python` | `python` or `genomicsem`; select only when munging runs. |
+| `--munge_backend` | `python` | `python` or `genomicsem`; select `genomicsem` for later GenomicSEM LDSC reuse. Select only when munging runs. |
 | `--hm3` | Unset | Tab-separated HapMap reference; required for LDSC or legacy raw export. Munging also requires A1/A2. |
 | `--splitby_chr` | `split` | GPCA only: `split` or `nosplit`; ignored in LDSC-only mode. |
 | `--gpca_id_source` | `chr_pos_ref_alt` | GPCA IDs: `chr_pos_ref_alt` or `vcf_id`. |

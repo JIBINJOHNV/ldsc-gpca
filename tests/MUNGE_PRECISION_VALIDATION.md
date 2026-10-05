@@ -21,7 +21,7 @@ The unchanged [CBIIT source at 6c67395](https://github.com/CBIIT/ldsc/blob/6c673
 was downloaded and installed with `--no-deps` in the local test virtual
 environment. Native munging was executed directly and through the standalone
 wrapper. The returned native values matched the new file exactly with a
-round-trip reader. Exactly one table write occurred. The native LDSC parser also
+round-trip reader. Exactly one table write occurred. The Python LDSC parser also
 accepted the file, with ordinary floating-point reading tolerance of `1e-15`.
 
 Fixtures cover positive/negative/zero and very small Z, fractional N, optional
@@ -52,7 +52,7 @@ recover original raw-data precision or constitute a full LDSC/PCA/GWAMA rerun.
 
 Original source SHA-256 hashes were unchanged. Native three-decimal rounding
 changed Z by up to approximately 0.0005; the precision-preserving writer matched
-the native in-memory values exactly. Native LDSC parsing of both output files
+the native in-memory values exactly. Python LDSC parsing of both output files
 was checked separately: maximum absolute Z-reading difference was 8.88e-16
 (the native pandas reader does not request round-trip conversion). Missing rows and threshold-crossing behavior are covered
 by the controlled fixtures above.

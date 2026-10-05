@@ -1,9 +1,9 @@
-# Native two-pass orchestration with deterministic injected LDSC estimates.
+# GenomicSEM two-pass orchestration with deterministic injected LDSC estimates.
 # This tests cutoff forwarding and retained-trait handoff, not real regressions.
 root <- commandArgs(TRUE)[1]
 source(file.path(root, "src/ldsc_gpca/r/genomicsem/reader.R"))
 source(file.path(root, "src/ldsc_gpca/r/genomicsem/ldsc_pipeline.R"))
-temporary <- tempfile("pipeline-native-")
+temporary <- tempfile("pipeline-GenomicSEM-")
 dir.create(temporary)
 names <- c("002", "001", "003")
 paths <- file.path(temporary, paste0(names, ".sumstats"))
@@ -32,8 +32,11 @@ stopifnot(length(calls)==2L, identical(calls[[1]]$stand,FALSE),
 selected <- read.csv(file.path(out,"Selected_Traits.csv"),colClasses="character")
 stopifnot(identical(selected$traitname,c("002","001")))
 env <- new.env()
-load(file.path(out,"genomicPCA_LDSC.RData"),envir=env)
+stopifnot(identical(load(file.path(out,"genomicsem_LDSC.RData"),envir=env), "LDSCoutput"))
 stopifnot(identical(colnames(env$LDSCoutput$S),c("002","001")),
           all(c("S","V","I","S_Stand","V_Stand") %in% names(env$LDSCoutput)))
+raw_env <- new.env()
+stopifnot(identical(load(file.path(out,"genomicsem_LDSC_raw.RData"),envir=raw_env), "LDSCoutput_raw"),
+          identical(colnames(raw_env$LDSCoutput_raw$S), names))
 unlink(temporary,recursive=TRUE)
-cat("Native two-pass cutoff=80 and retained-trait order checks passed\n")
+cat("GenomicSEM output filenames/objects, two-pass cutoff=80 and retained-trait order checks passed\n")

@@ -1,4 +1,4 @@
-"""Export native LDSC results in-process, before human-readable formatting.
+"""Export Python LDSC results in-process, before human-readable formatting.
 
 This file runs as a standalone script in the isolated LDSC environment. It
 does not import the main package or replace any regression/statistical code.
@@ -71,11 +71,11 @@ def export_rg_tables(sumstats, pandas):
             if not has_result_columns(frame.columns):
                 raise RuntimeError("Unsupported LDSC result-table schema; no estimates were exported.")
             if captures:
-                raise RuntimeError("Native LDSC rendered more than one result table per batch.")
+                raise RuntimeError("Python LDSC rendered more than one result table per batch.")
             # Render the original table first; export native fit attributes only in CSV.
             rendered = original_to_string(frame, *positional, **keywords)
             if len(estimates) != len(frame):
-                raise RuntimeError('Native LDSC fit count differs from result-table rows.')
+                raise RuntimeError('Python LDSC fit count differs from result-table rows.')
             native = {column: [getattr(getattr(estimate, attribute, None), 'tot', float('nan'))
                                for estimate in estimates]
                       for column, attribute in zip(NATIVE_COLUMNS, ('gencov', 'hsq1', 'hsq2'))}
@@ -90,7 +90,7 @@ def export_rg_tables(sumstats, pandas):
         finally:
             pandas.DataFrame.to_string = original_to_string
         if len(captures) != 1:
-            raise RuntimeError("Native LDSC did not expose exactly one numerical result table.")
+            raise RuntimeError("Python LDSC did not expose exactly one numerical result table.")
         exported.extend(captures)
         return rendered
 
@@ -105,7 +105,7 @@ def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
     native_script = shutil.which("ldsc.py")
     if native_script is None:
-        raise RuntimeError("Native ldsc.py is not installed in the isolated LDSC environment.")
+        raise RuntimeError("Python ldsc.py is not installed in the isolated LDSC environment.")
     import pandas
     import ldscore.sumstats as sumstats
 

@@ -15,7 +15,7 @@ def ldsc_command(script, *, conda='conda', environment='ldsc-cbiit', prefix=None
 
 
 def ldsc_regression_command(**runtime):
-    """Run native LDSC with an in-process, precision-preserving result export."""
+    """Run Python LDSC with an in-process, precision-preserving result export."""
     exporter = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ldsc_export.py')
     return ldsc_command('python', **runtime) + [exporter]
 

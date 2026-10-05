@@ -44,7 +44,7 @@ class MungingFilterTests(unittest.TestCase):
         self.assertEqual([summary[k] for k in ('variants_before','variants_removed','variants_after','variants_missing_z')],
                          [9, 1, 8, 6])
         self.assertEqual(summary['maximum_chisq'], 81)
-        # Native LDSC uses this whitespace/NA parsing and drops missing rows.
+        # Python LDSC uses this whitespace/NA parsing and drops missing rows.
         parsed = pd.read_csv(self.filtered, sep=r'\s+', na_values='.',
                              dtype={'SNP':str,'N':float,'Z':float,'A1':str,'A2':str}).dropna()
         self.assertEqual(parsed.SNP.tolist(), ['rs1','rs_boundary'])
