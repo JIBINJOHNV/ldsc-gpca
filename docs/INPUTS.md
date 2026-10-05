@@ -56,8 +56,8 @@ Trait_D,/data/Trait_D.vcf.gz,,
 `prepare --mode gpca` needs only `traitname,vcf_files`; the extra columns above are accepted.
 New `--mode ldsc` or `--mode both` modes also use optional N and prevalence metadata; binary
 traits require total N and both prevalences. See [preparation inputs](PREPARE.md#files-you-need).
-The same manifest works with `genomicsem ldsc --vcf_input` for quantitative
-traits. See [GenomicSEM VCF sample-size and field requirements](GENOMICSEM_LDSC.md#start-from-gwas-vcfs)
+The same manifest works with the GenomicSEM pipeline for quantitative traits;
+VCF conversion is automatic. Standalone GenomicSEM LDSC uses `--vcf_input`. See [GenomicSEM VCF sample-size and field requirements](GENOMICSEM_LDSC.md#start-from-gwas-vcfs)
 before using it for GenomicSEM LDSC; binary VCFs require an explicit appropriate N.
 For **standalone Python LDSC**, use `/data/traits_python.csv` with `ref` included:
 
@@ -124,7 +124,7 @@ Trait_D,yes,,
 
 Python reuse expects `{traitname}.sumstats.gz`. Preserve associated provenance
 files; see [Python reuse rules](PYTHON_LDSC.md#reuse-munged-files-or-restart).
-The Python pipeline accepts this manifest too.
+This reuse manifest is for standalone Python LDSC. Pipeline requires VCF inputs.
 
 ### Selecting traits from completed LDSC results
 
@@ -155,7 +155,7 @@ compatibility.
 | Python LDSC extraction | Coordinates, alleles and IDs; INFO `AF,EUR`; FORMAT `SI,AF,EZ,LP,NEF` | SI for INFO filtering; FORMAT/AF for MAF; INFO/AF versus INFO/EUR for frequency difference; EZ and LP for association statistics. |
 | Python binary-trait extraction with population prevalence | The Python fields above, plus FORMAT `NC,NCO` | Uses NC+NCO for N; can infer sample prevalence from case fractions. |
 | Shared LDSC preparation (`prepare --mode ldsc` or `prepare --mode both`) | Coordinates, REF/ALT, IDs; FORMAT `AF,ES,SE,LP,SI`, plus `NEF` unless a manifest N is supplied for LDSC-only mode | Writes the shared raw schema below. Munging is optional with `--raw_only`; GPCA N always remains NEF. |
-| GenomicSEM LDSC with `--vcf_input` | Coordinates, alleles and IDs; FORMAT `AF,ES,SE,LP,SI`, plus `NEF` unless manifest N is supplied | INFO=SI; MAF from AF; P from LP with an audited floor. Quantitative N=NEF by default; binary traits need explicit manifest N and both prevalences. |
+| GenomicSEM LDSC VCF conversion (automatic in pipeline; standalone `--vcf_input`) | Coordinates, alleles and IDs; FORMAT `AF,ES,SE,LP,SI`, plus `NEF` unless manifest N is supplied | INFO=SI; MAF from AF; P from LP with an audited floor. Quantitative N=NEF by default; binary traits need explicit manifest N and both prevalences. |
 
 A Python VCF pipeline that prepares GWAMA files needs the union of both field
 sets. The preparation path and Python extraction path have separate filtering
@@ -249,7 +249,7 @@ stages:
 | Prepared GWAMA inputs | FORMAT/NEF becomes N | Supply correct VCF NEF, or correctly prepared nine-column tables. |
 | Shared LDSC tables from `prepare --mode ldsc` or `prepare --mode both` | Quantitative: NEF unless manifest N overrides it. Binary: explicit total N required, with both prevalences. | N override affects LDSC only. INFO is retained for munging. See [N rules](PREPARE.md#sample-size-and-binary-traits). |
 | Legacy `prepare --write_munge_inputs` raw export | FORMAT/NEF becomes N | Unmunged tables in the original schema, without INFO. |
-| GenomicSEM LDSC with `--vcf_input` | Quantitative: FORMAT/NEF or a manifest N override. Binary: explicit manifest N required. | Supply appropriate N and prevalence conventions. For binary per-SNP N, use raw/munged tables. N here does not override separate GWAMA preparation. |
+| GenomicSEM LDSC VCF conversion (automatic in pipeline; standalone `--vcf_input`) | Quantitative: FORMAT/NEF or a manifest N override. Binary: explicit manifest N required. | Supply appropriate N and prevalence conventions. For binary per-SNP N, use raw/munged tables. N here does not override separate GWAMA preparation. |
 
 For a binary trait, `sample_prevalence` is the fraction of cases in the GWAS
 sample; `population_prevalence` is the population prevalence used for liability

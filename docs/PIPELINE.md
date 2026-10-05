@@ -1,17 +1,14 @@
-# Run the complete pipeline
+# Run the complete LDSC → GPCA → GWAMA pipeline
 
 [README](../README.md) · [Input formats](INPUTS.md) · [Full reference](REFERENCE.md)
 
 ## In this guide
 
 - [What pipeline does](#what-pipeline-does)
-- [Choose the two inputs for your run](#choose-the-two-inputs-for-your-run)
+- [VCF inputs and references](#vcf-inputs-and-references)
 - [Python LDSC from VCFs](#python-ldsc-from-vcfs)
-- [Python LDSC from munged files](#python-ldsc-from-munged-files)
-- [GenomicSEM LDSC from raw tables](#genomicsem-ldsc-from-raw-tables)
-- [GenomicSEM LDSC from munged files](#genomicsem-ldsc-from-munged-files)
-- [GenomicSEM LDSC with explicit VCF input](#genomicsem-ldsc-with-explicit-vcf-input)
-- [GenomicSEM LDSC from quantitative VCFs](#genomicsem-ldsc-from-quantitative-vcfs)
+- [GenomicSEM LDSC from VCFs](#genomicsem-ldsc-from-vcfs)
+- [Migrate existing pipeline commands](#migrate-existing-pipeline-commands)
 - [Run LDSC and PCA without GWAMA](#run-ldsc-and-pca-without-gwama)
 - [Change filters, PCA and export settings](#change-filters-pca-and-export-settings)
 - [What runs and where results go](#what-runs-and-where-results-go)
@@ -20,54 +17,21 @@
 
 ## What pipeline does
 
-`ldsc-gpca pipeline` coordinates preparation, LDSC, PCA, PC1 GWAMA and final
-export. Select `--ldsc_backend python` or `--ldsc_backend genomicsem` to choose
-LDSC and its matching GPCA reader. All examples name the backend explicitly;
-omitting it still defaults to Python LDSC.
+`ldsc-gpca pipeline` accepts **GWAS summary-statistics VCFs as its only study-data
+inputs**. It prepares GWAMA SNP tables and backend-specific LDSC inputs, runs
+LDSC and PCA, then runs PC1 GWAMA and exports the results. Select
+`--ldsc_backend python` (default) or `--ldsc_backend genomicsem`.
 
-As with standalone `ldsc`, `--ldsc_backend` also selects the matching munger when
-munging is needed. `--munge_backend` belongs only to standalone `prepare` and is
-not accepted by pipeline.
+The backend selects both munging and regression. `--munge_backend` belongs to
+standalone `prepare`. Pipeline prepares the GWAMA tables automatically; no
+`--gpca_input_folder` is accepted. Existing raw/munged files and completed LDSC
+results belong to the [standalone commands](#migrate-existing-pipeline-commands).
 
-Use pipeline when you still need to **run LDSC**. If you already have completed
-LDSC results, start with [Python GPCA](PYTHON_GPCA.md) or
-[GenomicSEM GPCA](GENOMICSEM_GPCA.md) instead. Pipeline does not accept completed
-results as a shortcut around its LDSC stage.
+<a id="choose-the-two-inputs-for-your-run"></a>
 
-## Choose the two inputs for your run
+## VCF inputs and references
 
-First choose what LDSC will read:
-
-- **Python LDSC:** supported VCFs, or existing Python LDSC munged files selected with
-  both `--ldsc_only` and `--munged_dir`.
-- **GenomicSEM LDSC:** raw tables listed in `sumstats_file`, existing munged files
-  selected with `--munged_dir` or `--munged_input`, or VCFs selected with
-  `--vcf_input`. The older quantitative-trait VCF fallback is also retained.
-
-Then choose what GWAMA will read:
-
-- Pass existing per-trait nine-column tables through `--gpca_input_folder`; or
-- include suitable `vcf_files` in the manifest so pipeline prepares the tables.
-
-Raw/munged LDSC tables do not supply the full GWAMA input. If you want to stop
-after LDSC and PCA, use `--validate_only`; no GWAMA source is needed unless VCF
-preparation is also needed to create GenomicSEM LDSC inputs or optional raw tables.
-
-For every route, use at least two traits and retain
-`traitname,population_prevalence,sample_prevalence` headers. Paths inside the
-manifest resolve beside it. The Python pipeline supplies `ref=yes` when absent
-and requires all supplied `ref` values to be `yes`. The same manifest row order
-is carried through any audited trait removal.
-
-**Choose an output directory that does not exist.** Pipeline has no overwrite
-or whole-run resume mode. Use `Rscript` on PATH for GPCA and the configured
-backend runtime for LDSC. See [reference requirements](INPUTS.md#reference-files).
-
-<a id="python-from-vcfs"></a>
-
-## Python LDSC from VCFs
-
-Use `/data/traits_vcf.csv`:
+Use `/data/traits_vcf.csv`, with at least two traits in the required order:
 
 ```csv
 traitname,vcf_files,population_prevalence,sample_prevalence
@@ -77,8 +41,34 @@ Trait_C,/data/Trait_C.vcf.gz,,
 Trait_D,/data/Trait_D.vcf.gz,,
 ```
 
-These are quantitative examples. Each VCF must meet **both** the Python LDSC
-extraction and GWAMA preparation [field requirements](INPUTS.md#vcf-fields).
+Empty prevalence cells denote quantitative traits. Each VCF must contain exactly
+one GWAS sample. These are summary-statistics VCFs, not individual-level genotype
+VCFs. Relative paths resolve beside the manifest. Populated `sumstats_file` or
+`munged_file` columns are rejected, even when VCF paths are also present.
+
+For a full run, each VCF must satisfy **both** its LDSC contract and the GWAMA
+preparation contract. GWAMA needs FORMAT `AF,ES,SE,LP,NEF`.
+Python LDSC additionally needs FORMAT `SI,EZ` and INFO `AF,EUR`; population-
+prevalence traits also need FORMAT `NC,NCO`. GenomicSEM LDSC needs FORMAT `SI`
+and valid variant IDs; binary traits require an appropriate explicit manifest
+`N` and both prevalences. See [all VCF fields and sample-size rules](INPUTS.md#vcf-fields).
+The LDSC and GWAMA stages retain their own filtering and N conventions.
+
+Supply `--hm3` with `SNP,A1,A2` allele-reference headers and `--ld_ref` with
+chromosome LD scores/M files. `--ld_weights` optionally selects a separate weights
+directory. These references remain required even though the study input is VCF-only.
+For Python LDSC, pipeline supplies `ref=yes` if absent; every supplied value must
+already be `yes` to obtain complete pair/self coverage.
+
+**Choose an output directory that does not exist.** Pipeline has no overwrite
+or whole-run resume mode. Rscript, bcftools and the selected LDSC runtime must
+be available. The bundled GWAMA output lacks INFO: set the shell variable
+`GWAMA_INFO` to a justified constant for final export. It is export metadata,
+not measured imputation quality or a filtering threshold.
+
+<a id="python-from-vcfs"></a>
+
+## Python LDSC from VCFs
 
 ```bash
 ldsc-gpca pipeline \
@@ -91,182 +81,59 @@ ldsc-gpca pipeline \
   --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
 ```
 
-Set `GWAMA_INFO` to your justified export constant first; the bundled GWAMA
-function has no INFO output. This is summary metadata, not a filter or quality
-estimate. Read [export metadata](INPUTS.md#export-metadata) before choosing it.
-The Python pipeline's preparation and LDSC extraction use separate VCF paths
-through the code and separate filtering rules. LDSC filters do not also filter
-the GWAMA tables.
-
-<a id="python-from-munged-files"></a>
-
-## Python LDSC from munged files
-
-Use the [Python reuse manifest](INPUTS.md#reusing-munged-files), preserve its
-required provenance sidecars, and supply the GWAMA tables separately:
-
-```bash
-ldsc-gpca pipeline \
-  --ldsc_backend python \
-  --input /data/traits_python_munged.csv \
-  --outdir /results/python_reused_pipeline \
-  --ld_ref /references/eur_w_ld_chr \
-  --ldsc_only \
-  --munged_dir /data/python_munged \
-  --gpca_input_folder /results/prepared/gpca_inputs \
-  --splitby_chr nosplit \
-  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
-```
-
-Both reuse flags are required in pipeline. Extraction and munging are skipped,
-so their filters are not reapplied. `--chisq_max`, if supplied, still filters
-separate LDSC input copies. Total-N traits need provenance sidecars; legacy NEF
-inputs can produce a warning. See [Python LDSC reuse details](PYTHON_LDSC.md#reuse-munged-files-or-restart).
-
-If you have VCFs instead of prepared GWAMA tables, add `vcf_files` to this
-manifest and omit `--gpca_input_folder`. This prepares GWAMA inputs while still
-reusing the selected munged files for LDSC.
-
-<a id="genomicsem-from-raw-tables"></a>
-
-## GenomicSEM LDSC from raw tables
-
-Use `/data/traits_genomicsem_raw.csv` with
-`traitname,sumstats_file,population_prevalence,sample_prevalence`; see the
-[four-trait example](INPUTS.md#raw-table-manifest-for-genomicsem).
-Provide prepared GWAMA tables separately:
-
-```bash
-ldsc-gpca pipeline \
-  --ldsc_backend genomicsem \
-  --input /data/traits_genomicsem_raw.csv \
-  --outdir /results/genomicsem_raw_pipeline \
-  --ld_ref /references/eur_w_ld_chr \
-  --hm3 /references/w_hm3.snplist \
-  --gpca_input_folder /results/prepared/gpca_inputs \
-  --splitby_chr nosplit \
-  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
-```
-
-GenomicSEM munging reads the raw tables, including suitable N/effect/P columns and
-any recognized INFO/frequency fields. A positive manifest N replaces that
-trait's raw-file N. Binary traits require both prevalence values; this wrapper
-does not infer one. See [GenomicSEM LDSC input and sample-size rules](GENOMICSEM_LDSC.md).
-
-To prepare GWAMA tables from VCFs in this route, add a `vcf_files` column alongside
-`sumstats_file` and omit `--gpca_input_folder`. LDSC still uses the supplied raw
-tables; the VCFs supply GWAMA statistics.
-
-<a id="genomicsem-from-munged-files"></a>
-
-## GenomicSEM LDSC from munged files
-
-Produce these files with `ldsc-gpca prepare --mode ldsc --munge_backend genomicsem`
-(or `--mode both`), using the same `--hm3` allele reference for all traits.
-Do not directly reuse Python-munged files: matching the same HapMap reference
-does not guarantee GenomicSEM-compatible allele orientation. Keep the complete
-preparation bundle; reuse checks completion, backend/runtime provenance, checksums,
-N/prevalences and every SNP's exact reference allele order before regression.
-See the [GenomicSEM preparation and reuse example](GENOMICSEM_LDSC.md#reuse-munged-files).
-
-For a single directory, use `/data/traits_genomicsem_munged.csv` with trait names
-and the two prevalence columns:
-
-```bash
-ldsc-gpca pipeline \
-  --ldsc_backend genomicsem \
-  --input /data/traits_genomicsem_munged.csv \
-  --outdir /results/genomicsem_munged_pipeline \
-  --ld_ref /references/eur_w_ld_chr \
-  --munged_dir /data/genomicsem_munged \
-  --gpca_input_folder /results/prepared/gpca_inputs \
-  --splitby_chr nosplit \
-  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
-```
-
-Alternatively, supply `munged_file` paths in the manifest and use
-`--munged_input` in place of `--munged_dir /data/genomicsem_munged`. For example:
-
-```bash
-ldsc-gpca pipeline \
-  --ldsc_backend genomicsem \
-  --input /data/traits_genomicsem_munged_paths.csv \
-  --outdir /results/genomicsem_paths_pipeline \
-  --ld_ref /references/eur_w_ld_chr \
-  --munged_input \
-  --gpca_input_folder /results/prepared/gpca_inputs \
-  --splitby_chr nosplit \
-  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
-```
-
-See the [explicit-path manifest](GENOMICSEM_LDSC.md#reuse-munged-files).
-Do not combine GenomicSEM reuse flags or add Python's `--ldsc_only`. GenomicSEM reuse
-skips munging; it uses the N values already in the files and does not apply raw
-INFO/MAF filters again. To prepare GWAMA inputs instead, include VCF paths and
-omit `--gpca_input_folder` as described above.
+The original Python extraction/munging filters remain in force. GWAMA preparation
+runs independently from the same VCFs. LDSC filters do not filter the GWAMA tables.
 
 <a id="genomicsem-with-explicit-vcf-input"></a>
+<a id="genomicsem-ldsc-with-explicit-vcf-input"></a>
 
-## GenomicSEM LDSC with explicit VCF input
-
-Select `--vcf_input` to convert VCFs directly in the GenomicSEM LDSC stage, retaining
-FORMAT/SI as INFO for GenomicSEM filtering:
+## GenomicSEM LDSC from VCFs
 
 ```bash
 ldsc-gpca pipeline \
   --ldsc_backend genomicsem \
-  --vcf_input \
   --input /data/traits_vcf.csv \
-  --outdir /results/genomicsem_vcf_with_info \
+  --outdir /results/four_traits_genomicsem \
   --ld_ref /references/eur_w_ld_chr \
   --hm3 /references/w_hm3.snplist \
   --splitby_chr nosplit \
   --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
 ```
 
-The GenomicSEM LDSC VCFs need `AF,ES,SE,LP,SI` and NEF unless a manifest N override
-is supplied. Binary VCFs require an explicit appropriate N and both prevalences;
-see the [GenomicSEM VCF contract](GENOMICSEM_LDSC.md#start-from-gwas-vcfs).
-For GWAMA, supply prepared tables through `--gpca_input_folder`, or let pipeline
-prepare them from the VCFs. That separate preparation still requires NEF and
-uses it for GWAMA N, independently of a GenomicSEM LDSC N override.
+GenomicSEM VCF conversion is automatic: omit `--vcf_input`. It retains FORMAT/SI
+as INFO in the raw tables for GenomicSEM munging. Quantitative LDSC N uses NEF
+unless manifest N overrides it; binary traits require an appropriate explicit
+N and both prevalences. GWAMA always keeps its original NEF. GenomicSEM's existing
+two-pass LDSC and retained-trait selection are unchanged.
 
-With `--validate_only`, this route converts the VCFs for LDSC and runs LDSC/PCA
-without preparing GWAMA inputs. The conversion writes its raw inputs and
-`GenomicSEM_VCF_*` audits under `ldsc/`; GenomicSEM munging and final RData follow
-the existing workflow. `--p_min` applies to VCF conversion in LDSC and, when
-run, to the separate GWAMA preparation. GenomicSEM extraction uses `--n_cores`;
-GWAMA preparation uses `--prepare_workers`.
-
+<a id="python-from-munged-files"></a>
+<a id="python-ldsc-from-munged-files"></a>
+<a id="genomicsem-from-raw-tables"></a>
+<a id="genomicsem-ldsc-from-raw-tables"></a>
+<a id="genomicsem-from-munged-files"></a>
+<a id="genomicsem-ldsc-from-munged-files"></a>
 <a id="genomicsem-from-quantitative-vcfs"></a>
+<a id="genomicsem-ldsc-from-quantitative-vcfs"></a>
 
-## GenomicSEM LDSC from quantitative VCFs
+## Migrate existing pipeline commands
 
-Without `--vcf_input`, if no raw `sumstats_file` paths and no munged reuse mode are supplied, the GenomicSEM
-pipeline can turn quantitative-trait VCFs into raw tables for GenomicSEM munging:
+Version 0.8.0 introduces the VCF-only contract as an intentional CLI change. Pipeline rejects
+`--ldsc_only`, `--munged_dir`, `--munged_input`, `--gpca_input_folder`,
+`--ldsc_results` and `--vcf_input`; it does not silently ignore them.
 
-```bash
-ldsc-gpca pipeline \
-  --ldsc_backend genomicsem \
-  --input /data/traits_vcf.csv \
-  --outdir /results/genomicsem_vcf_pipeline \
-  --ld_ref /references/eur_w_ld_chr \
-  --hm3 /references/w_hm3.snplist \
-  --splitby_chr nosplit \
-  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
-```
+| Your existing input | Use instead |
+| --- | --- |
+| Python LDSC munged files | [Standalone Python LDSC](PYTHON_LDSC.md#start-from-munged-files), then GPCA |
+| GenomicSEM raw or compatible munged files | [Standalone GenomicSEM LDSC](GENOMICSEM_LDSC.md), then GPCA |
+| Completed Python LDSC estimates | [Python LDSC results to GPCA/GWAMA](PYTHON_GPCA.md) |
+| Completed GenomicSEM LDSC RData | [GenomicSEM LDSC results to GPCA/GWAMA](GENOMICSEM_GPCA.md) |
+| Prepared GWAMA tables | Pass `--gpca_input_folder` to the appropriate standalone GPCA command |
 
-VCFs need the **preparation** fields `AF,ES,SE,LP,NEF`. Pipeline automatically
-requests the additional raw tables, then munges them with GenomicSEM. These
-raw tables use N=NEF and contain **no INFO**, so `--info_filter` cannot provide
-INFO-based filtering for this route. Existing GWAMA tables can be supplied,
-but the VCFs are still needed to create the LDSC raw inputs.
-
-This older fallback refuses binary traits because the appropriate GenomicSEM N
-convention cannot be inferred. Use the explicit `--vcf_input` route with an
-appropriate manifest N and both prevalences, or supply raw/munged GenomicSEM inputs.
-The fallback is a pipeline feature; standalone `genomicsem ldsc` requires
-`--vcf_input` to read VCFs.
+For an existing VCF-based GenomicSEM pipeline command with `--vcf_input`, simply
+remove that switch. The same INFO-preserving adapter now runs automatically.
+The older implicit quantitative-VCF fallback (N=NEF, no INFO) is removed from
+pipeline. Runs that used it can retain different SNPs because INFO filtering
+now applies; binary inputs also require explicit N. No estimator source changed.
 
 ## Run LDSC and PCA without GWAMA
 
@@ -282,11 +149,10 @@ ldsc-gpca pipeline \
   --validate_only
 ```
 
-This **runs LDSC**, then checks its results and calculates PCA. It skips GWAMA,
-SNP-result export and ordinary GWAMA-only preparation. It does not check GWAMA
-SNP tables. The older GenomicSEM VCF fallback still needs preparation to create LDSC raw
-tables; requesting `--write_munge_inputs` also requires preparation. For PCA
-from already completed results, use a standalone GPCA command instead.
+This still extracts VCFs, munges, runs LDSC and calculates PCA. It skips GWAMA,
+export and GWAMA preparation unless `--write_munge_inputs` is requested.
+GenomicSEM likewise converts VCFs inside its LDSC stage. For PCA from saved
+LDSC results, use a standalone GPCA command.
 
 ## Change filters, PCA and export settings
 
@@ -321,7 +187,7 @@ Omit `--gwama_output_n_eff` to retain GWAMA's reported N_eff. The override affec
 only the selected-column summary; it does not change calculation N, Z, P, BETA,
 SE or the full combined output.
 
-For GenomicSEM input, use `--info_filter` and `--maf_filter` for raw munging. Omit
+For GenomicSEM LDSC, use `--info_filter` and `--maf_filter` for raw munging. Omit
 `--chisq_max` to use GenomicSEM automatic filtering, or supply a positive number;
 GenomicSEM does not accept the string `auto`. GenomicSEM GPCA uses its own `S_Stand` or
 `S`, so Python's `--rg_normalization` and `--heritability_scale` do not apply.
@@ -343,7 +209,7 @@ timings and failures are recorded.
   manifests/
   prepare/                         # when preparation is needed
     gpca_inputs/
-    munge_inputs/                  # only when requested/needed
+    munge_inputs/                  # only with --write_munge_inputs
   ldsc/
     ldsc_results.csv               # Python backend
     genomicsem_LDSC.RData           # GenomicSEM backend instead
@@ -384,23 +250,20 @@ Inspect all removal reports because changing traits changes PC1.
 
 Use `ldsc-gpca pipeline --ldsc_backend python --help` for Python defaults or `ldsc-gpca pipeline --ldsc_backend genomicsem --help` for GenomicSEM defaults. Required options have no default. “Off” flags are omitted. Backend-specific flags must match the selected backend.
 
-Preparation settings act only when that stage runs. Raw extraction/munging filters are not reapplied to existing munged files. Export settings do not change the analysis and are skipped by `--validate_only`.
+Preparation settings apply to VCFs. Every pipeline run extracts and munges for LDSC; full runs also prepare GWAMA tables. Export settings do not change the analysis and are skipped by `--validate_only`.
 
-### Files and input modes
+<a id="files-and-input-modes"></a>
+
+### VCF manifest and references
 
 | Option | Backend | Default and effect |
 | --- | --- | --- |
-| `--input` | Both | **Required**. Manifest CSV. Use the schema for your selected input mode; preserve trait order. |
+| `--input` | Both | **Required**. Manifest CSV. Requires traitname,vcf_files,sample_prevalence,population_prevalence; preserve trait order. |
 | `--outdir` | Both | **Required**. Pipeline root directory; must not already exist. No whole-run resume. |
 | `--ldsc_backend` | Both | **`python`**. `python` or `genomicsem`; selects LDSC and the matching GPCA reader. Backend-specific flags differ. |
 | `--ld_ref` | Both | **Required**. Directory of chromosome LD scores and M reference files. |
 | `--ld_weights` | Both | **Use `--ld_ref`**. Optional separate directory of regression-weight LD scores. |
-| `--hm3` | Both | **Unset**. Whitespace SNP/A1/A2 allele reference, required for munging or optional raw-table preparation. Pipeline derives the SNP-only preparation list. |
-| `--ldsc_only` | Python | **Off**. Reuse Python munged files; skip extraction/munging. Their INFO/MAF and other extraction filters are not reapplied. |
-| `--munged_dir` | Both | **Unset**. Python: requires --ldsc_only too. GenomicSEM: reuse files from `prepare --munge_backend genomicsem`; mutually exclusive with --munged_input. See backend file/provenance rules. |
-| `--munged_input` | GenomicSEM | **Off**. Reuse manifest `munged_file` paths from `prepare --munge_backend genomicsem`; mutually exclusive with `--munged_dir`. |
-| `--vcf_input` | GenomicSEM | **Off**. Convert manifest `vcf_files` to raw tables with INFO during the GenomicSEM LDSC stage. Mutually exclusive with either munged mode; binary traits require an appropriate explicit manifest N. |
-| `--gpca_input_folder` | Both | **Unset**. Directory of existing nine-column GWAMA tables. Otherwise prepare from manifest VCFs for a full run. Not needed for ordinary validation-only runs. |
+| `--hm3` | Both | **Required**. Whitespace SNP/A1/A2 allele reference. Pipeline derives a SNP-only list only for optional legacy raw-table export. |
 
 ### VCF preparation and file layout
 
@@ -408,8 +271,8 @@ Preparation settings act only when that stage runs. Raw extraction/munging filte
 | --- | --- | --- |
 | `--splitby_chr` | Both | **`split`**. `split`: all chromosomes 1–22 per trait. `nosplit`: one autosomal table per trait. Preparation and GWAMA must use matching layouts. |
 | `--gpca_id_source` | Both | **`chr_pos_ref_alt`**. `chr_pos_ref_alt` or `vcf_id` for prepared GWAMA SNPIDs. Choose compatible IDs across traits. |
-| `--p_min` | Both | **`1e-300`**. VCF preparation P floor, also used by GenomicSEM `--vcf_input`. Does not change ES/SE-derived GWAMA Z; it can change extreme Z reconstructed by GenomicSEM munging. Finite and strictly between 0 and 1. |
-| `--write_munge_inputs` | Both | **Off**. Also request HapMap-selected raw tables. Automatically enabled for the older GenomicSEM VCF fallback. Requires suitable VCFs and --hm3 even in validation-only mode. |
+| `--p_min` | Both | **`1e-300`**. VCF preparation P floor, also used by automatic GenomicSEM VCF conversion. Does not change ES/SE-derived GWAMA Z; it can change extreme Z reconstructed by GenomicSEM munging. Finite and strictly between 0 and 1. |
+| `--write_munge_inputs` | Both | **Off**. Also export legacy HapMap-selected raw tables with GWAMA preparation. Does not select the LDSC input route; LDSC still processes the VCFs. |
 | `--munge_id_source` | Both | **`vcf_id`**. `vcf_id` or `chr_pos_ref_alt` for optional raw-table SNP IDs; must match HapMap IDs. |
 | `--prepare_workers` | Both | **`4`**. Positive integer; workers for VCF preparation, separate from LDSC/GWAMA workers. |
 
@@ -428,8 +291,8 @@ Preparation settings act only when that stage runs. Raw extraction/munging filte
 | `--remove_palindrome` | Python | **Off**. Python extraction: remove A/T and C/G variants within the specified AF interval. Python munging later removes all palindromic SNPs regardless. |
 | `--paliandromaf_lower` | Python | **`0.45`**. Lower AF bound for extraction palindrome removal; use this exact option spelling. Bounds must satisfy 0 ≤ lower ≤ upper ≤ 1. |
 | `--paliandromaf_upper` | Python | **`0.55`**. Upper AF bound for extraction palindrome removal; use this exact option spelling. |
-| `--info_filter` | GenomicSEM | **`0.9`**. GenomicSEM raw munging: inclusive INFO threshold from 0 to 1, when a recognized INFO column exists. Inactive for munged reuse. |
-| `--maf_filter` | GenomicSEM | **`0.01`**. GenomicSEM raw munging: inclusive MAF threshold from 0 to 0.5, when recognized frequency data exist. Inactive for munged reuse. |
+| `--info_filter` | GenomicSEM | **`0.9`**. GenomicSEM raw munging: inclusive INFO threshold from 0 to 1, when a recognized INFO column exists. |
+| `--maf_filter` | GenomicSEM | **`0.01`**. GenomicSEM raw munging: inclusive MAF threshold from 0 to 0.5, when recognized frequency data exist. |
 | `--chisq_max` | Both | **Python: disabled; GenomicSEM: automatic**. Python accepts a positive integer or auto; GenomicSEM accepts a positive number and uses automatic filtering when omitted. Both act on LDSC, with different implementations; see recipes above. |
 | `--chromosomes` | GenomicSEM | **`22`**. GenomicSEM LDSC: use reference chromosomes 1 through this integer (1–22). Does not change GWAMA split-file requirements. |
 | `--n_blocks` | GenomicSEM | **`200`**. GenomicSEM LDSC: requested jackknife blocks, integer ≥2. Pinned GenomicSEM overrides the count for more than 18 traits; inspect its log. |
@@ -467,10 +330,10 @@ Preparation settings act only when that stage runs. Raw extraction/munging filte
 
 | Option | Backend | Default and effect |
 | --- | --- | --- |
-| `--validate_only` | Both | **Off**. Run LDSC and then QC/PCA; skip GWAMA/export. Preparation still runs if needed for GenomicSEM VCF LDSC inputs or --write_munge_inputs. Does not inspect GWAMA tables. |
+| `--validate_only` | Both | **Off**. Run LDSC and then QC/PCA; skip GWAMA/export. VCF extraction/munging still runs. GWAMA preparation is skipped unless --write_munge_inputs is requested. Does not inspect GWAMA tables. |
 | `--source_path` | Both | **Bundled modified GWAMA**. Optional custom R source defining the expected modified GWAMA function and output interface. Unused in validation-only mode. |
 | `--n_cores` | Both | **`1` (GenomicSEM), `5` (Python)**. Positive integer forwarded to LDSC and GPCA/export. GenomicSEM LDSC regression remains sequential; --prepare_workers is separate. |
-| `--bcftools` | Both | **`bcftools` on PATH**. Executable name/path for VCF extraction or preparation; unnecessary when neither runs. |
+| `--bcftools` | Both | **`bcftools` on PATH**. Executable name/path; required for VCF extraction and preparation. |
 | `--conda_executable` | Python | **`CONDA_EXE`, otherwise `conda`**. Executable name/path used to launch the child Python LDSC environment. |
 | `--ldsc_env` | Python | **Configured prefix, otherwise `ldsc-cbiit`**. Explicit child environment name, mutually exclusive with `--ldsc_env_prefix`. The supplied installer configures a prefix, so normally omit both. |
 | `--ldsc_env_prefix` | Python | **`LDSC_GPCA_LDSC_PREFIX` when set**. Explicit child environment directory overrides the saved prefix; mutually exclusive with `--ldsc_env`. Without a prefix, use the named environment. |

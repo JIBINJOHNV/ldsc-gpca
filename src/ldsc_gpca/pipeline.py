@@ -17,7 +17,6 @@ from .ldsc import ldsc_parser
 
 
 COMMON_GPCA = {
-    'gpca_input_folder': (str, None, None, 'Existing nine-column GWAMA input directory. Default: prepare from vcf_files unless --validate_only.'),
     'source_path': (str, None, None, 'Optional already-modified GWAMA source. Default: bundled GWAMA function.'),
     'splitby_chr': (str, 'split', ['split', 'nosplit'], 'GWAMA file layout.'),
     'failed_ldsc_action': (str, 'error', ['error', 'drop_traits'], 'GPCA failed-estimate policy; dropping traits changes PC1.'),
@@ -47,32 +46,30 @@ def build_parser(backend='python'):
     parser = HelpParser(prog='ldsc-gpca pipeline', add_help=False,
         parents=[copy.deepcopy(ldsc_parser(backend)), postprocess_parser()],
         usage='%(prog)s --input MANIFEST.csv --outdir DIRECTORY --ld_ref DIRECTORY [options]',
-        description='One command: preparation -> selected LDSC backend -> GPCA/GWAMA -> export.',
+        description='GWAS VCFs -> preparation -> selected LDSC backend -> GPCA/GWAMA -> export.',
         epilog='''INPUT AND EXECUTION
-  --input: comma-separated CSV, >=2 unique traitname values, sample_prevalence,
-    population_prevalence. Relative file paths resolve beside this manifest.
-  Python VCF: vcf_files, with the existing Python ldsc VCF schema. ref may be
-    omitted; pipeline sets every trait to yes for complete pair/self coverage.
-    If ref is supplied, every value must already be yes.
-  Python reuse: --ldsc_only --munged_dir; keep required prevalence sidecars.
-  GenomicSEM: sumstats_file, or --munged_dir, or --munged_input + munged_file.
-    Reused munged files must come from prepare --mode ldsc (or --mode both) with
-    --munge_backend genomicsem and the same --hm3 allele reference for all traits.
-    Do not directly reuse Python-munged files; HapMap matching can retain strand
-    complements. Keep completed preparation bundles; reuse verifies provenance,
-    checksums, N/prevalences and exact reference allele order before regression.
-    --vcf_input selects the GenomicSEM INFO-preserving VCF adapter; binary traits
+  --input: comma-separated CSV, >=2 unique traitname values, vcf_files,
+    sample_prevalence and population_prevalence. Relative VCF paths resolve
+    beside this manifest. Each VCF must contain exactly one GWAS sample.
+  Study inputs are GWAS summary-statistics VCFs only. Both backends prepare
+    GWAMA SNP tables automatically and run munging and LDSC from the VCFs.
+  Python LDSC keeps its existing VCF fields and filters. ref may be omitted;
+    pipeline sets every trait to yes for complete pair/self coverage.
+  GenomicSEM LDSC automatically uses its INFO-preserving VCF adapter.
+    Quantitative N uses FORMAT/NEF unless manifest N overrides it. Binary traits
     require an appropriate explicit manifest N and both prevalences.
-    Without --vcf_input or those LDSC tables, the older quantitative VCF fallback
-    uses preparation's raw tables (N=NEF, no INFO). That fallback refuses binary
-    traits. GenomicSEM munging aligns retained alleles to --hm3; no ancestry/build
-    harmonisation or additional allele harmonisation of reused files is performed.
-  GWAMA: --gpca_input_folder with nine-column TSVs, or vcf_files for preparation.
-    Bundled GWAMA requires a justified --gwama_output_info for final export.
+    GWAMA uses FORMAT/NEF independently of the LDSC N override.
+  --hm3 and --ld_ref are required references, not study-data input routes.
+  Already prepared inputs belong to standalone commands: use ldsc for raw or
+    compatible munged files, and gpca / genomicsem gpca for completed LDSC
+    results and existing GWAMA tables. Pipeline rejects --ldsc_only,
+    --munged_dir, --munged_input and --gpca_input_folder. Omit --vcf_input:
+    GenomicSEM VCF conversion is automatic. No legacy VCF fallback is used.
+  Bundled GWAMA requires a justified --gwama_output_info for final export.
   --outdir must not exist. Writes prepare/, ldsc/, gpca/, manifests/ and
     Pipeline_Run_Status.json. Existing module outputs/headers are unchanged.
-  --validate_only still RUNS LDSC, then PCA, but skips GWAMA/export. GenomicSEM VCF
-    conversion still needs preparation to provide unmunged LDSC inputs.
+  --validate_only still RUNS VCF extraction, munging, LDSC and PCA. It skips
+    GWAMA/export. GWAMA preparation runs only if --write_munge_inputs is requested.
   --chisq_max: Python accepts a positive integer or auto; GenomicSEM a positive
     number. Keep Z^2 <= cutoff independently per trait for LDSC only.
     Omitted: Python filter disabled; GenomicSEM automatic rule.
@@ -103,22 +100,31 @@ def build_parser(backend='python'):
         # hm3 and Python bcftools already belong to the inherited LDSC parser.
         if not any(flag in parser._option_string_actions for flag in action.option_strings):
             group._add_action(copy.deepcopy(action))
-    # Resume is a standalone LDSC operation; pipeline always requires a fresh outdir.
-    if backend == 'python':
-        action = parser._option_string_actions.pop('--restart')
+    # Keep standalone parsers intact; remove their input-mode actions from this copy.
+    removed = {'--restart', '--ldsc_only', '--munged_dir', '--munged_input', '--vcf_input'}
+    for flag in removed:
+        action = parser._option_string_actions.get(flag)
+        if action is None:
+            continue
+        for option in action.option_strings:
+            parser._option_string_actions.pop(option, None)
         parser._remove_action(action)
-        for group in parser._action_groups:
+        for group in [*parser._action_groups, *parser._mutually_exclusive_groups]:
             if action in group._group_actions:
                 group._group_actions.remove(action)
-                group.title = 'LDSC execution and failed results'
-        parser._option_string_actions['--munged_dir'].help = 'Existing munged files; required together with --ldsc_only. Default: unset; extract and munge VCFs.'
+    parser._mutually_exclusive_groups[:] = [
+        group for group in parser._mutually_exclusive_groups if group._group_actions]
+    # Internal adapter settings, never user-selectable pipeline input modes.
+    parser.set_defaults(ldsc_only=False, munged_dir=None, munged_input=False,
+                        vcf_input=backend == 'genomicsem')
+    parser._option_string_actions['--input'].help = 'VCF manifest CSV with traitname,vcf_files,sample_prevalence,population_prevalence; at least two traits.'
     parser._option_string_actions['--outdir'].help = 'Fresh pipeline output directory; must not already exist.'
     parser._option_string_actions['--n_cores'].help = 'LDSC and GPCA/export workers; integer >=1. GenomicSEM LDSC regression remains sequential.'
     parser._option_string_actions['--dataset_id'].help = 'Final export filename prefix. Default: pipeline --outdir directory name.'
-    parser._option_string_actions['--hm3'].help = 'Whitespace reference with SNP,A1,A2 headers. Default: unset; required whenever munging or munging-table preparation runs.'
+    parser._option_string_actions['--hm3'].help = 'Required whitespace reference with SNP,A1,A2 headers for VCF munging.'
     parser._option_string_actions['--bcftools'].help = 'Local executable/path; required for VCF extraction or preparation. Default: bcftools on PATH.'
-    parser._option_string_actions['--write_munge_inputs'].help = 'Also request HapMap-selected raw tables. Default: off; enabled automatically for the older GenomicSEM VCF fallback without --vcf_input.'
-    parser._option_string_actions['--p_min'].help = 'VCF preparation P floor; also used by GenomicSEM --vcf_input. Default: 1e-300; range (0,1). Does not change GWAMA Z, but can affect Z reconstructed by GenomicSEM munging.'
+    parser._option_string_actions['--write_munge_inputs'].help = 'Also export legacy HapMap-selected raw tables alongside GPCA preparation. Default: off; LDSC still uses its own VCF route.'
+    parser._option_string_actions['--p_min'].help = 'VCF preparation P floor; also used by automatic GenomicSEM VCF conversion. Default: 1e-300; range (0,1). Does not change GWAMA Z, but can affect Z reconstructed by GenomicSEM munging.'
     return parser
 
 
@@ -153,9 +159,14 @@ def resolve_inputs(opts):
     from .utils import optional_prevalence
     manifest = Path(opts.input).resolve()
     columns, rows = read_manifest(manifest)
-    required = {'traitname', 'sample_prevalence', 'population_prevalence'}
+    required = {'traitname', 'vcf_files', 'sample_prevalence', 'population_prevalence'}
     if not required.issubset(columns) or len(rows) < 2:
-        raise ValueError('Pipeline manifest requires >=2 rows and traitname,sample_prevalence,population_prevalence headers.')
+        raise ValueError('Pipeline requires VCF inputs: >=2 rows and traitname,vcf_files,sample_prevalence,population_prevalence headers. Use standalone ldsc or gpca commands for prepared inputs.')
+    prepared_columns = [column for column in ('sumstats_file', 'munged_file')
+                        if any((row.get(column) or '').strip() for row in rows)]
+    if prepared_columns:
+        raise ValueError('Pipeline accepts VCF study inputs only; remove populated ' +
+                         ', '.join(prepared_columns) + ' columns, or use standalone ldsc for these files.')
     if any(isinstance(value, float) and not math.isfinite(value) for value in vars(opts).values()):
         raise ValueError('Pipeline numeric options must be finite.')
     names = [row['traitname'] for row in rows]
@@ -170,10 +181,10 @@ def resolve_inputs(opts):
         population = optional_prevalence(row['population_prevalence'], name + ': population_prevalence')
         if opts.ldsc_backend == 'genomicsem' and (sample is None) != (population is None):
             raise ValueError(name + ': GenomicSEM requires both prevalences or neither.')
-        for column in ('vcf_files', 'sumstats_file', 'munged_file'):
-            if row.get(column):
-                path = Path(row[column])
-                row[column] = str((manifest.parent / path).resolve() if not path.is_absolute() else path.resolve())
+        path = Path(row['vcf_files'] or '')
+        if not row['vcf_files'] or not (manifest.parent / path).is_file():
+            raise ValueError(f'{name}: missing vcf_files file.')
+        row['vcf_files'] = str((manifest.parent / path).resolve())
     if opts.n_cores < 1 or opts.prepare_workers < 1:
         raise ValueError('Pipeline --n_cores and --prepare_workers must be >=1.')
     for name in ('chisq_max', 'p_min'):
@@ -187,43 +198,26 @@ def resolve_inputs(opts):
         filename_component(opts.dataset_id)
     if not opts.validate_only and opts.source_path is None and opts.info_value is None:
         raise ValueError('Bundled GWAMA omits INFO; full pipeline export requires a scientifically justified --gwama_output_info.')
-    for name in ('ld_ref', 'ld_weights', 'hm3', 'munged_dir', 'gpca_input_folder', 'source_path'):
+    for name in ('ld_ref', 'ld_weights', 'hm3', 'source_path'):
         value = getattr(opts, name, None)
         if value:
             path = Path(value).resolve()
             if not path.exists():
                 raise ValueError('--' + name + ' does not exist: ' + str(path))
             setattr(opts, name, str(path))
-    reuse = bool(getattr(opts, 'ldsc_only', False) or opts.munged_dir or getattr(opts, 'munged_input', False))
     if opts.ldsc_backend == 'python':
-        if bool(opts.ldsc_only) != bool(opts.munged_dir):
-            raise ValueError('Pipeline Python reuse requires --ldsc_only and --munged_dir together.')
         if 'ref' in columns and any(row['ref'] != 'yes' for row in rows):
             raise ValueError('Pipeline needs complete GPCA pair coverage: every supplied ref must be yes.')
         if 'ref' not in columns:
             columns.append('ref')
         for row in rows:
             row['ref'] = 'yes'
-    direct_native_vcf = opts.ldsc_backend == 'genomicsem' and opts.vcf_input
-    native_vcf = opts.ldsc_backend == 'genomicsem' and not reuse and not direct_native_vcf and not any(row.get('sumstats_file') for row in rows)
-    if native_vcf and any(optional_prevalence(row['population_prevalence'], row['traitname']) is not None for row in rows):
-        raise ValueError('The older GenomicSEM VCF fallback cannot infer binary N. Use --vcf_input with an appropriate manifest N and both prevalences, or supply raw/munged GenomicSEM tables.')
-    needs_prepare = native_vcf or opts.write_munge_inputs or (not opts.validate_only and not opts.gpca_input_folder)
-    needed_columns = []
-    if needs_prepare or direct_native_vcf or (opts.ldsc_backend == 'python' and not reuse):
-        needed_columns.append('vcf_files')
-    if opts.ldsc_backend == 'genomicsem' and not opts.munged_dir and not native_vcf and not direct_native_vcf:
-        needed_columns.append('munged_file' if opts.munged_input else 'sumstats_file')
-    for column in needed_columns:
-        for row in rows:
-            if not row.get(column) or not Path(row[column]).is_file():
-                raise ValueError(f'{row["traitname"]}: missing {column} file.')
-    if direct_native_vcf:
+    if opts.ldsc_backend == 'genomicsem':
         from .genomicsem_ldsc import resolve_manifest
-        resolve_manifest(opts)  # Apply the same sample-size/prevalence contract before any stage runs.
-    if (not reuse or opts.write_munge_inputs or native_vcf) and not opts.hm3:
-        raise ValueError('--hm3 is required for munging/optional munging-table preparation.')
-    for name in ('ld_ref', 'ld_weights', 'munged_dir', 'gpca_input_folder'):
+        resolve_manifest(opts)  # Reuse the VCF sample-size/prevalence preflight.
+    if not opts.hm3:
+        raise ValueError('--hm3 is required for pipeline VCF munging.')
+    for name in ('ld_ref', 'ld_weights'):
         if getattr(opts, name, None) and not Path(getattr(opts, name)).is_dir():
             raise ValueError('--' + name + ' must be a directory.')
     chromosomes = getattr(opts, 'chromosomes', 22)
@@ -239,12 +233,10 @@ def resolve_inputs(opts):
         with Path(opts.hm3).open() as stream:
             if not {'SNP', 'A1', 'A2'}.issubset(stream.readline().split()):
                 raise ValueError('Pipeline --hm3 needs whitespace-separated SNP,A1,A2 headers.')
-    if native_vcf:
-        print('GenomicSEM VCF route: preparation exports N=NEF and no INFO. Use prior-QC quantitative VCFs; GenomicSEM INFO filtering cannot act on an absent field.', flush=True)
     out = Path(opts.outdir).resolve()
     if out.exists():
         raise ValueError('Pipeline --outdir must not exist; choose a fresh directory (no automatic resume/overwrite).')
-    return out, columns, rows, reuse, native_vcf, needs_prepare
+    return out, columns, rows, not opts.validate_only or opts.write_munge_inputs
 
 
 def prepare_hm3(source, destination):
@@ -310,7 +302,7 @@ def run_stage(name, arguments, required, status, status_path):
 
 def run_pipeline(opts):
     from .gpca import postprocess_parser
-    out, columns, rows, reuse, native_vcf, needs_prepare = resolve_inputs(opts)
+    out, columns, rows, needs_prepare = resolve_inputs(opts)
     out.mkdir(parents=True)
     manifests = out / 'manifests'
     manifests.mkdir()
@@ -325,27 +317,22 @@ def run_pipeline(opts):
     try:
         prepare_manifest = manifests / 'input_traits.csv'
         write_manifest(prepare_manifest, columns, rows)
-        folder = Path(opts.gpca_input_folder) if opts.gpca_input_folder else out/'prepare'/'gpca_inputs'
+        folder = out/'prepare'/'gpca_inputs'
         if needs_prepare:
             args = ['prepare', '--input', str(prepare_manifest), '--outdir', str(out/'prepare'),
                     '--n_cores', str(opts.prepare_workers), '--splitby_chr', opts.splitby_chr,
                     '--p_min', str(opts.p_min), '--gpca_id_source', opts.gpca_id_source, '--bcftools', opts.bcftools]
-            if native_vcf or opts.write_munge_inputs:
+            if opts.write_munge_inputs:
                 hm3 = manifests/'hm3_snps.tsv'
                 prepare_hm3(opts.hm3, hm3)
                 args += ['--write_munge_inputs', '--hm3', str(hm3), '--munge_id_source', opts.munge_id_source]
             run_stage('prepare', args, [out/'prepare'/'gpca_inputs'], status, status_path)
-        if native_vcf:
-            if 'sumstats_file' not in columns:
-                columns.append('sumstats_file')
-            for row in rows:
-                row['sumstats_file'] = str(out/'prepare'/'munge_inputs'/f'{row["traitname"]}_munge_inputs.txt')
         ldsc_manifest = manifests/'ldsc_traits.csv'
         write_manifest(ldsc_manifest, columns, rows)
         ldsc_dir, gpca_dir = out/'ldsc', out/'gpca'
         args = ['ldsc'] if opts.ldsc_backend == 'python' else ['genomicsem', 'ldsc']
         args += optional_actions(ldsc_parser(opts.ldsc_backend), opts,
-            overrides={'input': ldsc_manifest, 'outdir': ldsc_dir, 'hm3': None if reuse else opts.hm3})
+            overrides={'input': ldsc_manifest, 'outdir': ldsc_dir, 'hm3': opts.hm3})
         result = ldsc_dir/('ldsc_results.csv' if opts.ldsc_backend == 'python' else 'genomicsem_LDSC.RData')
         audit = (ldsc_dir/'Selected_Traits.csv' if opts.ldsc_backend == 'genomicsem' else
                  ldsc_dir/'LDSC_Retained_Traits.csv' if opts.result_failure_action == 'drop_traits' else None)
@@ -359,8 +346,6 @@ def run_pipeline(opts):
         args += ['--input', str(selected_manifest), '--ldsc_results', str(result), '--outdir', str(gpca_dir),
                  '--n_cores', str(opts.n_cores)]
         for name in (*COMMON_GPCA, *(PYTHON_GPCA if opts.ldsc_backend == 'python' else {})):
-            if name == 'gpca_input_folder':
-                continue
             value = getattr(opts, name)
             if value is not None:
                 args += ['--' + name, str(value)]
@@ -393,12 +378,26 @@ def main(argv=None):
     selector = HelpParser(add_help=False)
     selector.add_argument('--ldsc_backend', choices=['python', 'genomicsem'], default='python')
     backend = selector.parse_known_args(argv)[0].ldsc_backend
-    if '--prepare_help' in argv or '--postprocess_help' in argv:
-        from .gpca import show_gpca_help
-        show_gpca_help('gpsca_gwama_v2.r' if backend == 'genomicsem' else 'gpsca_gwama_python_ldsc.r', argv,
-                      section='prepare' if '--prepare_help' in argv else 'postprocess')
-        return 0
     parser = build_parser(backend)
+    if '--prepare_help' in argv:
+        from .prepare import add_prepare_options
+        help_parser = HelpParser(prog=parser.prog, add_help=False,
+            description='Automatic preparation of GWAMA SNP tables from pipeline VCF inputs.',
+            epilog='Full pipeline runs always prepare these tables. --validate_only skips them unless '
+                   '--write_munge_inputs is requested. GWAMA preparation requires FORMAT AF,ES,SE,LP,NEF; '
+                   'LDSC also needs the selected backend VCF fields. See pipeline --help and the VCF input guide.')
+        add_prepare_options(help_parser)
+        for flag, action in help_parser._option_string_actions.items():
+            if flag in parser._option_string_actions:
+                action.help = parser._option_string_actions[flag].help
+        help_parser.print_help()
+        return 0
+    if '--postprocess_help' in argv:
+        from .gpca import postprocess_parser
+        help_parser = postprocess_parser()
+        help_parser.prog = parser.prog
+        help_parser.print_help()
+        return 0
     if not argv:
         parser.print_help()
         return 0

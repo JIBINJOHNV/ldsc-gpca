@@ -139,8 +139,7 @@ trait, plus QC reports. Each file has nine tab-separated columns:
 SNPID CHR BP EA OA EAF N Z P
 ```
 
-Pass the `gpca_inputs/` subdirectory to `--gpca_input_folder` when running GPCA
-or pipeline, with the same `--splitby_chr` setting.
+Pass the `gpca_inputs/` subdirectory to `--gpca_input_folder` when running standalone GPCA, with the same `--splitby_chr` setting.
 
 ## Prepare shared raw LDSC inputs
 
@@ -338,7 +337,8 @@ SNP CHR POS A1 A2 eaf_A1 beta se N p
 That legacy export uses N=NEF and contains no INFO. It does not run munging.
 For the new shared schema with INFO, use `--mode both --raw_only` instead.
 Do not combine the legacy flag with `--mode ldsc`, `--mode both` or `--raw_only`.
-This preserves existing pipeline behavior; the new standalone modes are explicit.
+Pipeline may request this extra export, but always uses its backend VCF route
+for LDSC. Standalone preparation modes remain separate.
 
 ## All options
 

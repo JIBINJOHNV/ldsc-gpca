@@ -14,7 +14,7 @@ def main(argv=None):
     parser = HelpParser(
         prog="ldsc-gpca", description="Python LDSC and R genomicPCA/GWAMA workflows.",
         epilog="""AVAILABLE WORKFLOWS
-  pipeline         Preparation -> Python/GenomicSEM LDSC -> GPCA/GWAMA/export.
+  pipeline         GWAS VCFs -> Python/GenomicSEM LDSC -> GPCA/GWAMA/export.
   prepare          VCF -> GPCA inputs, shared raw LDSC tables and optional munging.
   ldsc             Munging/LDSC with --ldsc_backend python (default) or genomicsem.
   ldsc.py          Run the raw pinned CBIIT ldsc.py command.
@@ -26,6 +26,8 @@ def main(argv=None):
 NOTES
   Numerical libraries default to one thread per worker; existing environment
   settings are preserved. Use --n_cores to choose analysis workers.
+  Pipeline accepts VCF study inputs only and prepares all analysis inputs.
+  Use standalone ldsc/gpca commands to reuse prepared inputs or completed fits.
   Preparation can stop after munging; ldsc also runs the selected regression.
   ldsc/pipeline use --ldsc_backend for both munging and regression.
   Standalone prepare uses --munge_backend; do not supply it to ldsc/pipeline.

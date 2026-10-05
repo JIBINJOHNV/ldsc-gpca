@@ -129,10 +129,7 @@ class PipelineTests(unittest.TestCase):
         gpca = self.calls[-1]
         self.assertEqual(gpca[gpca.index('--ldsc_results')+1], str(self.out/'ldsc/ldsc_results.csv'))
 
-    def test_native_unmunged_handoff_and_cutoff(self):
-        self.columns.append('sumstats_file')
-        for row in self.rows: row.append('raw.tsv')
-        self.save_manifest()
+    def test_genomicsem_vcf_handoff_and_cutoff(self):
         self.assertEqual(self.run_mock(self.args('genomicsem', '--chisq_max', '80')), 0)
         self.assertEqual([args[:2] for args in self.calls[1:]], [['genomicsem','ldsc'],['genomicsem','gpca']])
         _, selected = read_manifest(self.out/'manifests/gpca_traits.csv')
@@ -144,43 +141,52 @@ class PipelineTests(unittest.TestCase):
         gpca = self.calls[-1]
         self.assertEqual(gpca[gpca.index('--ldsc_results')+1], str(self.out/'ldsc/genomicsem_LDSC.RData'))
 
-    def test_native_quantitative_vcf_uses_existing_preparation_exports(self):
+    def test_genomicsem_vcf_automatically_uses_info_preserving_adapter(self):
         self.assertEqual(self.run_mock(self.args('genomicsem')), 0)
-        self.assertIn('--write_munge_inputs', self.calls[0])
-        selected_hm3 = Path(self.calls[0][self.calls[0].index('--hm3')+1])
-        self.assertEqual(selected_hm3.read_text(), 'SNP\nrs1\nrs2\n')
+        self.assertNotIn('--write_munge_inputs', self.calls[0])
+        self.assertIn('--vcf_input', self.calls[1])
         self.assertEqual(self.calls[1][self.calls[1].index('--hm3')+1], str(self.hm3))
-        _, rows = read_manifest(self.out/'manifests/ldsc_traits.csv')
-        for row in rows:
-            self.assertEqual(row['sumstats_file'], str(self.out/'prepare/munge_inputs'/f'{row["traitname"]}_munge_inputs.txt'))
+        columns, rows = read_manifest(self.out/'manifests/ldsc_traits.csv')
+        self.assertNotIn('sumstats_file', columns)
+        self.assertTrue(all(row['vcf_files'] == str(self.vcf) for row in rows))
         self.assertNotIn('--chisq_max', self.calls[1])
+        self.assertEqual(self.calls[-1][self.calls[-1].index('--gpca_input_folder')+1],
+                         str(self.out/'prepare/gpca_inputs'))
 
-    def test_existing_munged_and_prepared_files_both_backends(self):
-        self.columns.remove('vcf_files')
-        for row in self.rows:
-            del row[1]
-        self.save_manifest()
-        for backend, flags in [('python',['--ldsc_only']), ('genomicsem',[])]:
-            with self.subTest(backend=backend):
-                self.out = self.root/backend
-                self.calls.clear()
-                self.assertEqual(self.run_mock(self.args(backend, '--munged_dir', str(self.munged),
-                    '--gpca_input_folder', str(self.prepared), *flags)), 0)
-                self.assertEqual(len(self.calls), 2)
-                self.assertNotIn('--hm3', self.calls[0])
-                self.assertIn('--munged_dir', self.calls[0])
-                self.assertEqual(self.calls[-1][self.calls[-1].index('--gpca_input_folder')+1], str(self.prepared))
+    def test_prepared_input_flags_fail_before_work_and_preserve_inputs(self):
+        before = {p: p.read_bytes() for p in self.munged.iterdir()}
+        for backend in ('python', 'genomicsem'):
+            for flags in (['--ldsc_only'], ['--munged_dir', str(self.munged)],
+                          ['--munged_input'], ['--gpca_input_folder', str(self.prepared)],
+                          ['--ldsc_results', str(self.raw)], ['--vcf_input']):
+                with self.subTest(backend=backend, flags=flags), patch.object(pipeline.subprocess, 'run') as run:
+                    with self.assertRaises(SystemExit) as raised:
+                        pipeline.main(self.args(backend, *flags))
+                    self.assertEqual(raised.exception.code, 2)
+                    run.assert_not_called()
+                    self.assertFalse(self.out.exists())
+        self.assertEqual(before, {p: p.read_bytes() for p in self.munged.iterdir()})
 
-    def test_native_explicit_munged_paths(self):
-        self.columns.append('munged_file')
-        for row in self.rows: row.append(f'munged/{row[0]}.sumstats.gz')
-        self.save_manifest()
-        self.assertEqual(self.run_mock(self.args('genomicsem', '--munged_input', '--validate_only')), 0)
-        self.assertEqual(len(self.calls), 2)
-        self.assertIn('--munged_input', self.calls[0]); self.assertNotIn('--hm3', self.calls[0])
+    def test_raw_and_munged_manifest_paths_rejected_even_alongside_vcfs(self):
+        for backend in ('python', 'genomicsem'):
+            for column in ('sumstats_file', 'munged_file'):
+                with self.subTest(backend=backend, column=column), patch.object(pipeline.subprocess, 'run') as run:
+                    csv_file(self.manifest, self.columns + [column], [row + [str(self.raw)] for row in self.rows])
+                    self.assertEqual(pipeline.main(self.args(backend)), 1)
+                    run.assert_not_called()
+                    self.assertFalse(self.out.exists())
 
-    def test_native_explicit_vcf_is_converted_in_ldsc_not_gwama_preparation(self):
-        self.assertEqual(self.run_mock(self.args('genomicsem', '--vcf_input', '--validate_only')), 0)
+    def test_both_backends_require_vcf_manifest_even_for_validation_only(self):
+        csv_file(self.manifest, ['traitname','sample_prevalence','population_prevalence'],
+                 [['A','',''], ['B','','']])
+        for backend in ('python', 'genomicsem'):
+            with self.subTest(backend=backend), patch.object(pipeline.subprocess, 'run') as run:
+                self.assertEqual(pipeline.main(self.args(backend, '--validate_only')), 1)
+                run.assert_not_called()
+                self.assertFalse(self.out.exists())
+
+    def test_genomicsem_validation_only_converts_in_ldsc_not_gwama_preparation(self):
+        self.assertEqual(self.run_mock(self.args('genomicsem', '--validate_only')), 0)
         self.assertEqual([args[:2] for args in self.calls], [['genomicsem','ldsc'], ['genomicsem','gpca']])
         self.assertIn('--vcf_input', self.calls[0])
         self.assertIn('--hm3', self.calls[0])
@@ -189,27 +195,55 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('vcf_files', columns)
         self.assertNotIn('sumstats_file', columns)
 
-    def test_native_binary_vcf_n_validated_before_running_stages(self):
+    def test_genomicsem_binary_vcf_n_validated_before_running_stages(self):
         for row in self.rows:
             row[2:4] = ['.5', '.1']
         self.save_manifest()
-        with patch.object(pipeline.subprocess, 'run') as run:
-            self.assertEqual(pipeline.main(self.args('genomicsem','--vcf_input','--validate_only')), 1)
-            run.assert_not_called()
-        self.assertFalse(self.out.exists())
+        for bad_n in (None, '', 'NA', 'nan', '-1', '0', 'inf', 'malformed'):
+            with self.subTest(N=bad_n), patch.object(pipeline.subprocess, 'run') as run:
+                csv_file(self.manifest, self.columns + ([] if bad_n is None else ['N']),
+                         [row + ([] if bad_n is None else [bad_n]) for row in self.rows])
+                self.assertEqual(pipeline.main(self.args('genomicsem','--validate_only')), 1)
+                run.assert_not_called()
+                self.assertFalse(self.out.exists())
         self.columns.append('N')
         for row in self.rows:
             row.append('35000')
         self.save_manifest()
-        self.assertEqual(self.run_mock(self.args('genomicsem','--vcf_input',
-            '--gpca_input_folder',str(self.prepared))),0)
-        self.assertEqual(len(self.calls),2)
-        self.assertIn('--vcf_input',self.calls[0])
+        self.assertEqual(self.run_mock(self.args('genomicsem')), 0)
+        self.assertEqual(len(self.calls), 3)
+        self.assertIn('--vcf_input', self.calls[1])
+        _, rows = read_manifest(self.out/'manifests/ldsc_traits.csv')
+        self.assertTrue(all(row['N'] == '35000' for row in rows))
 
-    def test_native_vcf_mode_cannot_be_combined_with_munged_modes(self):
-        for flags in (['--munged_input'], ['--munged_dir', str(self.munged)]):
-            with self.subTest(flags=flags), self.assertRaises(SystemExit):
-                pipeline.main(self.args('genomicsem','--vcf_input',*flags))
+    def test_blank_prepared_columns_are_unused_and_vcf_paths_remain_authoritative(self):
+        csv_file(self.manifest, self.columns + ['sumstats_file','munged_file'],
+                 [row + ['', '   '] for row in self.rows])
+        self.assertEqual(self.run_mock(self.args('genomicsem')), 0)
+        self.assertIn('--vcf_input', self.calls[1])
+
+    def test_hapmap_is_required_for_both_backends_before_output_creation(self):
+        for backend in ('python', 'genomicsem'):
+            args = self.args(backend)
+            index = args.index('--hm3')
+            del args[index:index+2]
+            with self.subTest(backend=backend), patch.object(pipeline.subprocess,'run') as run:
+                self.assertEqual(pipeline.main(args), 1)
+                run.assert_not_called()
+                self.assertFalse(self.out.exists())
+
+    def test_optional_legacy_raw_export_does_not_select_an_ldsc_input_route(self):
+        for backend in ('python', 'genomicsem'):
+            with self.subTest(backend=backend):
+                self.out = self.root/backend
+                self.calls.clear()
+                self.assertEqual(self.run_mock(self.args(backend, '--write_munge_inputs')), 0)
+                self.assertIn('--write_munge_inputs', self.calls[0])
+                selected_hm3 = Path(self.calls[0][self.calls[0].index('--hm3')+1])
+                self.assertEqual(selected_hm3.read_text(), 'SNP\nrs1\nrs2\n')
+                columns, _ = read_manifest(self.out/'manifests/ldsc_traits.csv')
+                self.assertNotIn('sumstats_file', columns)
+                self.assertNotIn('--write_munge_inputs', self.calls[1])
 
     def test_validation_only_runs_ldsc_and_pca_without_gwama_preparation(self):
         args = self.args('python', '--validate_only')
@@ -333,7 +367,10 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(opts.n_cores,workers)
             self.assertIsNone(opts.chisq_max)
             self.assertEqual(opts.prepare_workers,4)
-            self.assertNotIn('--restart', parser._option_string_actions)
+
+            for flag in ('--restart', '--ldsc_only', '--munged_dir', '--munged_input', '--vcf_input', '--gpca_input_folder'):
+                self.assertNotIn(flag, parser._option_string_actions)
+            self.assertEqual(opts.vcf_input, backend == 'genomicsem')
             self.assertIn('must not already exist', parser.format_help())
         self.assertEqual([(a.dest,a.default) for a in original._actions],before)
         self.assertIn('--restart', original._option_string_actions)
@@ -355,6 +392,15 @@ class PipelineTests(unittest.TestCase):
                 try: result=main(args)
                 except SystemExit as error:result=error.code
                 self.assertEqual(result,0);run.assert_not_called()
+
+    def test_preparation_help_describes_pipeline_and_has_no_external_folder_mode(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(pipeline.main(['--ldsc_backend','genomicsem','--prepare_help']),0)
+        self.assertIn('ldsc-gpca pipeline', output.getvalue())
+        self.assertNotIn('omitted', output.getvalue())
+        self.assertNotIn('--gpca_input_folder', output.getvalue())
+        self.assertIn('FORMAT AF,ES,SE,LP,NEF', output.getvalue())
 
     def test_actual_chisq_filter_boundary_and_source_preservation(self):
         from ldsc_gpca.munging import _filter_one_munged_sumstats
@@ -386,7 +432,7 @@ class PipelineTests(unittest.TestCase):
                 return original_run(command,capture_output=True,text=True,**kwargs)
             return self.fake_run(command,**kwargs)
         with patch.object(pipeline.subprocess,'run',side_effect=execute):
-            self.assertEqual(pipeline.main(self.args('genomicsem','--splitby_chr','nosplit')),0)
+            self.assertEqual(pipeline.main(self.args('genomicsem','--splitby_chr','nosplit','--write_munge_inputs')),0)
         with (self.out/'prepare/gpca_inputs/002_GenomicPCA_inputs.tsv').open() as stream:
             rows=list(csv.DictReader(stream,delimiter='\t'))
         self.assertEqual(rows[0]['SNPID'],'1_1000_A_G')

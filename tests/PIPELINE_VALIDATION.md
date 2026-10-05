@@ -1,5 +1,8 @@
 # Pipeline integration validation — v0.7.0
 
+This is the historical v0.7.0 report. For the current VCF-only interface, see
+[v0.8.0 pipeline validation](PIPELINE_VCF_VALIDATION.md).
+
 Validated on 2026-10-03 against main commit
 `f913277c113f3756c8de9517fb0036de9373a54f`.
 
