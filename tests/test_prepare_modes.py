@@ -118,6 +118,27 @@ class PreparationModesTests(unittest.TestCase):
         self.assertEqual(attempts.height,4)
         self.assertFalse((self.out/'munge_inputs').exists())
 
+    def test_both_flushes_independent_original_reports_when_ldsc_fails(self):
+        self.hm3.write_text('SNP\nno_matching_snp\n')
+        self.assertEqual(self.run_cli(self.args('--splitby_chr', 'nosplit', mode='both')), 1)
+        self.assertIn('no usable LDSC records', self.capture.getvalue())
+        gpca = (self.out/'GPCA_Input_QC_Issues.csv').read_text()
+        ldsc = (self.out/'LDSC_Input_QC_Issues.csv').read_text()
+        self.assertIn('P below', gpca)
+        self.assertIn('SNP not in HapMap reference', ldsc)
+        self.assertIn('#CHROM', gpca)
+        self.assertIn('#CHROM', ldsc)
+        self.assertFalse((self.out/'gpca_inputs').exists())
+        self.assertFalse((self.out/'munge_inputs').exists())
+        self.assertEqual(pl.read_csv(self.out/'Preparation_Worker_Attempts.csv').height, 4)
+
+    def test_both_flushes_gpca_report_when_gpca_write_fails(self):
+        with patch.object(prepare, 'write_gpca', side_effect=OSError('disk failure')):
+            self.assertEqual(self.run_cli(self.args('--splitby_chr', 'nosplit', mode='both')), 1)
+        self.assertIn('disk failure', self.capture.getvalue())
+        self.assertIn('P below', (self.out/'GPCA_Input_QC_Issues.csv').read_text())
+        self.assertFalse((self.out/'gpca_inputs').exists())
+
     def test_existing_outputs_are_preserved(self):
         self.raw()
         before=(self.out/'munge_inputs/002_munge_inputs.tsv').read_bytes()

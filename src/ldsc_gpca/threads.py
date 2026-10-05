@@ -36,20 +36,25 @@ def export_workers(n_cores=0):
     return min(22, available or 1)
 
 
-def configure_gpca_table_threads(argv):
+def configure_table_threads(argv, *, default=0):
     """Set Polars' pool before preparation imports it; leave CLI errors to its parser.
 
-    A preliminary parse is necessary because the full GPCA parser imports the
+    A preliminary parse is necessary because the full workflow parser imports the
     preparation module, which imports Polars. Respect an explicit environment
     limit. An already initialized Polars pool in a Python API caller cannot be
     resized; the exporter records its actual size.
     """
     import argparse
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
-    parser.add_argument('--n_cores', type=int, default=0)
+    parser.add_argument('--n_cores', type=int, default=default)
     try:
         n_cores = parser.parse_known_args(argv)[0].n_cores
         workers = export_workers(n_cores)
     except (argparse.ArgumentError, ValueError):
         return
     os.environ.setdefault('POLARS_MAX_THREADS', str(workers))
+
+
+def configure_gpca_table_threads(argv):
+    """Compatibility wrapper for GPCA's automatic worker default."""
+    configure_table_threads(argv)

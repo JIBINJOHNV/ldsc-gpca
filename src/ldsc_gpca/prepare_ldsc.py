@@ -41,7 +41,8 @@ def add_mode_options(parser):
     group.add_argument('--rscript', default='Rscript', help='GenomicSEM munging: Rscript executable with GenomicSEM installed.')
     parser._option_string_actions['--hm3'].help = 'Tab-separated HapMap reference; required for ldsc/both or legacy --write_munge_inputs. SNP header for raw export; SNP,A1,A2 for munging. Default: unset.'
     parser._option_string_actions['--write_munge_inputs'].help = 'Legacy GPCA-plus-raw export; original schema without INFO. Default: off. Do not combine with LDSC modes.'
-    parser._option_string_actions['--n_cores'].help = 'Parallel workers for preparation and optional munging. Default: 4.'
+    parser._option_string_actions['--n_cores'].help = ('Parallel workers for preparation and optional munging; '
+        'also sets the default shared Polars pool at CLI startup. Existing POLARS_MAX_THREADS is preserved. Default: 4.')
     parser._option_string_actions['--outdir'].help = 'Output directory; creates only requested input folders, QC and optional munged files.'
     parser.description = 'Prepare GPCA/GWAMA inputs, shared raw LDSC tables and optional munged files from GWAS VCFs.'
     parser.epilog = '''INPUT FILE CONTRACT
@@ -122,7 +123,7 @@ def write_ldsc_manifest(path, rows, metadata, outdir, *, munged=False):
             os.unlink(temporary)
 
 
-def write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min, metadata):
+def write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min, metadata, *, issue_reports=None):
     """Write the LDSC contract and QC, independently of GPCA row selection."""
     if metadata['N'] is not None:
         raw = raw.with_columns(pl.lit(metadata['N']).alias('N'))
@@ -135,7 +136,11 @@ def write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min, metadat
     summary.update(retained_rows=frame.height, removed_rows=summary['input_rows']-frame.height,
                    hapmap_removed_rows=removed.height,
                    p_adjusted_rows=issues.filter(pl.col('QC_action') == 'p_adjusted').height)
-    write_original_issues(vcf, stage/'ldsc_qc'/f'{name}.csv', name, issues)
+    report = (stage/'ldsc_qc'/f'{name}.csv', name, issues)
+    if issue_reports is None:
+        write_original_issues(vcf, *report)
+    else:
+        issue_reports.append(report)
     pl.DataFrame([{'traitname': name, **summary, 'N_source': 'manifest_N' if metadata['N'] is not None else 'FORMAT/NEF',
                    'N_override': metadata['N'], 'p_min': p_min}]).write_csv(stage/'ldsc_qc'/f'{name}.summary.csv')
     if frame.is_empty():

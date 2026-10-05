@@ -1,0 +1,334 @@
+{
+  "baseline_commit": "20fe7bb4103266c820a477c71132575981eb5edb",
+  "platform": "macOS 26.6.2 arm64; 12 logical CPUs",
+  "runtimes": {
+    "project_python": "3.12.14",
+    "polars": "0.20.31",
+    "pandas": "2.3.3",
+    "numpy": "1.26.4",
+    "bcftools": "1.23",
+    "pigz": "2.8",
+    "monitor_psutil": "7.2.2"
+  },
+  "method": "Three sequential alternating pairs per workload after baseline/warmup; four configured workers; fresh processes; approximately 100 ms process-tree RSS sampling; timings include startup, reference loading, filtering, compression and audit writes but exclude output hashing.",
+  "source_sha256": {
+    "PGC3_SCZ_wave3_GRCh37_merged.vcf.gz": "c05306c9981dc7b0deeccc6d67e507e2915f98285bd3fce96ca4474adfeb4456",
+    "bip2024_eur_no23andMe_GRCh37_merged.vcf.gz": "7141dc77d1ef7e471f5ccf0694053280e04a02f3d1c962cbc5a705bc6e2e62c7",
+    "w_hm3.snplist": "ec73fca0b696e8beba465b51e52911676fcade375bcc9475d99c0ec30509d3ed",
+    "AGR2_O95994_OID20896_v1_Neurology.sumstats.gz": "d73cfa7d1d03faf62e25b59ae92016d384adc2c3de5b786a613f6d4c03e898e3",
+    "AGRP_O00253_OID20658_v1_Inflammation.sumstats.gz": "f04f3ff934557496ae5419b1c2808a8f31c4216a0758199716dc82f5032bbf59",
+    "1.l2.ldscore.gz": "cac171317ab93347f0b692b1784452e471956a0d68d409345f4cf9e100452348",
+    "10.l2.ldscore.gz": "198423513408539f4988f51fe0b85e7bee177f6d3bcc3ef97fa7f3b8e4743097",
+    "11.l2.ldscore.gz": "370c609fb337499dadf294e64f55fe8fd99b7b26a32a9aabcb0995f0b7f8f318",
+    "12.l2.ldscore.gz": "714ac1eb55c1854d4258e6aeaf9ffb368e17d34d2eb80ded502bbad287cc6a6f",
+    "13.l2.ldscore.gz": "59980b567f8f505e1d382beeab5e3a4a090d5c9392955d1fe4296f23303d3739",
+    "14.l2.ldscore.gz": "6bf8d3012cb139bd536d149248c116a64e7bce3d0415e9083cb6efa307fbc0b6",
+    "15.l2.ldscore.gz": "928877c7144869fd66978a446d9d7a98cd46509f11a772833f6c381692697a4a",
+    "16.l2.ldscore.gz": "733175753db174c21773feafc0ef85991426b6cd2e98f83a428fff0e25a1e66a",
+    "17.l2.ldscore.gz": "cc8b02af96567ea6bb84205d3da0b4709118c1c58eb13d3240f49178a933716e",
+    "18.l2.ldscore.gz": "10d4bb0697d980b4a2cc752b72c9b6881e33c6e6f7b238b76c6697fe56e793cf",
+    "19.l2.ldscore.gz": "71da5f97e7d3da46a173759ed468ad486333137918a308a77c09e67ec861f326",
+    "2.l2.ldscore.gz": "956cf536da2a02da35f8e75544b6e0c1b777384469a11858b94ff166ba978320",
+    "20.l2.ldscore.gz": "362486d23bf12a34e84d466a65bbd2df1b6f881d8d1748bb64816e67003e09f5",
+    "21.l2.ldscore.gz": "4b168d698b0104ec5b57bffb4e130358ec2577528f69ad46b40f32ff5a17f4b5",
+    "22.l2.ldscore.gz": "63822b0c989daadb99243fe2913ffc9e18d569e1bb460f37e8e1b746e71ebe06",
+    "3.l2.ldscore.gz": "cdaf43b8329936a95f2fd3497ebf607bb53a188798805459d6327b0aed0331aa",
+    "4.l2.ldscore.gz": "165db569080638532d126680afc9473933f70dfd376a698058c25ffbe3c5155b",
+    "5.l2.ldscore.gz": "9f8080896a435ec16e51ccc75c9ef3d08cce586c649c74da1e3fea7386521ddf",
+    "6.l2.ldscore.gz": "ffc211ff03da2126e950ee1b1163b0c749e486f1f36daa0015c8d24d28652d31",
+    "6_old.l2.ldscore.gz": "79a872e0f1ba3d52409db3b82b013559659978ab7f97974064a1dda447b20e6f",
+    "7.l2.ldscore.gz": "576cff613856c32ab471a8b8250a18b472ab6a3601cf829b9aa3d9d2a3c1fada",
+    "8.l2.ldscore.gz": "fa6e623a876529c91abcdadb7ab18318e0203f93c91cec9d3a49cc438c4be2e1",
+    "9.l2.ldscore.gz": "010ddc1311840eb8cd0d3b06d4e2f7f93c803449ca5d1e9f36bd271513a0a4c6"
+  },
+  "protected_implementation_sha256": {
+    "src/ldsc_gpca/r/genomicsem/cli.R": "b3d74d653c1132cb541b760846c141e3ebe7fdd0a3e4d34735dd795037e7e432",
+    "src/ldsc_gpca/r/genomicsem/help.txt": "216fa945440bc8adf404b935ef9ed3694490988acff778a2c37b7a3acf48d272",
+    "src/ldsc_gpca/r/genomicsem/ldsc_entry.R": "35ff212865b13a945d5e13a72e2bbe89c8e3791507781a804520506cd021652d",
+    "src/ldsc_gpca/r/genomicsem/ldsc_pipeline.R": "d1a88cf8d7fa92990b0d151875f7a2ad862a85e4843f8b08e100e91219f102db",
+    "src/ldsc_gpca/r/genomicsem/munge_entry.R": "9079e90a2d47f8ba9e5428049ebcad1a65395e909f3e6e88e8d8380b29557fef",
+    "src/ldsc_gpca/r/genomicsem/qc.R": "6f2f992498f141f83bf1fab7fe4d1dc3fd6b08167c9379826bd476af54bdf869",
+    "src/ldsc_gpca/r/genomicsem/reader.R": "b53ddf9d045d12a6b355ce2558f5168b4d71980f5adab4746e6d6862b74aa852",
+    "src/ldsc_gpca/r/genomicsem/reporting.R": "45db0d2a2df311b601eccbbab38718a4df2c0e1168e20393f691d53fb64eb9f8",
+    "src/ldsc_gpca/r/genomicsem/workflow.R": "8cbe1e41fcc9765a1d5fd78e3a0d50eb986177b0eb653edf7f7a552a5c071e00",
+    "src/ldsc_gpca/r/gpsca_gwama_python_ldsc.r": "2abf55f3bde07fd3136786b045e3ab5ec6906b411d31aa65a0283e768fff0c93",
+    "src/ldsc_gpca/r/gpsca_gwama_v2.r": "ce814768107b610611228861fb730953b9f3c110e2818bac266df8d9060a49b4",
+    "src/ldsc_gpca/r/load_modules.R": "022a05947fe467aea308e6b542768ad4b4889bf82e9e89b63548955533f61f13",
+    "src/ldsc_gpca/r/python_ldsc/cli.R": "0cbb92b058479a30b074a9c621d152133e2f13a2c885cf02595e2f2294ad5c36",
+    "src/ldsc_gpca/r/python_ldsc/constants.R": "9c95c2fae98b7d2035cae96ee49d7ce5aa8986b1049fa3fd83a0b82a71a0ee46",
+    "src/ldsc_gpca/r/python_ldsc/covariance.R": "816791442ed82a58dd27a7837adfc307bd0c1591a0f5be7b978b0a627435bce4",
+    "src/ldsc_gpca/r/python_ldsc/help.txt": "74908fe485f97881f88e1a78641017d78bf2dda6943ba86da4944863bd3cb4bd",
+    "src/ldsc_gpca/r/python_ldsc/qc.R": "e2d0667e5a163cf1610cb76149114c45667fb7ff74ab8988af654aa59aa00bce",
+    "src/ldsc_gpca/r/python_ldsc/reader.R": "d157f9c4a41985188734be65bff3b2dc06ee76ed10c97fd680a9c18d27b2ca41",
+    "src/ldsc_gpca/r/python_ldsc/reporting.R": "587c73db4d54dc17bd314b7f703a6d8bccbd30166245aa6b0d2ab544e410af9b",
+    "src/ldsc_gpca/r/python_ldsc/workflow.R": "39bd4316992f4f359acb8a1b2cf12e8b5dc560cbfdc9356fa45c3a073b6829b0",
+    "src/ldsc_gpca/r/shared/gwama.R": "6216de26efb8e8ceed0f058abb956624e4de03f28c6246ebf7deec58c30fe70b",
+    "src/ldsc_gpca/r/shared/gwama_qc.R": "33b350ff7a17c5dbcfe7c2a22a57ac8db164dbc53d482e8a0b0186f87755e3df",
+    "src/ldsc_gpca/r/shared/input.R": "d84c0d6467e69ed9b82a7a4ceaa751413af716897e91204c7da13593a1d181b9",
+    "src/ldsc_gpca/r/shared/matrix_validation.R": "fde61d27688196b85919e95c6c4785d422a642762a35142a0ba3beb92972448a",
+    "src/ldsc_gpca/r/shared/pca.R": "56e3f8dbd9126013d3554d86f91c15460fa19ad90ae85d9eccf430c4b1567da4",
+    "src/ldsc_gpca/r/shared/reporting.R": "50418dfce586714c584a620e8d8301d905b1c842580ba1a80716ef02cd81afee",
+    "src/ldsc_gpca/r/shared/workers.R": "8613c9484bf4563ba61923a08c19221377cd58c9a704bbc93ef2a70e566f2184",
+    "src/ldsc_gpca/r/vendor/N_weighted_GWAMA.function.1_2_6.R": "99c041b1e31366e62f1650088e750615d2284047163a55edceeafdf00fcb34d2",
+    "src/ldsc_gpca/r/vendor/README.md": "9cc2001481505d5c099d93302d7090242841fba94e63e80ba3bcdae6492c2e0b",
+    "src/ldsc_gpca/pairwise.py": "3c2b5f7f486c8f14a161441dab3d33ad5829be5f1ba6236297d31e00e37f3bd3",
+    "src/ldsc_gpca/workers.py": "f52da151face8a849ee3ad7edc74d54384f414dfd47e630ab59856ae16671210",
+    "src/ldsc_gpca/compression.py": "70a7727da2a033f31fce7478f6e3f62f4f5056b43c481ae4b93b65fa81b723be",
+    "src/ldsc_gpca/ldsc_munge.py": "fbb5c1f51ed79b3741af5f396bc9530b09a506981e55eebcb97b18b238ef6af4",
+    "src/ldsc_gpca/results.py": "b11eeb1b07d3b0af4024ade529fa9e9fa45bd6021e7f0787bf9b2f223960ef1c",
+    "src/ldsc_gpca/trait_selection.py": "2b4c68db62198b6a1345125cccc1acd7be8021a6b32dd0cc3d8e1cb1e30692bf",
+    "src/ldsc_gpca/genomicsem_ldsc.py": "7e4a7bb219dcd789efd48a468328da5ca8d60a6af9e27da28ede3d4ad9ad9919"
+  },
+  "benchmarks": [
+    {
+      "workload": "prepare-both",
+      "traits": 2,
+      "pigz": false,
+      "before": {
+        "seconds": [
+          11.995937916974071,
+          11.997630333004054,
+          12.276190041040536
+        ],
+        "median_seconds": 11.997630333004054,
+        "peak_tree_rss_mib": [
+          1366.984375,
+          1345.828125,
+          1363.828125
+        ],
+        "median_peak_tree_rss_mib": 1363.828125
+      },
+      "after": {
+        "seconds": [
+          12.127371207985561,
+          12.408298499998637,
+          12.502249208977446
+        ],
+        "median_seconds": 12.408298499998637,
+        "peak_tree_rss_mib": [
+          1021.984375,
+          1011.140625,
+          1012.921875
+        ],
+        "median_peak_tree_rss_mib": 1012.921875
+      }
+    },
+    {
+      "workload": "auto",
+      "traits": 1,
+      "pigz": false,
+      "before": {
+        "seconds": [
+          6.471363749995362,
+          6.716187167039607,
+          6.783800666977186
+        ],
+        "median_seconds": 6.716187167039607,
+        "peak_tree_rss_mib": [
+          407.546875,
+          407.90625,
+          405.078125
+        ],
+        "median_peak_tree_rss_mib": 407.546875
+      },
+      "after": {
+        "seconds": [
+          6.096366041980218,
+          6.240830624999944,
+          6.340520666970406
+        ],
+        "median_seconds": 6.240830624999944,
+        "peak_tree_rss_mib": [
+          404.609375,
+          401.078125,
+          408.40625
+        ],
+        "median_peak_tree_rss_mib": 404.609375
+      }
+    },
+    {
+      "workload": "auto",
+      "traits": 2,
+      "pigz": false,
+      "before": {
+        "seconds": [
+          7.8413382500293665,
+          8.258050958975218,
+          7.71092891698936
+        ],
+        "median_seconds": 7.8413382500293665,
+        "peak_tree_rss_mib": [
+          405.1875,
+          405.890625,
+          407.546875
+        ],
+        "median_peak_tree_rss_mib": 405.890625
+      },
+      "after": {
+        "seconds": [
+          6.7828463750192896,
+          6.938712457951624,
+          7.1065698330057785
+        ],
+        "median_seconds": 6.938712457951624,
+        "peak_tree_rss_mib": [
+          402.984375,
+          406.828125,
+          409.328125
+        ],
+        "median_peak_tree_rss_mib": 406.828125
+      }
+    },
+    {
+      "workload": "fixed",
+      "traits": 2,
+      "pigz": false,
+      "before": {
+        "seconds": [
+          4.936357417027466,
+          5.024462041968945,
+          5.214433874993119
+        ],
+        "median_seconds": 5.024462041968945,
+        "peak_tree_rss_mib": [
+          93.90625,
+          94.75,
+          94.390625
+        ],
+        "median_peak_tree_rss_mib": 94.390625
+      },
+      "after": {
+        "seconds": [
+          4.953123666986357,
+          5.075366540986579,
+          5.110307082999498
+        ],
+        "median_seconds": 5.075366540986579,
+        "peak_tree_rss_mib": [
+          94.359375,
+          94.0,
+          94.265625
+        ],
+        "median_peak_tree_rss_mib": 94.265625
+      }
+    },
+    {
+      "workload": "auto",
+      "traits": 2,
+      "pigz": true,
+      "before": {
+        "seconds": [
+          7.529099708015565,
+          7.373379374970682,
+          7.382639209041372
+        ],
+        "median_seconds": 7.382639209041372,
+        "peak_tree_rss_mib": [
+          414.9375,
+          415.21875,
+          414.0625
+        ],
+        "median_peak_tree_rss_mib": 414.9375
+      },
+      "after": {
+        "seconds": [
+          6.564342208032031,
+          6.596544125000946,
+          6.560906458995305
+        ],
+        "median_seconds": 6.564342208032031,
+        "peak_tree_rss_mib": [
+          412.4375,
+          414.671875,
+          412.3125
+        ],
+        "median_peak_tree_rss_mib": 412.4375
+      }
+    }
+  ],
+  "row_oracle": [
+    {
+      "trait": "AGR2_O95994_OID20896_v1_Neurology",
+      "mode": "auto",
+      "cutoff": 80.0,
+      "maximum_n": 32733.0,
+      "complete_matched_rows": 1176251,
+      "retained": 1189835,
+      "excluded": 0,
+      "missing_z": 0,
+      "retained_sha256": "bf1096aa434b93c3070d188b01a841f3c33d7c1d83bf36f7424ce9c3b5698e34"
+    },
+    {
+      "trait": "AGRP_O00253_OID20658_v1_Inflammation",
+      "mode": "auto",
+      "cutoff": 80.0,
+      "maximum_n": 34049.0,
+      "complete_matched_rows": 1176265,
+      "retained": 1189853,
+      "excluded": 0,
+      "missing_z": 0,
+      "retained_sha256": "1a7b457c5745c99ff4700eb517d18c7b99f5d5fa8850d61e2a9d8e221c00e251"
+    },
+    {
+      "trait": "AGR2_O95994_OID20896_v1_Neurology",
+      "mode": "fixed",
+      "cutoff": 4.0,
+      "maximum_n": 32733.0,
+      "complete_matched_rows": 1176251,
+      "retained": 1129456,
+      "excluded": 60379,
+      "missing_z": 0,
+      "retained_sha256": "c191dd3a3da951487c9f848a390f5fdcc236855e4e2f0b148792ce1102db2736"
+    },
+    {
+      "trait": "AGRP_O00253_OID20658_v1_Inflammation",
+      "mode": "fixed",
+      "cutoff": 4.0,
+      "maximum_n": 34049.0,
+      "complete_matched_rows": 1176265,
+      "retained": 1122837,
+      "excluded": 67016,
+      "missing_z": 0,
+      "retained_sha256": "0c634223c28bec5494741e99d9b83f484aeff00677a26990ab15b8e546c8a033"
+    }
+  ],
+  "original_mode_parity": [
+    [
+      "baseline_prepare_gpca",
+      "changed_prepare_gpca"
+    ],
+    [
+      "baseline_prepare_legacy",
+      "changed_prepare_legacy"
+    ],
+    [
+      "baseline_prepare_ldsc",
+      "changed_prepare_ldsc"
+    ],
+    [
+      "baseline_prepare_both",
+      "serial_prepare_both"
+    ],
+    [
+      "baseline_auto_two",
+      "serial_auto_two"
+    ],
+    [
+      "baseline_fixed_two",
+      "serial_fixed_two"
+    ],
+    [
+      "baseline_prepare_both",
+      "override_prepare_both"
+    ]
+  ],
+  "fixture_products_equal": 91,
+  "all_repeated_output_fingerprints_equal": true,
+  "full_suite": {
+    "run": 301,
+    "passed": 296,
+    "skipped": 5,
+    "seconds": 201.182,
+    "installed_genomicsem_commit": "6b65ca5db39fdade08b0d811477be1cdd57b5039"
+  }
+}

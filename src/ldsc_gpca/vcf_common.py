@@ -3,6 +3,7 @@
 Backend filters and preparation/publication orchestration remain with callers.
 """
 import csv
+from contextlib import ExitStack
 import gzip
 import math
 from pathlib import Path
@@ -93,11 +94,21 @@ def validate_and_transform(frame, p_min=1e-300, gpca_id_source='chr_pos_ref_alt'
 
 def write_original_issues(vcf, destination, name, issues):
     """Copy original VCF field strings, without numerical parsing or rewriting."""
-    affected = {row: (action, reason) for row, reason, action in issues.iter_rows()}
+    write_original_issue_reports(vcf, [(destination, name, issues)])
+
+
+def write_original_issue_reports(vcf, reports):
+    """Stream one VCF into independent QC reports; keep only affected indices."""
+    if not reports:
+        return
     with open(vcf, 'rb') as handle:
         compressed = handle.read(2) == b'\x1f\x8b'
-    with (gzip.open if compressed else open)(vcf, 'rt') as source, open(destination, 'w', newline='') as target:
-        writer = csv.writer(target)
+    with ExitStack() as stack:
+        source = stack.enter_context((gzip.open if compressed else open)(vcf, 'rt'))
+        outputs = [(csv.writer(stack.enter_context(open(destination, 'w', newline=''))), name,
+                    {row: (action, reason) for row, reason, action in issues.iter_rows()})
+                   for destination, name, issues in reports]
+        active = [output for output in outputs if output[2]]
         index = 0
         for line in source:
             if line.startswith('##'):
@@ -106,16 +117,25 @@ def write_original_issues(vcf, destination, name, issues):
                 fields = line.rstrip('\r\n').split('\t')
                 if set(fields) & {'traitname','QC_action','QC_reason'} or len(set(fields)) != len(fields):
                     raise ValueError('VCF column names must be unique and not collide with QC report columns')
-                writer.writerow(fields + ['traitname','QC_action','QC_reason'])
-                if not affected:
+                for writer, _, _ in outputs:
+                    writer.writerow(fields + ['traitname','QC_action','QC_reason'])
+                if not active:
                     break
                 continue
-            if index in affected:
-                writer.writerow(line.rstrip('\r\n').split('\t') + [name, *affected.pop(index)])
-                if not affected:
+            fields = None
+            finished = False
+            for writer, name, affected in active:
+                if index in affected:
+                    if fields is None:
+                        fields = line.rstrip('\r\n').split('\t')
+                    writer.writerow(fields + [name, *affected.pop(index)])
+                    finished = finished or not affected
+            if finished:
+                active = [output for output in active if output[2]]
+                if not active:
                     break
             index += 1
-        if affected:
+        if active:
             raise ValueError('Original VCF ended before all affected records could be reported')
 
 

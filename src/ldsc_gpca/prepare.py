@@ -13,7 +13,7 @@ from .helptext import HelpParser, PREPARE_INPUT_HELP
 from .interfaces import read_manifest
 from .workers import run_parallel_jobs
 from .vcf_common import (ID_CHOICES, RAW_COLUMNS, QUERY, extract_table,
-                         validate_and_transform, write_original_issues, merge_issue_reports,
+                         validate_and_transform, write_original_issues, write_original_issue_reports, merge_issue_reports,
                          selected_id, validate_ids)
 
 
@@ -104,15 +104,23 @@ def prepare_shared_trait(name, vcf, stage, executable, splitby_chr, gpca_id_sour
         query = query.replace('%NEF', format(metadata['N'], '.17g'))
     with tempfile.NamedTemporaryFile(dir=stage, suffix='.tsv') as temporary:
         raw = extract_table(vcf, executable, temporary.name, query=query, columns=[*RAW_COLUMNS, 'INFO'])
-    gpca_rows = 0
-    if mode == 'both':
+    if mode != 'both':
+        return write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min, metadata)
+    reports = []
+    try:
         gpca, issues, summary = validate_and_transform(raw, p_min, gpca_id_source)
-        write_original_issues(vcf, stage/'qc'/f'{name}.csv', name, issues)
+        reports.append((stage/'qc'/f'{name}.csv', name, issues))
         pl.DataFrame([{'traitname': name, **summary}]).write_csv(stage/'qc'/f'{name}.summary.csv')
         if gpca.is_empty():
             raise ValueError(f'{name}: no usable GPCA records; see GPCA_Input_QC_Issues.csv')
         gpca_rows = write_gpca(gpca, name, stage, splitby_chr, gpca_id_source)
-    result = write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min, metadata)
+        # Release the transformed GPCA frame before allocating the LDSC frame.
+        del gpca
+        result = write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min,
+                                  metadata, issue_reports=reports)
+    finally:
+        # Preserve available original-record diagnostics even when either stage fails.
+        write_original_issue_reports(vcf, reports)
     return {**result, 'gpca_rows': gpca_rows}
 
 

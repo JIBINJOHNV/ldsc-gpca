@@ -123,6 +123,22 @@ class AutomaticChiSquareTests(unittest.TestCase):
         self.assertEqual(summary.chisq_max.tolist(), [80])
         self.assertEqual(summary.complete_ld_matched_rows.tolist(), [1])
 
+    def test_repeated_and_changing_n_are_local_to_complete_matched_rows_and_each_call(self):
+        path = self.root/'T.sumstats.gz'
+        self.write(path, HEADER.rstrip('\n')+'\tnote\n' +
+                   'rs_low\tA\tG\t100000\t1\tok\n' * 3 +
+                   'rs_mid\tA\tG\t 2_00500 \t1\tok\n' * 2 +
+                   'unmatched\tA\tG\tbad\t1\tok\n' +
+                   'rs_high\tA\tG\t9999999\t1\t NA \n' +
+                   'rs_high\tA\tG\tbad\t1\t\u2003.\u2003\n')
+        self.assertEqual(munging._automatic_chisq_max('T', path, set(self.snps)), (200.5, 200500., 5))
+        self.assertEqual(munging._automatic_chisq_max('T', path, {'rs_low'}), (100., 100000., 3))
+        self.write(path, HEADER+'rs_low\tA\tG\t50000\t1\n'*2)
+        self.assertEqual(munging._automatic_chisq_max('T', path, set(self.snps)), (80., 50000., 2))
+        self.write(path, HEADER+'rs_low\tA\tG\t50000\t1\n'*2+'rs_mid\tA\tG\tbad\t1\n')
+        with self.assertRaisesRegex(ValueError, 'non-numeric N at LD-matched row 4'):
+            munging._automatic_chisq_max('T', path, set(self.snps))
+
     def test_empty_no_match_all_missing_and_all_excluded_fail(self):
         for body, message in [('', 'no complete rows'),
                               ('rs_other\tA\tG\t50000\t1\n', 'no complete rows'),

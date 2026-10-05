@@ -69,6 +69,8 @@ def _matched_ld_snps(ld_ref_dir, ld_weights_dir):
 def _automatic_chisq_max(trait, source_file, matched_snps):
     """Match GenomicSEM's complete-row, per-trait maximum N before filtering."""
     maximum_n, matched_rows = 0., 0
+    missing = frozenset(('', 'NA', 'nan', 'NaN', '.'))
+    previous_n = None
     # A preliminary pass is needed: a later SNP can raise the cutoff for earlier SNPs.
     # Stream rows to bound memory; match readr's trim_ws before missing-value checks.
     with gzip.open(source_file, 'rt', encoding='utf-8') as source:
@@ -82,16 +84,20 @@ def _automatic_chisq_max(trait, source_file, matched_snps):
             values = _split_sumstats_line(line, tab_separated)
             if len(values) != len(columns):
                 raise ValueError(f'{trait}: malformed munged LDSC row {line_number}')
-            if values[snp_index].strip() not in matched_snps or any(
-                    value.strip() in ('', 'NA', 'nan', 'NaN', '.') for value in values):
+            if values[snp_index].strip() not in matched_snps or not missing.isdisjoint(map(str.strip, values)):
                 continue
-            try:
-                n = float(values[n_index])
-            except ValueError as error:
-                raise ValueError(f'{trait}: non-numeric N at LD-matched row {line_number}') from error
-            if not math.isfinite(n) or n <= 0:
-                raise ValueError(f'{trait}: LD-matched N must be finite and positive (row {line_number})')
-            maximum_n = max(maximum_n, n)
+            # Constant N is common. Reuse only the immediately preceding validated
+            # text within this pass; no cross-file/reference/settings cache is used.
+            raw_n = values[n_index]
+            if raw_n != previous_n:
+                try:
+                    n = float(raw_n)
+                except ValueError as error:
+                    raise ValueError(f'{trait}: non-numeric N at LD-matched row {line_number}') from error
+                if not math.isfinite(n) or n <= 0:
+                    raise ValueError(f'{trait}: LD-matched N must be finite and positive (row {line_number})')
+                maximum_n = max(maximum_n, n)
+                previous_n = raw_n
             matched_rows += 1
     if not matched_rows:
         raise ValueError(f'{trait}: --chisq_max auto has no complete rows matching both LD-score files')

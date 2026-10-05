@@ -1886,7 +1886,7 @@ inspect the error and files before retrying.
 
 | Command/stage | Default | What is parallel |
 | --- | --- | --- |
-| `prepare` | `4` | Preparation of separate traits. |
+| `prepare` | `4` | Preparation of separate traits; also the default shared Polars pool at CLI startup. Explicit `POLARS_MAX_THREADS` is preserved. |
 | `ldsc` | `5` | Separate extraction/munging tasks and pairwise LDSC batches. |
 | `genomicsem ldsc` | `1` | Munging only. Its two GenomicSEM LDSC passes remain sequential. |
 | Either GPCA, split GWAMA | `0` = auto | Up to 22 chromosome jobs; auto uses `min(22, max(1, detected physical cores - 1))`, falling back to 1 if detection fails. |
@@ -1909,6 +1909,20 @@ results when scientifically applicable; avoid repeating upstream work solely
 to analyze a different selected subset.
 
 ### Why numerical libraries default to one thread
+
+Standalone `prepare` sets the shared Polars pool from `--n_cores` before importing
+Polars. This pool is shared by preparation workers; it is not a separate pool per
+trait. As with GPCA export, an explicit `POLARS_MAX_THREADS` is respected. Python
+API callers with Polars already initialized retain their existing pool. Polars
+documents that this setting must be applied before initialization in its
+[thread-pool reference](https://docs.pola.rs/api/python/stable/reference/api/polars.thread_pool_size.html).
+
+In `prepare --mode both`, GPCA and LDSC retain independent filters and QC reports.
+Their original-record reports share a streaming VCF read, and the transformed
+GPCA frame is released before constructing the LDSC frame. Automatic chi-square
+filtering still scans all complete LD-matched rows before filtering; repeated N
+text reuses only the preceding validated value within that scan. No cutoff is
+cached across files or runs.
 
 The CLI sets the following variables to `1` **only when they are unset**, before
 numerical imports and child launches:

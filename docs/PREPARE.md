@@ -358,7 +358,7 @@ Required options have no default. Boolean switches are off unless supplied.
 | `--p_min` | `1e-300` | P floor, finite and strictly between 0 and 1; affected rows audited. |
 | `--info_filter` | `0.9` | Munging only; finite value in [0,1]. |
 | `--maf_filter` | `0.01` | Munging only; finite value in [0,0.5]. Boundary comparison is backend-specific. |
-| `--n_cores` | `4` | Positive worker count for preparation and munging; stages run in order. |
+| `--n_cores` | `4` | Positive worker count for preparation and munging; stages run in order. Also sets the default shared Polars thread pool at CLI startup; an explicit `POLARS_MAX_THREADS` takes precedence. |
 | `--bcftools` | `bcftools` | Local VCF query executable or path. |
 | `--conda_executable` | `CONDA_EXE`, otherwise `conda` | Python munging only: Conda executable. |
 | `--ldsc_env` | `ldsc-cbiit` unless a prefix is configured | Python munging: named environment; mutually exclusive with explicit prefix. |

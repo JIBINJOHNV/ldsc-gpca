@@ -2,7 +2,7 @@
 import sys
 from . import __version__
 from .helptext import HelpParser
-from .threads import configure_numerical_threads
+from .threads import configure_numerical_threads, configure_table_threads
 
 
 def main(argv=None):
@@ -49,6 +49,7 @@ An empty command also displays help; no input files are opened for help.""")
         if argv[0] == "pipeline":
             from .pipeline import main as run
         elif argv[0] == "prepare":
+            configure_table_threads(argv[1:], default=4)
             from .prepare import main as run
         elif argv[0] == "ldsc":
             from .ldsc import main as run

@@ -25,6 +25,31 @@ def clean_environment():
 
 
 class ThreadDefaultsTests(unittest.TestCase):
+    def test_prepare_polars_pool_matches_worker_default_and_preserves_overrides(self):
+        code = '''import os, sys
+expected = sys.argv.pop(1)
+def check_import(event, args):
+    if event == 'import' and args[0] == 'polars':
+        assert os.environ['POLARS_MAX_THREADS'] == expected
+sys.addaudithook(check_import)
+from ldsc_gpca.cli import main
+try:
+    main(['prepare', *sys.argv[1:], '--help'])
+except SystemExit as error:
+    assert error.code == 0
+import polars as pl
+assert pl.thread_pool_size() == int(expected)
+'''
+        for arguments, override, expected in [([], None, '4'), (['--n_cores', '2'], None, '2'),
+                                             (['--n_cores=3'], None, '3'), (['--n_cores', '2'], '7', '7')]:
+            with self.subTest(arguments=arguments, override=override):
+                env = clean_environment()
+                env.pop('POLARS_MAX_THREADS', None)
+                if override:
+                    env['POLARS_MAX_THREADS'] = override
+                result = subprocess.run([sys.executable, '-c', code, expected, *arguments], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_defaults_preserve_unrelated_environment_and_are_idempotent(self):
         with patch.dict(os.environ, {'UNRELATED_SETTING': 'keep'}, clear=True):
             expected = dict.fromkeys(THREAD_ENV_VARS, '1')
