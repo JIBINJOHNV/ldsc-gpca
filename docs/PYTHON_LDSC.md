@@ -1,6 +1,6 @@
 # Run Python LDSC
 
-[README](../README.md) · [Input formats](INPUTS.md) · [Output file reference](PYTHON_LDSC_OUTPUTS.md) · [Next: GPCA/GWAMA](PYTHON_GPCA.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Input formats](INPUTS.md) · [Output file reference](PYTHON_LDSC_OUTPUTS.md) · [Next: GPCA/GWAMA](PYTHON_GPCA.md)
 
 Use `ldsc-gpca ldsc --ldsc_backend python` for **Python LDSC**. All examples
 name the backend explicitly; omitting it still defaults to Python.
@@ -513,7 +513,9 @@ SEs still need to be finite and positive.
 
 Pass the final CSV and your selected manifest to [`ldsc-gpca gpca`](PYTHON_GPCA.md).
 If traits were removed during collection, use `LDSC_Retained_Traits.csv`.
-PCA/GWAMA also needs the separate per-SNP GWAMA inputs described in that guide.
+For QC/PCA alone, follow [Check results and calculate PCA](PYTHON_GPCA.md#check-results-and-calculate-pca).
+To include SNP associations, follow [Run PC1 GWAMA](PYTHON_GPCA.md#run-pc1-gwama),
+which also requires per-trait SNP tables or VCFs for automatic preparation.
 
 Python GPCA defaults to original `rg` (`--rg_normalization pair`). Select
 `--rg_normalization trait_wide` **on `gpca` or the Python pipeline** to use the

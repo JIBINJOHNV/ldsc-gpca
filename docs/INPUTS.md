@@ -1,6 +1,6 @@
 # Input files, references and sample sizes
 
-[README](../README.md) · [Pipeline](PIPELINE.md) · [Full reference](REFERENCE.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Pipeline](PIPELINE.md) · [Full reference](REFERENCE.md)
 
 ## In this guide
 

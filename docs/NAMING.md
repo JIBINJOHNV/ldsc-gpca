@@ -1,11 +1,19 @@
-# Single interface specification — v0.6.0
+# Command and manifest naming
 
-Managed `prepare`, `ldsc`, `gpca`, `genomicsem ldsc` and `genomicsem gpca`
+<a id="single-interface-specification--v060"></a>
+
+[Choose a workflow](../README.md#choose-a-workflow) · [Input formats](INPUTS.md) · [Full reference](REFERENCE.md)
+
+The canonical names below apply to v0.8.0. The naming changes began in v0.6.0;
+see [pipeline migration](PIPELINE.md#migrate-existing-pipeline-commands) for the
+additional VCF-only input restriction introduced in v0.8.0.
+
+Managed `pipeline`, `prepare`, `ldsc`, `gpca`, `genomicsem ldsc` and `genomicsem gpca`
 commands use one accepted name per option or manifest field. Multiword options
 use underscores. Previous argument spellings and abbreviated options are rejected.
 Extra manifest columns are allowed, including old alias names as annotations;
 they do not substitute for required canonical headers.
-Update existing scripts and manifests before using this breaking release.
+Use these names when updating older scripts and manifests.
 
 Raw `ldsc.py` and `munge_sumstats.py` passthrough commands retain the upstream
 interface. Installer, Conda, bcftools and Docker command options are external to
@@ -27,9 +35,9 @@ required canonical fields before calling the unchanged GWAMA function.
 | `--hm3` | HapMap reference for preparation or munging |
 | `--munged_dir` | Existing munged directory; both LDSC backends |
 | `--ldsc_results` | Pairwise text results for Python GPCA; genuine LDSCoutput RData for GenomicSEM GPCA |
-| `--gpca_input_folder` | Prepared per-trait GWAMA inputs |
+| `--gpca_input_folder` | Prepared per-trait GWAMA inputs; standalone GPCA commands only |
 | `--splitby_chr` | `split` or `nosplit` |
-| `--validate_only` | GPCA QC/PCA without GWAMA |
+| `--validate_only` | GPCA: QC/PCA from saved estimates; pipeline: VCF preparation, LDSC and PCA. Both skip GWAMA/export. |
 | `--dataset_id` | GWAMA export filename prefix |
 | `--gwama_output_n_eff` | Exported effective sample-size override |
 | `--gwama_output_info` | Exported INFO override |

@@ -1,6 +1,6 @@
 # PCA and PC1 GWAMA from GenomicSEM LDSC results
 
-[README](../README.md) · [Inputs](INPUTS.md) · [GenomicSEM LDSC](GENOMICSEM_LDSC.md) · [Python GPCA](PYTHON_GPCA.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Inputs](INPUTS.md) · [GenomicSEM LDSC](GENOMICSEM_LDSC.md) · [Python GPCA](PYTHON_GPCA.md)
 
 ## In this guide
 
@@ -199,7 +199,8 @@ Optionally add `--gwama_output_n_eff "${GWAMA_N_EFF:?Set a justified summary N_e
 to override only that summary's N_eff. Omit it to preserve reported values.
 `--gzip_level` defaults to 1 for faster final export; 9 favours smaller files.
 `--archive_chromosomes` moves current-run source results/logs after export.
-See the [output catalog](REFERENCE.md#find-and-interpret-the-outputs).
+See the [README output checklist](../README.md#find-and-interpret-results) and
+[full output catalog](REFERENCE.md#find-and-interpret-the-outputs).
 
 ## All options
 

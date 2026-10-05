@@ -1,12 +1,14 @@
 # Docker installation
 
+[Choose a workflow](README.md#choose-a-workflow) · [Input requirements](README.md#check-input-requirements) · [Nextflow / Google Batch](examples/nextflow/README.md)
+
 From the repository directory, with Docker Desktop or Docker Engine running:
 
 ```bash
-docker build --platform linux/amd64 --progress=plain -t ldsc-gpca:0.5.0 .
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 ldsc-gpca genomicsem ldsc --help
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 ldsc-gpca gpca --help
+docker build --platform linux/amd64 --progress=plain -t ldsc-gpca:0.8.0 .
+docker run --rm --platform linux/amd64 ldsc-gpca:0.8.0
+docker run --rm --platform linux/amd64 ldsc-gpca:0.8.0 ldsc-gpca genomicsem ldsc --help
+docker run --rm --platform linux/amd64 ldsc-gpca:0.8.0 ldsc-gpca gpca --help
 ```
 
 The default command displays help. The image uses `ENTRYPOINT []`, so include
@@ -14,7 +16,7 @@ the executable `ldsc-gpca` before package subcommands. Old shorthand commands
 such as `IMAGE gpca --help` no longer work. Explicit executables run directly:
 
 ```bash
-docker run --rm --platform linux/amd64 ldsc-gpca:0.5.0 /bin/bash -c 'ldsc-gpca --version; bcftools --version'
+docker run --rm --platform linux/amd64 ldsc-gpca:0.8.0 /bin/bash -c 'ldsc-gpca --version; bcftools --version'
 ```
 
 Tools are exposed through `PATH`, and the child LDSC environment is selected
@@ -48,19 +50,22 @@ Mount a custom R script only if overriding `--source_path`. For example:
 docker run --rm --platform linux/amd64 \
   --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /absolute/path/to/project:/work -w /work \
-  ldsc-gpca:0.5.0 ldsc-gpca gpca \
+  ldsc-gpca:0.8.0 ldsc-gpca gpca \
   --input /work/selected_traits.csv \
-  --python_ldsc /work/all_pairwise_python_ldsc.csv \
+  --ldsc_results /work/all_pairwise_python_ldsc.csv \
   --gpca_input_folder /work/gpca_inputs \
-  --outdir /work/results --splitby_chr split
+  --outdir /work/results --splitby_chr split \
+  --gwama_output_info "${GWAMA_INFO:?Set a justified INFO export constant}"
 ```
 
 Replace the host directory and filenames with your own. Paths inside manifests
 must also resolve inside the container. The mounted output directory must be
 writable by the selected user. Supply scientifically justified export overrides
-only when needed; this example does not invent INFO or sample sizes. The bundled
-GWAMA source does not output INFO, so automatic export requires a scientifically
-justified `--gwama-output-info` override or will stop after GWAMA completes.
+only when needed. Before running this full example, set `GWAMA_INFO` to a
+justified constant in [0,1]: bundled GWAMA does not output INFO. This constant
+is export metadata, not measured imputation quality. For QC/PCA only, replace
+the INFO line with `--validate_only`; no SNP tables are needed in that mode.
+After a full run, use the [output checklist](README.md#find-and-interpret-results).
 
 ## Reproducibility and verification
 
@@ -71,7 +76,12 @@ information are recorded inside `/opt/environments/`. Archive the built image
 digest and these records for reproducible analyses. A successful build checks
 software availability, not scientific correctness of an analysis dataset.
 
-## Empty-entrypoint build verification
+<a id="empty-entrypoint-build-verification"></a>
+
+## Historical empty-entrypoint build verification
+
+These checks describe an earlier image. They do not validate a new v0.8.0 build;
+rebuild and run the checks above for the checkout you use.
 
 The Linux amd64 image was rebuilt successfully with `USER root`, no entrypoint,
 and default command `["ldsc-gpca", "--help"]`:

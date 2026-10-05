@@ -1,6 +1,6 @@
 # PCA and PC1 GWAMA from Python LDSC results
 
-[README](../README.md) · [Inputs](INPUTS.md) · [Python LDSC](PYTHON_LDSC.md) · [GenomicSEM GPCA](GENOMICSEM_GPCA.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Inputs](INPUTS.md) · [Python LDSC](PYTHON_LDSC.md) · [GenomicSEM GPCA](GENOMICSEM_GPCA.md)
 
 ## In this guide
 
@@ -267,7 +267,8 @@ source results and logs into `chromosome_wise` after export.
 Python pairwise results do not contain GenomicSEM full sampling covariance matrices
 V/V_Stand. They are sufficient for this PC1/GWAMA calculation, but cannot be
 used to fabricate those matrices or run methods requiring them, such as paLDSC.
-See the [output catalog and interpretation](REFERENCE.md#find-and-interpret-the-outputs).
+See the [README output checklist](../README.md#find-and-interpret-results) and
+[full output catalog](REFERENCE.md#find-and-interpret-the-outputs).
 
 ## All options
 

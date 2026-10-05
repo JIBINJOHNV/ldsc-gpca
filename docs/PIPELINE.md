@@ -1,6 +1,6 @@
 # Run the complete LDSC → GPCA → GWAMA pipeline
 
-[README](../README.md) · [Input formats](INPUTS.md) · [Full reference](REFERENCE.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Input formats](INPUTS.md) · [Full reference](REFERENCE.md)
 
 ## In this guide
 
@@ -151,8 +151,9 @@ ldsc-gpca pipeline \
 
 This still extracts VCFs, munges, runs LDSC and calculates PCA. It skips GWAMA,
 export and GWAMA preparation unless `--write_munge_inputs` is requested.
-GenomicSEM likewise converts VCFs inside its LDSC stage. For PCA from saved
-LDSC results, use a standalone GPCA command.
+GenomicSEM likewise converts VCFs inside its LDSC stage. To add GWAMA later,
+use [the completed LDSC results with standalone GPCA](../README.md#use-completed-ldsc-results);
+provide prepared SNP tables or VCFs for automatic GWAMA preparation.
 
 ## Change filters, PCA and export settings
 
@@ -224,7 +225,8 @@ Only the selected backend's LDSC result exists. Validation-only runs do not
 produce the GWAMA/export files. Pipeline's default `dataset_id` is its output
 directory name. `manifests/gpca_traits.csv` records the LDSC-retained trait list
 passed to GPCA; inspect downstream QC for any further GPCA removals. See the
-[full output catalog](REFERENCE.md#find-and-interpret-the-outputs).
+[README output checklist](../README.md#find-and-interpret-results), then the
+[full output catalog](REFERENCE.md#find-and-interpret-the-outputs) for column definitions.
 
 ## Failures and continuing work
 
@@ -235,7 +237,7 @@ presence of intermediate files as successful completion.
 There is no `pipeline --restart`. Use individual commands to continue from
 verified outputs: standalone [Python LDSC restart](PYTHON_LDSC.md#reuse-munged-files-or-restart)
 can reuse checked batches; a completed LDSC result can be passed to its matching
-GPCA command with a fresh GPCA output directory. Repeat your intended analysis
+[GPCA command](../README.md#use-completed-ldsc-results) with a fresh GPCA output directory. Repeat your intended analysis
 settings when continuing manually. Do not assume pipeline metadata supplies
 them as defaults.
 

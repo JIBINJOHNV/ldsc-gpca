@@ -1,10 +1,10 @@
 # Workflow and option reference
 
-[Back to the README](../README.md) · [Docker](../DOCKER.md) · [Nextflow / Google Batch](../examples/nextflow/README.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Docker](../DOCKER.md) · [Nextflow / Google Batch](../examples/nextflow/README.md)
 
 Detailed input contracts, complete option tables, defaults, restart behavior,
-QC policies and output definitions. Start with the [README](../README.md) to
-choose a workflow, then use its command guide. The [input guide](INPUTS.md)
+QC policies and output definitions. Start with the README's
+[workflow selector](../README.md#choose-a-workflow), then use its command guide. The [input guide](INPUTS.md)
 explains the file types and sample-size rules used across commands.
 
 For complete commands demonstrating optional settings, use the workflow guides:
@@ -519,7 +519,7 @@ normalization downstream, add `--rg_normalization trait_wide`. These are
 independent settings: the first selects the LDSC SNP filter, and the second
 selects the correlation values used by PCA/GWAMA.
 
-See [pipeline validation](../tests/PIPELINE_VALIDATION.md) for fixture coverage and
+See [current pipeline validation](../tests/PIPELINE_VCF_VALIDATION.md) for fixture coverage and
 what has not been tested on real data.
 
 
@@ -1993,15 +1993,15 @@ child automatically. Unlike managed help, raw help needs the child runtime.
 Raw launchers bypass package manifest checks, extraction, retries, per-trait
 chi-square filtering, completeness checks, provenance and numerical CSV
 compilation. Raw `ldsc.py --rg ... --chisq-max VALUE` uses Python LDSC cross-product
-filtering, not managed `--chisq_max`'s per-trait rule. For the complete managed
-LDSC-to-GPCA workflow, use `ldsc-gpca ldsc`.
+filtering, not managed `--chisq_max`'s per-trait rule. For managed LDSC estimation, use [standalone LDSC](../README.md#run-ldsc-separately).
+For the complete VCF-to-PC1 workflow, use [pipeline](PIPELINE.md).
 
 ## Docker: install and run without host Conda
 
 With Docker installed, build locally from the repository:
 
 ```bash
-docker build --platform linux/amd64 -t ldsc-gpca:0.6.2 .
+docker build --platform linux/amd64 -t ldsc-gpca:0.8.0 .
 ```
 
 Then run a command explicitly; the image has no ENTRYPOINT:
@@ -2012,7 +2012,7 @@ docker run --rm --platform linux/amd64 \
   -e HOME=/tmp -e TMPDIR=/tmp \
   -v /absolute/host/data:/data:ro \
   -v /absolute/host/results:/results \
-  ldsc-gpca:0.6.2 \
+  ldsc-gpca:0.8.0 \
   ldsc-gpca gpca \
   --input /data/selected_traits.csv \
   --ldsc_results /data/ldsc_results.csv \

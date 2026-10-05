@@ -1,6 +1,6 @@
 # Prepare GPCA and LDSC inputs
 
-[README](../README.md) · [Input formats](INPUTS.md) · [Python LDSC](PYTHON_LDSC.md) · [GenomicSEM LDSC](GENOMICSEM_LDSC.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Input formats](INPUTS.md) · [Python LDSC](PYTHON_LDSC.md) · [GenomicSEM LDSC](GENOMICSEM_LDSC.md)
 
 ## In this guide
 
@@ -323,6 +323,10 @@ ldsc-gpca ldsc --ldsc_backend genomicsem \
 Use appropriate LD references and the same N/prevalence convention. For shared
 raw tables, their `sumstats_file` manifest can instead be passed to GenomicSEM LDSC
 with `--hm3`; omit munged-reuse options so GenomicSEM munging runs there.
+
+For `gpca_inputs/`, first obtain completed LDSC estimates, then pass the folder
+with `--gpca_input_folder` to [Python-results GPCA/GWAMA](PYTHON_GPCA.md#run-pc1-gwama)
+or [GenomicSEM-results GPCA/GWAMA](GENOMICSEM_GPCA.md#run-pc1-gwama).
 
 ## Also write raw tables for later munging
 

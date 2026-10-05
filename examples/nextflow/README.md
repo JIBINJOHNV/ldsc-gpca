@@ -1,5 +1,7 @@
 # Nextflow: local Docker and Google Cloud Batch
 
+[Choose a workflow](../../README.md#choose-a-workflow) · [Build the Docker image](../../DOCKER.md) · [Python-results GPCA/GWAMA](../../docs/PYTHON_GPCA.md)
+
 These examples use the same image for local and cloud tasks:
 
 The image uses `USER root` and `ENTRYPOINT []`. Python/R tools are on `PATH`,
@@ -18,11 +20,13 @@ and image digest for reproducibility. Java 24 was available for local testing.
 
 ## 1. Local container test
 
-From the repository root, build the image as described in the main README, then:
+From the repository root, [build the v0.8.0 image](../../DOCKER.md), then run
+the commands below with that image explicitly. The example configuration retains
+an older default tag, so keep `--image` in these commands.
 
 ```bash
 nextflow run examples/nextflow/smoke.nf -profile local \
-  --image ldsc-gpca:0.6.0 --outdir nf-smoke
+  --image ldsc-gpca:0.8.0 --outdir nf-smoke
 ```
 
 Success produces `nf-smoke/tools.txt`. The local profile requires a running Docker
@@ -31,6 +35,7 @@ daemon and explicitly requests linux/amd64. The examples default to container UI
 
 ```bash
 nextflow run examples/nextflow/smoke.nf -profile local \
+  --image ldsc-gpca:0.8.0 \
   --container_options "--user $(id -u):$(id -g)" --outdir nf-smoke-user
 ```
 
@@ -40,6 +45,7 @@ This is a Linux filesystem identity, not Google IAM. Avoid running untrusted ima
 
 ```bash
 nextflow run examples/nextflow/gpca_qc.nf -profile local \
+  --image ldsc-gpca:0.8.0 \
   --input /absolute/path/selected_traits.csv \
   --ldsc_results /absolute/path/all_pairwise_python_ldsc.csv.gz \
   --outdir nf-qc
@@ -47,7 +53,7 @@ nextflow run examples/nextflow/gpca_qc.nf -profile local \
 
 The manifest is comma-separated with unique, non-empty `traitname` values. The
 LDSC file must meet the package's complete pair/self-pair and numeric QC contracts;
-see the main README. Nextflow stages both files using `path` inputs. Outputs are
+see [input requirements](../../README.md#check-input-requirements). Nextflow stages both files using `path` inputs. Outputs are
 published under `nf-qc/qc/`. Missing input arguments stop before task submission.
 
 Resource defaults in `nextflow.config`: 2 CPUs, 8 GB memory, 50 GB disk and 2 hours.
@@ -67,8 +73,8 @@ GCP_REPOSITORY=analysis-images
 gcloud artifacts repositories create "$GCP_REPOSITORY" \
   --repository-format=docker --location="$GCP_REGION" --project="$GCP_PROJECT"
 gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev"
-IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$GCP_REPOSITORY/ldsc-gpca:0.6.0"
-docker tag ldsc-gpca:0.6.0 "$IMAGE"
+IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$GCP_REPOSITORY/ldsc-gpca:0.8.0"
+docker tag ldsc-gpca:0.8.0 "$IMAGE"
 docker push "$IMAGE"
 ```
 
@@ -123,7 +129,8 @@ or nest `docker run` inside a process script.
 
 ## Validation boundary
 
-Locally verified with Nextflow 26.04.6, Java 24 and the linux/amd64 image:
+The following checks were previously run with Nextflow 26.04.6, Java 24 and
+an earlier linux/amd64 image. They do not establish v0.8.0 container validation:
 
 - `smoke.nf` completed successfully, including resource tracing and LDSC/R checks.
 - `gpca_qc.nf` completed on a synthetic three-trait input. Matrix ordering, CTI,

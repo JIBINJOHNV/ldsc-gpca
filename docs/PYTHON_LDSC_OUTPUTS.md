@@ -1,6 +1,6 @@
 # Python LDSC output file reference
 
-[README](../README.md) · [Python LDSC guide](PYTHON_LDSC.md) · [Final result columns and real example](PYTHON_LDSC.md#results-and-next-step)
+[Choose a workflow](../README.md#choose-a-workflow) · [Python LDSC guide](PYTHON_LDSC.md) · [Final result columns and real example](PYTHON_LDSC.md#results-and-next-step)
 
 Use this reference when you need to understand an intermediate file, investigate
 a failed run, or preserve enough information to restart. The main guide shows

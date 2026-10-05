@@ -1,6 +1,6 @@
 # Run GenomicSEM LDSC
 
-[README](../README.md) · [Inputs](INPUTS.md) · [Pipeline](PIPELINE.md) · [Next: GPCA/GWAMA](GENOMICSEM_GPCA.md)
+[Choose a workflow](../README.md#choose-a-workflow) · [Inputs](INPUTS.md) · [Pipeline](PIPELINE.md) · [Next: GPCA/GWAMA](GENOMICSEM_GPCA.md)
 
 ## In this guide
 
@@ -315,7 +315,9 @@ their supplied common reference.
 Use **`genomicsem_LDSC.RData`** as the input to
 [`genomicsem gpca`](GENOMICSEM_GPCA.md). It contains `LDSCoutput` with
 `S,V,I,S_Stand,V_Stand`. Use `Selected_Traits.csv` to carry forward the retained
-traits in order.
+traits in order. Continue with [QC/PCA](GENOMICSEM_GPCA.md#check-results-and-calculate-pca)
+or [PC1 GWAMA](GENOMICSEM_GPCA.md#run-pc1-gwama); GWAMA also needs
+per-trait SNP tables or VCFs for automatic preparation.
 
 Update scripts that refer to the previous output filename. Existing RData files
 remain readable through an explicit `--ldsc_results` path when they contain the
