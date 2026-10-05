@@ -7,11 +7,13 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import warnings
 from importlib.resources import files
 
 import polars as pl
 
 from .interfaces import read_manifest
+from .restart import write_checkpoint
 from .utils import optional_prevalence
 from .workers import run_parallel_jobs
 
@@ -95,14 +97,24 @@ def sample_metadata(manifest):
 
 
 def write_ldsc_manifest(path, rows, metadata, outdir, *, munged=False):
-    with open(path, 'w', newline='') as stream:
-        writer = csv.DictWriter(stream, fieldnames=['traitname', 'ref', 'sumstats_file', 'munged_file',
-                                                   'N', 'sample_prevalence', 'population_prevalence'])
-        writer.writeheader()
-        for name, _ in rows:
-            writer.writerow({'traitname': name, 'ref': 'yes', **metadata[name],
-                'sumstats_file': str(outdir/'munge_inputs'/f'{name}_munge_inputs.tsv'),
-                'munged_file': str(outdir/'munged'/f'{name}.sumstats.gz') if munged else ''})
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', newline='', dir=Path(path).parent,
+                                         prefix='.manifest-', delete=False) as stream:
+            temporary = stream.name
+            writer = csv.DictWriter(stream, fieldnames=['traitname', 'ref', 'sumstats_file', 'munged_file',
+                                                       'N', 'sample_prevalence', 'population_prevalence'])
+            writer.writeheader()
+            for name, _ in rows:
+                writer.writerow({'traitname': name, 'ref': 'yes', **metadata[name],
+                    'sumstats_file': str(outdir/'munge_inputs'/f'{name}_munge_inputs.tsv'),
+                    'munged_file': str(outdir/'munged'/f'{name}.sumstats.gz') if munged else ''})
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def prepare_shared_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source,
@@ -189,16 +201,32 @@ def validate_mode(opts, argv):
 
 def munge_prepared(opts, command):
     """Keep raw inputs; publish munged files together only after all traits succeed."""
+    out = Path(opts.outdir).resolve()
+    settings_path = out/'Preparation_Settings.json'
+    settings = json.loads(settings_path.read_text())
+    settings.update(munge_backend=opts.munge_backend, info_filter=opts.info_filter,
+                    maf_filter=opts.maf_filter, munging_status='running')
+    write_checkpoint(settings_path, settings)
+    try:
+        _munge_and_publish(opts, command, out)
+        settings['munging_status'] = 'completed'
+        write_checkpoint(settings_path, settings)
+    except BaseException as error:
+        settings.update(munging_status='failed', munging_error=str(error))
+        try:
+            write_checkpoint(settings_path, settings)
+        except OSError as status_error:
+            warnings.warn(f'Could not record failed munging status: {status_error}; preparation is not complete.')
+        raise
+    print(f'Munged inputs: {out/"munged"}')
+
+
+def _munge_and_publish(opts, command, out):
     from .ldsc_munge import FLOAT_FORMAT
     from .restart import file_digest
-    out = Path(opts.outdir).resolve()
     _, rows = read_manifest(out/'Prepared_LDSC_Manifest.csv')
     logs = out/'munge_logs'
     logs.mkdir()
-    settings = json.loads((out/'Preparation_Settings.json').read_text())
-    settings.update(munge_backend=opts.munge_backend, info_filter=opts.info_filter,
-                    maf_filter=opts.maf_filter, munging_status='running')
-    (out/'Preparation_Settings.json').write_text(json.dumps(settings, indent=2)+'\n')
     with tempfile.TemporaryDirectory(prefix='.munge-', dir=out) as temporary:
         stage = Path(temporary)
         def worker(row):
@@ -243,12 +271,9 @@ def munge_prepared(opts, command):
                     'success': False, 'error': str(value)} for row, value in zip(rows, values)]
         pl.DataFrame(statuses, infer_schema_length=None).write_csv(out/'Preparation_Munging_Status.csv')
         failed = [r for r in statuses if not r['success']]
-        settings['munging_status'] = 'failed' if failed else 'completed'
-        (out/'Preparation_Settings.json').write_text(json.dumps(settings, indent=2)+'\n')
         if failed:
             raise ValueError('Munging failed after 2 attempts; raw inputs retained, no munged/ published.\n' +
                              '\n'.join(r['error'] for r in failed))
         stage.rename(out/'munged')
     metadata = sample_metadata(out/'Prepared_LDSC_Manifest.csv')
     write_ldsc_manifest(out/'Prepared_LDSC_Manifest.csv', [(r['traitname'], None) for r in rows], metadata, out, munged=True)
-    print(f'Munged inputs: {out/"munged"}')

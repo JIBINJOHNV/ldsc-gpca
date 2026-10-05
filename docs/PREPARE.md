@@ -232,7 +232,12 @@ identical SNP sets or estimates. Inspect each trait's munging log.
 
 Failed workers receive one retry, for two attempts total. Failed extraction
 publishes QC but no prepared tables. Failed munging leaves successfully prepared
-raw/GPCA tables and logs available, and publishes no final `munged/` directory.
+raw/GPCA tables and logs available, and publishes no final `munged/` directory
+when a trait fails. `Preparation_Settings.json` records `completed` only after
+the directory and updated manifest have both been published. A later publication
+failure records `failed` when possible; files already published are retained for
+diagnosis and must not be treated as a completed preparation. Manifest and status
+updates use atomic replacement, so an interrupted write cannot truncate them.
 Existing named outputs are refused; use a fresh directory for a new run.
 
 ## Choose IDs, layout and P-value floor
