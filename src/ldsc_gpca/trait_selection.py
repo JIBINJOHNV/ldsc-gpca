@@ -9,21 +9,30 @@ import math
 
 import pandas as pd
 
+from .ldsc_export import HERITABILITY_COLUMNS
+
 
 def _pair_key(a, b, order):
     return tuple(sorted((a, b), key=order.__getitem__))
 
 
-def validate_duplicate_estimates(frame, order):
+def validate_duplicate_estimates(frame, order, *, sources=None):
     """Use the R duplicate tolerances before exclusions can hide a conflict."""
     groups = {}
-    for row in frame.itertuples(index=False):
+    self_columns = [c for pair in HERITABILITY_COLUMNS for c in pair if c in frame]
+    self_columns += ['h2_int', 'h2_int_se']
+    for row in frame.itertuples():
         groups.setdefault(_pair_key(row.p1, row.p2, order), []).append(row)
     for pair, rows in groups.items():
         if len(rows) < 2:
             continue
         conflicts = []
-        for column in ('rg', 'se', 'z', 'p', 'gcov_int', 'gcov_int_se'):
+        columns = ['rg', 'se', 'z', 'p', 'gcov_int', 'gcov_int_se']
+        # Off-diagonal h2/intercept fields belong to p2, so reverse rows
+        # describe different traits. Only repeated self-pairs must agree here.
+        if pair[0] == pair[1]:
+            columns += self_columns
+        for column in columns:
             values = [getattr(row, column) for row in rows]
             finite = [v for v in values if math.isfinite(v)]
             tolerance = .01 if column == 'z' else .001
@@ -36,8 +45,12 @@ def validate_duplicate_estimates(frame, order):
             if disagreement:
                 conflicts.append(column)
         if conflicts:
+            locations = '' if sources is None else ' Sources: ' + '; '.join(
+                f'{sources.at[row.Index, "Source_File"]}:row {sources.at[row.Index, "Source_Row"]}'
+                for row in rows[:10])
             raise RuntimeError(f'Conflicting duplicate LDSC estimates: {pair[0]} <-> {pair[1]} '
-                               f'[{", ".join(conflicts)}]. Trait removal cannot hide this conflict.')
+                               f'[{", ".join(conflicts)}]. Trait removal cannot hide this conflict.'
+                               + locations)
 
 
 def _self_estimates(frame, traits):

@@ -10,7 +10,7 @@ heritability_column_sets <- list(
 
 internal_heritability_columns <- c("h2", "h2_se")
 
-# All processing after input normalization uses scale-neutral h2/h2_se names.
+# Matrix construction uses scale-neutral h2/h2_se names after normalization.
 required_python_ldsc_columns <- c(
   required_python_ldsc_base_columns,
   internal_heritability_columns
@@ -23,4 +23,10 @@ python_ldsc_numeric_columns <- setdiff(
 
 duplicate_comparison_columns <- c(
   "rg", "se", "z", "p", "gcov_int", "gcov_int_se"
+)
+
+# These fields describe p2 on off-diagonal rows; compare only self duplicates.
+self_duplicate_comparison_columns <- c(
+  internal_heritability_columns, unlist(heritability_column_sets),
+  "h2_int", "h2_int_se"
 )

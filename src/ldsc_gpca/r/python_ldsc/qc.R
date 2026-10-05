@@ -1,9 +1,13 @@
 # Validate LDSC estimates and resolve explicitly authorized incomplete trait sets.
 
 coerce_python_ldsc_numeric <- function(ldsc_rows) {
-  for (column_name in python_ldsc_numeric_columns) {
+  source_columns <- intersect(unlist(heritability_column_sets), names(ldsc_rows))
+  for (column_name in c(python_ldsc_numeric_columns, source_columns)) {
     original <- ldsc_rows[[column_name]]
     if (is.double(original) && is.null(attributes(original))) next
+    if (column_name %in% source_columns) {
+      original[trimws(as.character(original)) %in% c("", "NA", "NaN", "nan")] <- NA
+    }
     converted <- suppressWarnings(as.numeric(original))
     invalid_conversion <- is.na(converted) & !is.na(original)
 
@@ -53,14 +57,30 @@ python_ldsc_numeric_checks <- function(ldsc_rows, self_rg_tolerance = 1e-2,
     function(value) is.finite(value) & value > 0)
   positive_se$se <- positive_se$se | zero_self
   valid_p <- is.finite(ldsc_rows$p) & ldsc_rows$p >= 0 & ldsc_rows$p <= 1
+  self <- ldsc_rows$p1 == ldsc_rows$p2
+  positive_self_h2 <- !self | (is.finite(ldsc_rows$h2) & ldsc_rows$h2 > 0)
+  valid_self_rg <- !self | (is.finite(ldsc_rows$rg) &
+    abs(ldsc_rows$rg - 1) <= self_rg_tolerance + comparison_epsilon)
+  for (columns in heritability_column_sets) {
+    if (!all(columns %in% names(ldsc_rows))) next
+    h2 <- ldsc_rows[[columns[1L]]]
+    se <- ldsc_rows[[columns[2L]]]
+    active <- self & (!is.na(h2) | !is.na(se))
+    finite[[columns[1L]]] <- !active | is.finite(h2)
+    finite[[columns[2L]]] <- !active | is.finite(se)
+    positive_se[[columns[2L]]] <- !active | (is.finite(se) & se > 0)
+    positive_self_h2 <- positive_self_h2 & (!active | (is.finite(h2) & h2 > 0))
+  }
   list(finite = finite, positive_se = positive_se, valid_p = valid_p,
-       zero_self = zero_self)
+       zero_self = zero_self, positive_self_h2 = positive_self_h2,
+       valid_self_rg = valid_self_rg)
 }
 
 python_ldsc_valid_row <- function(ldsc_rows, self_rg_tolerance = 1e-2,
                                    comparison_epsilon = 1e-12) {
   checks <- python_ldsc_numeric_checks(ldsc_rows, self_rg_tolerance, comparison_epsilon)
-  Reduce(`&`, checks$finite) & Reduce(`&`, checks$positive_se) & checks$valid_p
+  Reduce(`&`, checks$finite) & Reduce(`&`, checks$positive_se) & checks$valid_p &
+    checks$positive_self_h2 & checks$valid_self_rg
 }
 
 # Evaluate every selected trait's LDSC self-pair in one place. This function is
@@ -74,6 +94,7 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
                                   h2_z_warn_threshold = 2,
                                   heritability_scale = c("auto", "liability", "observed", "mixed")) {
   rows <- prepare_python_ldsc_rows(ldsc_rows, trait_order, match.arg(heritability_scale))
+  validate_duplicate_estimates(rows, trait_order, comparison_epsilon = comparison_epsilon)
   .evaluate_self_pair_qc(rows, trait_order, self_rg_tolerance,
                          comparison_epsilon, h2_z_warn_threshold)
 }
@@ -102,25 +123,20 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
   summarize_self <- function(rows) {
     checks <- python_ldsc_numeric_checks(rows, self_rg_tolerance, comparison_epsilon)
     zero_self <- nrow(rows) > 0L && all(checks$zero_self)
+    literal_finite <- checks$finite
+    literal_finite$z <- is.finite(rows$z)
+    literal_positive_se <- checks$positive_se
+    literal_positive_se$se <- is.finite(rows$se) & rows$se > 0
     data.table(
       Self_Source_Rows = nrow(rows),
-      Required_Numeric_Finite = nrow(rows) > 0L && all(
-        vapply(
-          rows[, ..python_ldsc_numeric_columns],
-          function(value) all(is.finite(value)),
-          logical(1)
-        )
-      ),
-      Required_SE_Positive = nrow(rows) > 0L && all(
-        vapply(
-          rows[, .(se, h2_se, h2_int_se, gcov_int_se)],
-          function(value) all(is.finite(value) & value > 0),
-          logical(1)
-        )
-      ),
+      Required_Numeric_Finite = nrow(rows) > 0L && all(unlist(literal_finite)),
+      Required_SE_Positive = nrow(rows) > 0L && all(unlist(literal_positive_se)),
       Required_Numeric_Valid = nrow(rows) > 0L && all(unlist(checks$finite)),
       Required_SE_Valid = nrow(rows) > 0L && all(unlist(checks$positive_se)),
       Self_RG_Zero_SE_Exception = zero_self,
+      Self_RG_Within_Tolerance = nrow(rows) > 0L && all(checks$valid_self_rg),
+      Self_H2_Positive = nrow(rows) > 0L && all(checks$positive_self_h2),
+      Self_H2_SE_Positive = nrow(rows) > 0L && all(checks$positive_se$h2_se),
       P_Valid = nrow(rows) > 0L && all(
         is.finite(rows$p) & rows$p >= 0 & rows$p <= 1
       ),
@@ -158,10 +174,6 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
   result[, `:=`(
     Self_RG_Lower_Bound = 1 - self_rg_tolerance,
     Self_RG_Upper_Bound = 1 + self_rg_tolerance,
-    Self_RG_Within_Tolerance = is.finite(Self_RG) &
-      Self_RG_Deviation <= self_rg_tolerance + comparison_epsilon,
-    Self_H2_Positive = is.finite(Self_H2) & Self_H2 > 0,
-    Self_H2_SE_Positive = is.finite(Self_H2_SE) & Self_H2_SE > 0,
     H2_Z = Self_H2 / Self_H2_SE
   )]
   result[, H2_Z_Below_Warning_Threshold := if (h2_z_warn_threshold > 0) {
@@ -191,7 +203,7 @@ evaluate_self_pair_qc <- function(ldsc_rows, trait_order,
           "Self-pair p-value outside [0,1]",
           fifelse(
             !Self_H2_Positive,
-            paste0("Non-positive self-pair ", h2_source_column),
+            "Non-positive self-pair heritability in a source row",
             fifelse(
               !Self_RG_Within_Tolerance,
               "Self-pair rg differs from 1 beyond tolerance",
@@ -241,6 +253,16 @@ empty_failed_trait_table <- function() {
 validate_duplicate_estimates <- function(ldsc_rows, trait_order, tolerance = 1e-3,
                                          duplicate_z_tolerance = 1e-2,
                                          comparison_epsilon = 1e-12) {
+  stats <- .validate_duplicate_fields(ldsc_rows, trait_order,
+    duplicate_comparison_columns, tolerance, duplicate_z_tolerance, comparison_epsilon)
+  self_columns <- intersect(self_duplicate_comparison_columns, names(ldsc_rows))
+  .validate_duplicate_fields(ldsc_rows[pair_i == pair_j], trait_order,
+    self_columns, tolerance, duplicate_z_tolerance, comparison_epsilon)
+  stats
+}
+
+.validate_duplicate_fields <- function(ldsc_rows, trait_order, columns, tolerance,
+                                       duplicate_z_tolerance, comparison_epsilon) {
   duplicate_stats <- ldsc_rows[, c(
     setNames(lapply(.SD, function(x) if (any(is.finite(x))) min(x[is.finite(x)]) else NA_real_), paste0("min_", names(.SD))),
     setNames(lapply(.SD, function(x) if (any(is.finite(x))) max(x[is.finite(x)]) else NA_real_), paste0("max_", names(.SD))),
@@ -248,11 +270,11 @@ validate_duplicate_estimates <- function(ldsc_rows, trait_order, tolerance = 1e-
     setNames(lapply(.SD, function(x) sum(x == Inf, na.rm = TRUE)), paste0("posinf_", names(.SD))),
     setNames(lapply(.SD, function(x) sum(x == -Inf, na.rm = TRUE)), paste0("neginf_", names(.SD))),
     list(source_row_count = .N)
-  ), by = .(pair_i, pair_j), .SDcols = duplicate_comparison_columns]
+  ), by = .(pair_i, pair_j), .SDcols = columns]
 
   conflict <- rep(FALSE, nrow(duplicate_stats))
   conflict_fields <- rep("", nrow(duplicate_stats))
-  for (column_name in duplicate_comparison_columns) {
+  for (column_name in columns) {
     current_tolerance <- if (column_name == "z") {
       duplicate_z_tolerance
     } else {
@@ -655,10 +677,10 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     )
   }
 
-  ldsc_rows <- .validate_python_ldsc_numeric(ldsc_rows, self_rg_tolerance, comparison_epsilon)
-
   duplicate_stats <- validate_duplicate_estimates(ldsc_rows, trait_order,
     tolerance, duplicate_z_tolerance, comparison_epsilon)
+
+  ldsc_rows <- .validate_python_ldsc_numeric(ldsc_rows, self_rg_tolerance, comparison_epsilon)
 
   collapsed <- ldsc_rows[, lapply(.SD, mean),
     by = .(pair_i, pair_j),

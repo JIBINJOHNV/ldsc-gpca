@@ -121,7 +121,8 @@ normalize_heritability_columns <- function(ldsc_rows,
       set(normalized, i = index, j = internal_heritability_columns[i],
           value = suppressWarnings(as.numeric(normalized[[cols[i]]][index])))
   }
-  normalized[, (unlist(heritability_column_sets)) := NULL]
+  # Retain supplied scales for source-row and duplicate validation. Choosing
+  # one scale must not hide contradictory estimates in the other scale.
   used <- unique(scales[scales != "unavailable"])
   setattr(normalized, "heritability_scale", if (length(used) == 1L) used else "mixed")
   setattr(normalized, "heritability_value_column", if (length(used) == 1L) heritability_column_sets[[used]][1L] else "trait-specific h2")

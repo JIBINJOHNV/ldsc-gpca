@@ -43,7 +43,11 @@ It also needs the appropriate self-pair heritability estimate/SE columns:
 `h2_obs,h2_obs_se` or `h2_liab,h2_liab_se`. For k selected traits there must be
 `k × (k+1) / 2` unique self/pair combinations: ten for Trait_A through Trait_D.
 A triangle or a consistent symmetric table is accepted. Conflicting duplicate
-orientations are fatal. See the [full table contract](REFERENCE.md#python-ldsc-results-table).
+orientations are fatal. Repeated self-pairs must also agree on heritability,
+heritability SE, heritability intercept and intercept SE, for each supplied scale.
+Checks precede averaging and trait removal; every source self estimate must pass
+QC. Off-diagonal reverse rows may have different heritability fields because
+those fields describe `p2`. See the [full table contract](REFERENCE.md#python-ldsc-results-table).
 
 For **GWAMA as well**, either supply the nine-column per-trait tables using
 `--gpca_input_folder`, or add suitable `vcf_files` to the manifest so the command
@@ -280,7 +284,7 @@ Preparation settings apply only when VCF preparation runs. Export settings apply
 | `--rg_out_of_range_action` | `warn` | GPCA: `warn` or `error` for finite off-diagonal rg outside [−1,1]. Never clamps values. |
 | `--negative_eigen_action` | `warn` | GPCA: `warn` or `error` for substantive negative PCA eigenvalues. No silent matrix repair. |
 | `--matrix_eigen_tolerance` | `1e-8` | GPCA: positive relative tolerance separating substantive negative eigenvalues from floating-point noise. |
-| `--duplicate_tolerance` | `0.001` | Python GPCA: positive absolute tolerance for duplicate rg, SE, P and intercept estimates. |
+| `--duplicate_tolerance` | `0.001` | Python GPCA: positive absolute tolerance for duplicate rg, SE, P and intercept estimates, including self-pair heritability and SE. |
 | `--duplicate_z_tolerance` | `0.01` | Python GPCA: positive absolute tolerance for duplicate-orientation Z values. |
 | `--self_rg_tolerance` | `0.01` | Python GPCA: positive tolerance around self rg=1. SE=0 is accepted only with Z=+Inf and P=0; other checks still apply. |
 | `--comparison_epsilon` | `1e-12` | Python GPCA: nonnegative floating-point allowance added to boundary comparisons. |

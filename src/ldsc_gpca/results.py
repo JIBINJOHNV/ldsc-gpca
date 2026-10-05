@@ -9,7 +9,7 @@ import pandas as pd
 import polars as pl
 from .ldsc_export import BASE_RESULT_COLUMNS, HERITABILITY_COLUMNS, NATIVE_COLUMNS, write_results_csv
 from .result_qc import result_status, trait_status, _missing_value, self_rg_zero_se
-from .trait_selection import select_complete_traits
+from .trait_selection import select_complete_traits, validate_duplicate_estimates
 
 
 def _trait_name(path):
@@ -286,12 +286,17 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
     for column in ['p1', 'p2']:
         df[column] = df[column].apply(_trait_name)
         pairs[column] = pairs[column].apply(_trait_name)
-    df = df[df['p1'] != 'p1'].drop_duplicates()
+    df = df[df['p1'] != 'p1']
     expected = {(ref, target) for ref in trait_metadata.loc[trait_metadata['ref'] == 'yes', 'gwas_name']
                 for target in trait_metadata['gwas_name']}
     actual = set(zip(df['p1'], df['p2']))
     if actual - expected or (expected - actual and not dropping):
         raise RuntimeError(f'LDSC comparison mismatch: missing={sorted(expected - actual)}; unexpected={sorted(actual - expected)}')
+    order = {name: i for i, name in enumerate(trait_metadata.gwas_name)}
+    # Check every supplied scale before remapping columns or publishing any
+    # summaries. Conflicts are structural failures under every policy.
+    validate_duplicate_estimates(df, order, sources=pairs)
+    df = df.drop_duplicates()
     if dropping and expected - actual:
         missing = pd.DataFrame([{'p1': a, 'p2': b, 'Source_File': '', 'Source_Row': float('nan'),
             'Status': 'missing_result', 'Warning': '',
@@ -309,7 +314,6 @@ def _compile_results(output_folder, log_files, trait_metadata, *, result_failure
         df.loc[no_conversion, observed] = df.loc[no_conversion, observed].fillna(df.loc[no_conversion, liability])
         df.loc[no_conversion, liability] = float('nan')
     df['h2_scale'] = df['p2'].map(lambda name: 'NEF_unconverted' if pd.isna(prevalence[name]) else 'liability')
-    order = {name: i for i, name in enumerate(trait_metadata.gwas_name)}
     for table in (df, pairs):
         table.sort_values(['p1', 'p2'], key=lambda x: x.map(order), kind='stable', inplace=True)
         table.reset_index(drop=True, inplace=True)

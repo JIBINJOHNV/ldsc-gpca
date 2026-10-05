@@ -248,7 +248,7 @@ parse_command_line <- function() {
     default = 1e-3,
     help = paste(
       "Maximum absolute difference between duplicate orientations for rg,",
-      "SE, p, and intercept estimates. Default: 0.001."
+      "SE, p, and intercept estimates, including self-pair heritability and SE. Default: 0.001."
     )
   )
   qc_thresholds$add_argument(

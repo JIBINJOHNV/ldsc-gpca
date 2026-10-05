@@ -74,7 +74,7 @@ class NumericalCsvTests(unittest.TestCase):
             actual=self.compile(pd.DataFrame([bad]))
             self.assertEqual(actual.rg.iloc[0],row['rg'])
             self.assertEqual(actual.normalization_status.iloc[0],'invalid_native_estimate')
-        for data, message in [(pd.DataFrame([row]).drop(columns=NATIVE_COLUMNS[0]), 'Incomplete native'),
+        for data, message in [(pd.DataFrame([row]).drop(columns=NATIVE_COLUMNS[0]), 'Incomplete Python LDSC'),
                               (pd.DataFrame([dict(row,gcov_native_obs='bad')]),'Non-numeric')]:
             with self.assertRaisesRegex(RuntimeError,message): self.compile(data)
 
@@ -151,15 +151,13 @@ class NumericalCsvTests(unittest.TestCase):
             with self.subTest(message=message), self.assertRaisesRegex(RuntimeError, message):
                 self.compile(frame, metadata)
 
-    def test_consistent_duplicates_collapse_conflicting_records_are_not_silently_discarded(self):
+    def test_consistent_duplicates_collapse_and_conflicting_records_fail_collection(self):
         self.assertEqual(len(self.compile(pd.DataFrame([record(), record()]))), 1)
         different = record("A", "B")
         different["rg"] = 0.9
-        # The downstream R duplicate-conflict checks remain authoritative.
-        compiled = self.compile(pd.DataFrame([record("A", "A"), record("A", "B"), different]),
-                                manifest(("A", "B"), ["yes", "no"]))
-        self.assertEqual(len(compiled), 3)
-        self.assertEqual(compiled.rg.iloc[2], 0.9)
+        with self.assertRaisesRegex(RuntimeError, 'Conflicting duplicate.*rg'):
+            self.compile(pd.DataFrame([record("A", "A"), record("A", "B"), different]),
+                         manifest(("A", "B"), ["yes", "no"]))
 
 
 if __name__ == "__main__":

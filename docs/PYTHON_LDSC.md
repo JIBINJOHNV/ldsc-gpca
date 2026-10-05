@@ -395,11 +395,14 @@ Numerically invalid estimates follow `--result_failure_action`:
 - `drop_traits`: save removals and a complete retained subset. Requires all
   `ref=yes` and at least two retained traits to produce a usable final CSV.
 
-Structural errors remain fatal. Trait removal also checks duplicate estimates
-for conflicts before choosing a subset; GPCA checks duplicate consistency before
-analysis. Read the compilation status, pair and trait reports even when the
-command finishes. Trait removal changes the downstream PCA; use the retained
-manifest with the retained results.
+Structural errors remain fatal under all three policies. Result collection checks
+duplicate estimates before scale mapping or trait removal. Repeated self-pairs
+must also agree on each supplied heritability estimate/SE and heritability
+intercept/SE; observed and liability scales are checked separately. A conflict
+stops collection and reports the trait, fields and source rows. GPCA repeats these
+checks when reading an existing results table. Read the compilation status, pair
+and trait reports even when the command finishes. Trait removal changes the
+downstream PCA; use the retained manifest with the retained results.
 
 ## Results and next step
 

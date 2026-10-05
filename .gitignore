@@ -79,3 +79,6 @@ results/
 !tests/PREPARE_MODES_VALIDATION.md
 !tests/test_ldsc_dispatch.py
 !tests/LDSC_BACKEND_VALIDATION.md
+!tests/test_self_duplicates.py
+!tests/test_self_duplicates.R
+!tests/SELF_DUPLICATE_VALIDATION.md

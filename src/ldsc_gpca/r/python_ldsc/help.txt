@@ -45,7 +45,8 @@ Trait and failed-result handling:
 
 QC comparison thresholds:
   --duplicate_tolerance FLOAT   Maximum absolute difference between duplicate orientations for
-                                rg, SE, p, and intercept estimates. Default: 0.001.
+                                rg, SE, p, and intercept estimates, including self-pair
+                                heritability and SE. Default: 0.001.
 
   --duplicate_z_tolerance FLOAT
                                 Maximum absolute duplicate-orientation z difference. Default:

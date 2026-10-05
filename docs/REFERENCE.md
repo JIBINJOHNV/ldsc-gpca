@@ -1370,6 +1370,16 @@ full symmetric tables are accepted. Consistent duplicate orientations collapse;
 conflicting duplicates fail. A raw `ldsc.py --rg A,B,C` command does not supply
 B–C, so it is insufficient by itself.
 
+Every unordered pair is checked for agreement in `rg,se,z,p,gcov_int,gcov_int_se`.
+Repeated self-pairs additionally require agreement in each supplied
+`h2_obs,h2_obs_se,h2_liab,h2_liab_se,h2_int,h2_int_se` field. The scales are
+compared separately, including a populated alternative scale; an entirely empty
+alternative scale is allowed. Off-diagonal reverse-row heritability fields refer
+to different target traits and are not required to agree. Conflicts are fatal
+under every result/trait-removal policy, before averaging or excluding traits.
+Each source self estimate must be valid: a positive average cannot rescue a
+non-positive source heritability. Identical duplicates remain accepted.
+
 Required selected numeric values must be finite, required SEs positive and P
 in range, with one self-correlation exception: a self-pair with finite `rg`
 within the existing tolerance of 1 may have `se=0`, `z=+Inf`, and `p=0` together.
