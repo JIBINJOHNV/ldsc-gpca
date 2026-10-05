@@ -22,6 +22,11 @@ estimates, checks them and calculates PCA. A full run then combines per-SNP
 statistics with the PC1 loadings using GWAMA and exports the results. It does
 not rerun LDSC. Both GPCA routes require `Rscript` on PATH.
 
+To produce the Python LDSC results first, use
+[`ldsc-gpca ldsc --ldsc_backend python`](PYTHON_LDSC.md).
+`--ldsc_backend` applies to `ldsc` and `pipeline`; this GPCA command reads Python
+results and does not accept that selector.
+
 ## Files you need
 
 Always provide:

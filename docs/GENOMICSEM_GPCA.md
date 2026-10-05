@@ -22,6 +22,11 @@ check the selected traits and calculate PCA. A full run then uses PC1 loadings
 and the LDSC intercept matrix to combine per-SNP statistics with GWAMA.
 It does not rerun LDSC. It requires `Rscript` on PATH.
 
+To produce the GenomicSEM LDSC results first, use
+[`ldsc-gpca ldsc --ldsc_backend genomicsem`](GENOMICSEM_LDSC.md).
+`--ldsc_backend` applies to `ldsc` and `pipeline`; this GPCA command reads GenomicSEM
+results and does not accept that selector.
+
 ## Files you need
 
 Supply a trait-selection CSV, the final GenomicSEM RData and a fresh output folder.

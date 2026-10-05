@@ -2,8 +2,9 @@
 
 [README](../README.md) · [Input formats](INPUTS.md) · [Output file reference](PYTHON_LDSC_OUTPUTS.md) · [Next: GPCA/GWAMA](PYTHON_GPCA.md)
 
-`ldsc-gpca ldsc` defaults to **Python LDSC**; `--ldsc_backend python` selects it
-explicitly. It estimates heritabilities, genetic correlations and LDSC
+Use `ldsc-gpca ldsc --ldsc_backend python` for **Python LDSC**. All examples
+name the backend explicitly; omitting it still defaults to Python.
+It estimates heritabilities, genetic correlations and LDSC
 intercepts, then collects them in **`<outdir>/ldsc_results.csv`**. Choose the
 instructions that match the files you already have:
 
@@ -93,7 +94,7 @@ Python LDSC environment automatically.
 ### 2. Run with the default filters
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /data/traits_python.csv \
   --outdir /results/python_ldsc_vcf \
   --ld_ref /references/eur_w_ld_chr \
@@ -106,7 +107,7 @@ For example, use a stricter INFO threshold, exclude the MHC interval, supply
 separate weights and enable automatic chi-square filtering:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /data/traits_python.csv \
   --outdir /results/python_ldsc_vcf_filtered \
   --ld_ref /references/eur_w_ld_chr \
@@ -247,7 +248,7 @@ skipped. The configured child LDSC runtime is still required.
 For inputs produced with the default filter settings:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /data/traits_python_munged.csv \
   --outdir /results/python_ldsc_reused \
   --ld_ref /references/eur_w_ld_chr \
@@ -273,7 +274,7 @@ For example, to reuse files originally made with `--info_min 0.9 --exclude_mhc`
 and otherwise default extraction/munging settings:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /data/traits_python_munged.csv \
   --outdir /results/python_ldsc_reused_filtered \
   --ld_ref /references/eur_w_ld_chr \

@@ -297,7 +297,7 @@ include HapMap selection. QC issue files preserve original VCF fields and add
 To run **Python LDSC** using the prepared munged files:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /results/prepared_python/Prepared_LDSC_Manifest.csv \
   --ldsc_only \
   --munged_dir /results/prepared_python/munged \

@@ -41,10 +41,10 @@ what happens when omitted; fixed choices are listed beside that option.
 Required inputs have no default. Help/version actions simply display information.
 
 ```bash
-ldsc-gpca pipeline --help
+ldsc-gpca pipeline --ldsc_backend python --help
 ldsc-gpca pipeline --ldsc_backend genomicsem --help
 ldsc-gpca prepare --help
-ldsc-gpca ldsc --help
+ldsc-gpca ldsc --ldsc_backend python --help
 ldsc-gpca ldsc --ldsc_backend genomicsem --help
 ldsc-gpca gpca --help
 ldsc-gpca genomicsem gpca --help
@@ -106,7 +106,7 @@ From a terminal with Git and internet access:
 git clone https://github.com/JIBINJOHNV/ldsc-gpca.git
 cd ldsc-gpca
 bash scripts/setup_environments.sh --no-activate
-conda activate ldsc-gpca
+source .environments/named/activate.sh
 ldsc-gpca --version
 ldsc-gpca --help
 ```
@@ -114,10 +114,13 @@ ldsc-gpca --help
 The installer creates the main `ldsc-gpca` environment and an isolated
 `ldsc-gpca-ldsc` environment. It installs/checks Python, R, GenomicSEM, bcftools,
 pigz and CBIIT LDSC. **Activate only `ldsc-gpca`**; the package launches the child
-LDSC environment automatically. Run `conda activate ldsc-gpca` in each new terminal.
+LDSC environment automatically. The generated activation script initializes
+Conda in the current shell before activating the main environment. In each new
+terminal, run `conda activate ldsc-gpca` if Conda is initialized, or source the
+activation script using its full path.
 
 If Conda is absent, the installer can bootstrap checksum-verified Miniforge.
-Follow its printed shell initialization command before activation. It does not
+The generated activation script also handles shell initialization. Setup does not
 use sudo or edit your shell startup files. Linux x86_64/aarch64 and macOS
 Intel/Apple Silicon are detected; pinned dependency availability can limit native
 installation. A fresh install has not been tested on every supported architecture.
@@ -314,7 +317,7 @@ After updating the clone, install the new command into your main environment:
 conda activate ldsc-gpca
 python -m pip install .
 ldsc-gpca --version
-ldsc-gpca pipeline --help
+ldsc-gpca pipeline --ldsc_backend python --help
 ldsc-gpca pipeline --ldsc_backend genomicsem --help
 ```
 
@@ -699,7 +702,7 @@ Reference inputs:
 From VCFs:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /data/python_ldsc_traits.csv \
   --hm3 /references/hm3_alleles.tsv \
   --ld_ref /references/eur_ld_chr \
@@ -712,7 +715,7 @@ From existing munged files, use a manifest with
 `traitname,ref,population_prevalence,sample_prevalence`:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input /data/python_ldsc_reuse_traits.csv \
   --ldsc_only \
   --munged_dir /data/munged \
@@ -735,7 +738,7 @@ verified completed batches in the same output directory.
 Add `--restart` to the same command and keep the same `--outdir`:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input "${python_csv}" \
   --ldsc_only \
   --munged_dir "${munge_dir}/" \
@@ -971,7 +974,7 @@ To remove failed traits within the **LDSC command** and continue with the
 remaining set, use:
 
 ```bash
-ldsc-gpca ldsc \
+ldsc-gpca ldsc --ldsc_backend python \
   --input "${python_csv}" \
   --ldsc_only \
   --munged_dir "${munge_dir}/" \
@@ -1875,8 +1878,12 @@ for explicit N_eff/INFO overrides. Export itself does not harmonise alleles,
 change genome build or recalculate statistics.
 
 Export validates required columns, unique/non-empty SNPIDs, positions, Direction,
-current-run files and override ranges. It does not comprehensively QC every
-BETA, SE, PVAL or preserved N_eff/INFO value. Existing export/archive paths are
+current-run files and override ranges. It also requires finite BETA/Z/PVAL,
+positive finite SE/N_eff (and N_obs when present), and PVAL in `[0,1]`, allowing
+valid underflow to zero. Raw values are checked before overrides; an N_eff
+override cannot conceal invalid N already present in the results. Preserved INFO
+and EAF do not receive equivalent numerical range checks. These checks do not
+establish scientific calibration of BETA/SE/N_eff. Existing export/archive paths are
 refused. If archiving fails, saved exports and some moved originals can remain;
 inspect the error and files before retrying.
 
@@ -2099,10 +2106,10 @@ For more failure-stage details, see the [workflow reference](#contents).
 ```bash
 ldsc-gpca --help
 ldsc-gpca --version
-ldsc-gpca pipeline --help
+ldsc-gpca pipeline --ldsc_backend python --help
 ldsc-gpca pipeline --ldsc_backend genomicsem --help
 ldsc-gpca prepare --help
-ldsc-gpca ldsc --help
+ldsc-gpca ldsc --ldsc_backend python --help
 ldsc-gpca ldsc --ldsc_backend genomicsem --help
 ldsc-gpca gpca --help
 ldsc-gpca gpca --prepare_help
