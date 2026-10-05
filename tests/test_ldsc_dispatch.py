@@ -1,10 +1,17 @@
 """Backend selection must preserve each workflow's arguments and input contract."""
 import contextlib
+import gzip
+import hashlib
 import io
+import json
+from pathlib import Path
+import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from ldsc_gpca import cli, genomicsem_ldsc, ldsc, ldsc_cli, pipeline, prepare
+from ldsc_gpca.utils import DEFAULT_FILTERS
 
 
 BASE = ['--input', 'traits.csv', '--outdir', 'results', '--ld_ref', 'ld']
@@ -138,6 +145,104 @@ class LDSCBackendTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as error:
             parser.parse_args([*base, '--ldsc_backend', 'genomicsem'])
         self.assertEqual(error.exception.code, 2)
+
+
+class MungedDirectorySafetyTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.supplied = self.root / 'supplied'; self.supplied.mkdir()
+        self.out = self.root / 'out'
+        self.manifest = self.root / 'traits.csv'
+        self.vcf = self.root / 'A.vcf'
+        self.vcf.write_text('##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n')
+        self.manifest.write_text('traitname,ref,population_prevalence,sample_prevalence,vcf_files\n'
+                                 f'A,yes,,,{self.vcf}\nB,yes,,,{self.vcf}\n')
+        self.ld = self.root / 'reference'; self.ld.mkdir()
+        self.hm3 = self.root / 'hm3.tsv'; self.hm3.write_text('SNP\tA1\tA2\nrs1\tA\tG\n')
+        for name in ('A', 'B'):
+            target = self.supplied / f'{name}.sumstats.gz'
+            target.write_bytes(gzip.compress(('SNP\tA1\tA2\tN\tZ\n' + ''.join(
+                f'rs{i}\tA\tG\t10000\t{i/10}\n' for i in range(10))).encode(), mtime=0))
+            (self.supplied / f'{name}.prevalence.json').write_text(json.dumps({
+                'sample_size_column': 'NEF', 'sample_prevalence': None,
+                'filters': DEFAULT_FILTERS, 'sha256': hashlib.sha256(target.read_bytes()).hexdigest()}))
+        (self.supplied / 'keep.txt').write_text('Unrelated supplied file.\n')
+        self.output = io.StringIO()
+        stack = contextlib.ExitStack(); self.addCleanup(stack.close)
+        for redirect in (contextlib.redirect_stdout, contextlib.redirect_stderr):
+            stack.enter_context(redirect(self.output))
+
+    def args(self):
+        return ['--input', str(self.manifest), '--outdir', str(self.out),
+                '--ld_ref', str(self.ld), '--n_cores', '1']
+
+    def snapshot(self, folder):
+        return {str(path.relative_to(folder)): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in folder.rglob('*') if path.is_file()}
+
+    def test_invalid_combination_preserves_all_hashes_and_stops_before_any_work(self):
+        stages = ('read_manifest', 'check_runtime', 'prepare_compilation_outputs',
+                  'run_vcf_to_table', 'parallel_munge_sumstats',
+                  'parallel_ldsc_analysis', 'compile_results')
+        for route in ('direct', 'default', 'explicit_python'):
+            for with_hm3 in (True, False):
+                for existing_output in (False, True):
+                    with self.subTest(route=route, hm3=with_hm3, existing_output=existing_output):
+                        self.out = self.root / f'{route}_{with_hm3}_{existing_output}'
+                        if existing_output:
+                            self.out.mkdir()
+                            (self.out / 'ldsc_results.csv').write_text('Previous results must remain intact.\n')
+                        args = self.args() + ['--munged_dir', str(self.supplied)]
+                        if with_hm3: args += ['--hm3', str(self.hm3)]
+                        if existing_output: args += ['--restart']
+                        before = self.snapshot(self.root)
+                        self.output.seek(0); self.output.truncate()
+                        with contextlib.ExitStack() as stack:
+                            mocks = [stack.enter_context(patch.object(ldsc_cli, stage,
+                                side_effect=AssertionError('Unexpected stage: ' + stage))) for stage in stages]
+                            with self.assertRaises(SystemExit) as error:
+                                if route == 'direct': ldsc_cli.main(args)
+                                else: cli.main(['ldsc', *(['--ldsc_backend', 'python']
+                                                       if route == 'explicit_python' else []), *args])
+                            self.assertEqual(error.exception.code, 2)
+                            for mock in mocks: mock.assert_not_called()
+                        self.assertIn('--munged_dir requires --ldsc_only', self.output.getvalue())
+                        self.assertEqual(before, self.snapshot(self.root))
+                        self.assertEqual(self.out.exists(), existing_output)
+
+    def test_valid_reuse_preserves_inputs_in_explicit_and_default_directories(self):
+        for explicit in (True, False):
+            with self.subTest(explicit=explicit):
+                self.out = self.root / f'reuse_{explicit}'
+                directory = self.supplied
+                if not explicit:
+                    directory = self.out / 'ldsc_input'
+                    shutil.copytree(self.supplied, directory)
+                before = self.snapshot(directory)
+                args = self.args() + ['--ldsc_only']
+                if explicit: args += ['--munged_dir', str(directory)]
+                with patch.object(ldsc_cli, 'check_runtime'), \
+                     patch.object(ldsc_cli, 'run_vcf_to_table', side_effect=AssertionError('extraction')), \
+                     patch.object(ldsc_cli, 'parallel_munge_sumstats', side_effect=AssertionError('munging')), \
+                     patch.object(ldsc_cli, 'parallel_ldsc_analysis', return_value=[]) as regression, \
+                     patch.object(ldsc_cli, 'compile_results', return_value='fixture.csv'):
+                    cli.main(['ldsc', *args])
+                self.assertEqual(regression.call_args.args[5], str(directory))
+                self.assertEqual(before, self.snapshot(directory))
+
+    def test_fresh_run_keeps_default_destination(self):
+        before = self.snapshot(self.supplied)
+        with patch.object(ldsc_cli, 'check_runtime'), \
+             patch.object(ldsc_cli, 'run_vcf_to_table', side_effect=lambda n, frame, *args: frame) as extraction, \
+             patch.object(ldsc_cli, 'parallel_munge_sumstats', return_value=['A', 'B']) as munging, \
+             patch.object(ldsc_cli, 'parallel_ldsc_analysis', return_value=[]) as regression, \
+             patch.object(ldsc_cli, 'compile_results', return_value='fixture.csv'):
+            cli.main(['ldsc', *self.args(), '--hm3', str(self.hm3)])
+        extraction.assert_called_once(); munging.assert_called_once(); regression.assert_called_once()
+        self.assertEqual(munging.call_args.kwargs['ldsc_input_folder'], str(self.out / 'ldsc_input'))
+        self.assertEqual(before, self.snapshot(self.supplied))
 
 
 if __name__ == '__main__':

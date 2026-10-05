@@ -79,7 +79,8 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
     SNP,A1,A2 (tabs or spaces). Passed to standard LDSC --merge-alleles;
     required for VCF/munging runs and not required with --ldsc_only.
   --ld_ref: directory of chromosome reference files; see FIXED CONTRACT below.
-  --munged_dir: .sumstats.gz directory used with --ldsc_only;
+  --munged_dir: existing .sumstats.gz input directory; requires --ldsc_only.
+    Without --ldsc_only this combination is rejected before outputs are created;
     filenames: {traitname}.sumstats.gz. Required sidecars must remain alongside.
   Managed munging writes Python LDSC computed Z/N with 17 significant digits.
     --ldsc_only preserves existing precision; rerun munging to replace rounded files.

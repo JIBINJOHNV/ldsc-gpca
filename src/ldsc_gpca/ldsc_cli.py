@@ -86,7 +86,7 @@ filter_group.add_argument(
 
 # Flags for LDSC-only execution
 inputs.add_argument('--ldsc_only', action='store_true', help="Reuse existing munged files; extraction/munging filters are NOT reapplied. --chisq_max is applied to separate copies when supplied. Total-N traits require .prevalence.json; legacy NEF files are accepted with a provenance warning.")
-inputs.add_argument('--munged_dir', metavar="DIRECTORY", help="Pre-munged sumstats.gz directory for --ldsc_only. Default: <outdir>/ldsc_input.", default=None)
+inputs.add_argument('--munged_dir', metavar="DIRECTORY", help="Existing sumstats.gz input directory; requires --ldsc_only. Fresh runs write to <outdir>/ldsc_input. Default for reuse: <outdir>/ldsc_input.", default=None)
 execution.add_argument('--restart', action='store_true',
                     help='Reuse completed LDSC batches in the same outdir only when checkpointed input contents, parameters, runtime and result integrity match. Recompute unverified, changed or incomplete batches. Default: disabled. Extraction/munging is skipped only with --ldsc_only.')
 execution.add_argument('--ldsc_retries', type=int, default=1,
@@ -99,6 +99,8 @@ def main(argv=None):
         parser.print_help()
         return 0
     args = parser.parse_args(argv)
+    if args.munged_dir is not None and not args.ldsc_only:
+        parser.error('--munged_dir requires --ldsc_only; omit --munged_dir for a fresh run.')
     if not args.ldsc_only and not args.hm3:
         parser.error('--hm3 is required unless --ldsc_only is used')
     output_folder = os.path.abspath(args.outdir)

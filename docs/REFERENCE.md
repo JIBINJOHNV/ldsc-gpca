@@ -829,7 +829,7 @@ silently removes traits. See [validation](../tests/WORKER_RETRY_VALIDATION.md).
 | `--result_failure_action {error,report,drop_traits}` | `error` | Stop on numerical failures (`error`), preserve failures for inspection (`report`), or exclude failed traits and publish a complete retained subset (`drop_traits`). All modes retain diagnostics. |
 | `--ldsc_only` | Off | Skip extraction/munging and reuse munged files. |
 | `--restart` | Off | Reuse completed batches with matching input/parameter/runtime checkpoints; rerun unverified or changed batches. |
-| `--munged_dir DIRECTORY` | `<outdir>/ldsc_input` | Existing munged input directory in reuse mode. Leave unset for ordinary VCF runs. |
+| `--munged_dir DIRECTORY` | `<outdir>/ldsc_input` | Existing munged input directory; requires `--ldsc_only`. Rejected before output creation without that flag. Leave unset for fresh VCF runs. |
 | `--ldsc_retries INTEGER` | `1` | Additional attempts per failed LDSC command or malformed/incomplete export; ≥0. One means two total attempts. Numerical estimation failures are not retried. |
 | `--chisq_max INTEGER\|auto` | Unset; disabled | Positive integer: fixed cutoff. `auto`: per-trait `max(80, 0.001 * max(N))` after complete-row matching to reference and weight LD-score SNPs. Keep `Z² <= cutoff` before LDSC in both modes. |
 | `--exclude_mhc` | Off | Exclude the configured MHC interval during VCF extraction. |

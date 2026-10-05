@@ -173,9 +173,10 @@ Current reuse checks do not verify the preparation backend or allele orientation
 see the [preparation and reuse example](docs/GENOMICSEM_LDSC.md#reuse-munged-files).
 
 Select the input mode explicitly; the program does not choose raw versus munged
-mode from the filename. In standalone Python `ldsc`, `--munged_dir` without
-`--ldsc_only` changes where **new** munged files are written. None of these LDSC
-commands runs PCA or GWAMA.
+mode from the filename. In standalone Python `ldsc`, `--munged_dir` requires
+`--ldsc_only`; supplying it alone fails before outputs are created. Fresh Python
+runs write munged files to `<outdir>/ldsc_input`. None of these LDSC commands runs
+PCA or GWAMA.
 
 The Python LDSC guide explains the [final columns with a real-data example](docs/PYTHON_LDSC.md#results-and-next-step)
 and links to the [folder, intermediate-file and audit reference](docs/PYTHON_LDSC_OUTPUTS.md).

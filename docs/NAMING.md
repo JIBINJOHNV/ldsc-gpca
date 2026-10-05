@@ -43,7 +43,8 @@ and final-export pigz compression workers when pigz is installed;
 separate settings. Other managed options use the same underscore spelling; see
 `--help`, `--prepare_help`, or `--postprocess_help` for the complete list.
 
-Python `ldsc --munged_dir DIR` needs `--ldsc_only` to skip extraction/munging.
+Python `ldsc --munged_dir DIR` requires `--ldsc_only`; supplying the directory
+alone fails before output creation. Fresh runs use `<outdir>/ldsc_input`.
 For GenomicSEM LDSC, `--munged_dir DIR` selects existing munged files.
 File types and statistical conventions are unchanged by their argument names.
 `ldsc-gpca genomicsem ldsc` remains available as the GenomicSEM entry point;

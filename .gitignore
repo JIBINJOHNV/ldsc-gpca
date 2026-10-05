@@ -82,3 +82,4 @@ results/
 !tests/test_self_duplicates.py
 !tests/test_self_duplicates.R
 !tests/SELF_DUPLICATE_VALIDATION.md
+!tests/MUNGED_DIR_VALIDATION.md

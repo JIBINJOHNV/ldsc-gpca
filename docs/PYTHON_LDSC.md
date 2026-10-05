@@ -187,9 +187,10 @@ A successful run with default folder settings has this layout. `{trait}` and
     └── LDSC_Batch_Status.csv              ← batch completion and attempts
 ```
 
-`--munged_dir /other/path` moves the **new munged outputs** there; it does not
-select reuse. Optional chi-square and trait-removal files are listed
-[below](#additional-files-created-by-optional-settings). For every intermediate
+Fresh runs write new munged files to `<outdir>/ldsc_input`. `--munged_dir` is
+reserved for existing inputs and requires `--ldsc_only`; the command rejects
+it without that flag before creating outputs. Optional chi-square and
+trait-removal files are listed [below](#additional-files-created-by-optional-settings). For every intermediate
 and audit schema, use the [output file reference](PYTHON_LDSC_OUTPUTS.md).
 
 ## Start from munged files
@@ -252,7 +253,7 @@ ldsc-gpca ldsc \
 
 `--ldsc_only` explicitly selects this route. If `--munged_dir` is omitted,
 files are read from `<outdir>/ldsc_input`. The program does not detect this
-mode from filenames or from `--munged_dir` alone.
+mode from filenames. Supplying `--munged_dir` without `--ldsc_only` is an error.
 
 ### Reuse munged files or restart
 
@@ -331,7 +332,7 @@ its output directory. Optional outputs are described next.
 | Manifest `vcf_files` | Required; read during extraction. | Not required; VCFs are not read. |
 | `--hm3` | Required for munging. | Unused; existing files are already munged. |
 | `--bcftools` | Used for extraction. | Not required or used for extraction. |
-| `--munged_dir` | **Output directory** for new munged files. | **Input directory** holding existing munged files. |
+| `--munged_dir` | Not allowed; new munged files go to `<outdir>/ldsc_input`. | **Input directory** holding existing munged files. |
 | `--info_min`, `--maf_min`, `--max_af_difference`, `--exclude_mhc`, `--mhc_*`, `--remove_palindrome`, `--paliandromaf_*` | Apply during VCF extraction. | Do not filter again; must match recorded settings when sidecar filter metadata exists. |
 | `--munge_maf_min` | Apply during Python LDSC munging. | Do not munge again; must match recorded settings when available. |
 | Manifest prevalence | Controls extracted N and requested liability conversion. | Must match the existing N convention; also controls requested liability conversion. |
@@ -532,7 +533,7 @@ PCA and GWAMA export settings belong to their respective commands.
 | `--ld_weights` | Use `--ld_ref` | Separate regression-weight LD-score directory, either route. |
 | `--hm3` | Unset | SNP/A1/A2 allele reference; required for VCF munging, unused with `--ldsc_only`. |
 | `--ldsc_only` | Off | Read existing munged inputs; skip extraction and munging. |
-| `--munged_dir` | `<outdir>/ldsc_input` | VCF route: destination for new munged files. Reuse: source of existing files. |
+| `--munged_dir` | `<outdir>/ldsc_input` | Existing input directory; requires `--ldsc_only`. Omit for fresh VCF runs. |
 
 ### Extraction and munging filters
 

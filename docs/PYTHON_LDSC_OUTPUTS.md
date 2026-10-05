@@ -212,9 +212,10 @@ follow subsequent stages.
 
 ## Munged files and provenance
 
-New munged outputs go to `<outdir>/ldsc_input/`, or to `--munged_dir` when
-specified in VCF mode. With `--ldsc_only`, these are **existing inputs** read
-from that directory, not new outputs.
+New munged outputs go to `<outdir>/ldsc_input/`. With `--ldsc_only`, existing
+inputs are read from `--munged_dir`, or from `<outdir>/ldsc_input/` when the
+directory option is omitted. `--munged_dir` requires `--ldsc_only` and cannot
+select a destination for fresh munging.
 
 | File | Meaning |
 | --- | --- |
