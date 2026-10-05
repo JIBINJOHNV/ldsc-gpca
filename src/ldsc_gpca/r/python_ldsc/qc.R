@@ -1,33 +1,5 @@
 # Validate LDSC estimates and resolve explicitly authorized incomplete trait sets.
 
-coerce_python_ldsc_numeric <- function(ldsc_rows) {
-  source_columns <- intersect(unlist(heritability_column_sets), names(ldsc_rows))
-  for (column_name in c(python_ldsc_numeric_columns, source_columns)) {
-    original <- ldsc_rows[[column_name]]
-    if (is.double(original) && is.null(attributes(original))) next
-    # Readers preserve identifier text; interpret missing tokens only here,
-    # in numeric columns, before rejecting genuinely malformed values.
-    original[trimws(as.character(original)) %in% c("", "NA", "NaN", "nan")] <- NA
-    converted <- suppressWarnings(as.numeric(original))
-    invalid_conversion <- is.na(converted) & !is.na(original)
-
-    if (any(invalid_conversion)) {
-      example <- as.character(original[which(invalid_conversion)[1L]])
-      stop(
-        glue(
-          "Python LDSC column '{column_name}' contains a non-numeric value: ",
-          "'{example}'."
-        ),
-        call. = FALSE
-      )
-    }
-
-    set(ldsc_rows, j = column_name, value = converted)
-  }
-
-  ldsc_rows
-}
-
 # Prepare an owned table at each public QC boundary; internal checks reuse it.
 prepare_python_ldsc_rows <- function(ldsc_rows, trait_order, heritability_scale) {
   rows <- as.data.table(ldsc_rows)[

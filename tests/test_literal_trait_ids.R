@@ -86,11 +86,13 @@ main <- function() {
         set(bad, j = field, value = as.character(bad[[field]]))
         set(bad, i = 1L, j = field, value = token)
         fwrite(bad, path, quote = quoted)
-        parsed <- read_python_ldsc_selected(path, traits, heritability_scale = "observed")
-        stopifnot(identical(attr(parsed, "selected_traits_seen"), traits), nrow(parsed) == nrow(rows))
         if (token == "not-a-number") {
-          for (action in c("error", "drop_traits")) fail(select(parsed, action), "non-numeric")
+          fail(read_python_ldsc_selected(path, traits, heritability_scale = "observed"),
+               paste0(field, ".*non-numeric.*file row 2"))
+          for (action in c("error", "drop_traits")) fail(select(bad, action), "non-numeric")
         } else {
+          parsed <- read_python_ldsc_selected(path, traits, heritability_scale = "observed")
+          stopifnot(identical(attr(parsed, "selected_traits_seen"), traits), nrow(parsed) == nrow(rows))
           fail(select(parsed, "error"), "missing/invalid")
           stopifnot(identical(select(parsed, "drop_traits")$trait_order, traits[-1L]))
         }

@@ -1,5 +1,25 @@
 # Read selected Python LDSC rows while preserving trait names and scale metadata.
 
+# Preserve malformed source text until it has passed the numeric input guard.
+# Identifiers never pass through this conversion.
+coerce_python_ldsc_numeric <- function(ldsc_rows, columns = NULL,
+    row_numbers = seq_len(nrow(ldsc_rows)), row_label = "input row") {
+  if (is.null(columns)) columns <- c(python_ldsc_numeric_columns,
+                                     unlist(heritability_column_sets))
+  for (column_name in intersect(columns, names(ldsc_rows))) {
+    original <- ldsc_rows[[column_name]]
+    if (is.double(original) && is.null(attributes(original))) next
+    original[trimws(as.character(original)) %in% c("", "NA", "NaN", "nan")] <- NA
+    converted <- suppressWarnings(as.numeric(original))
+    invalid <- which(is.na(converted) & !is.na(original))
+    if (length(invalid)) stop("Python LDSC column '", column_name,
+      "' contains a non-numeric value at ", row_label, " ", row_numbers[invalid[1L]],
+      ": '", as.character(original[invalid[1L]]), "'.", call. = FALSE)
+    set(ldsc_rows, j = column_name, value = converted)
+  }
+  ldsc_rows
+}
+
 open_ldsc_connection <- function(path) {
   if (grepl("\\.gz$", path, ignore.case = TRUE)) {
     gzfile(path, open = "rt")
@@ -53,6 +73,8 @@ normalize_heritability_columns <- function(ldsc_rows,
   requested_scale <- match.arg(requested_scale)
   pca_matrix <- match.arg(pca_matrix)
   normalized <- as.data.table(copy(ldsc_rows))
+  normalized <- coerce_python_ldsc_numeric(normalized,
+    c(internal_heritability_columns, unlist(heritability_column_sets)))
   inherited <- attr(ldsc_rows, "heritability_scale", exact = TRUE)
   internal <- internal_heritability_columns %in% names(normalized)
   if (any(internal) && !all(internal)) stop("Internal h2/h2_se columns are incomplete.", call. = FALSE)
@@ -119,7 +141,7 @@ normalize_heritability_columns <- function(ldsc_rows,
     index <- which(normalized$H2_Scale == scale)
     for (i in seq_along(cols))
       set(normalized, i = index, j = internal_heritability_columns[i],
-          value = suppressWarnings(as.numeric(normalized[[cols[i]]][index])))
+          value = normalized[[cols[i]]][index])
   }
   # Retain supplied scales for source-row and duplicate validation. Choosing
   # one scale must not hide contradictory estimates in the other scale.
@@ -207,7 +229,11 @@ read_python_ldsc_selected <- function(path, trait_order, chunk_size = 250000L,
       chunk$p2[chunk$p2 %chin% trait_order]
     ))
     selected_traits_seen[match(newly_seen, trait_order)] <- TRUE
-    chunk <- chunk[p1 %chin% trait_order & p2 %chin% trait_order]
+    selected_index <- which(chunk$p1 %chin% trait_order & chunk$p2 %chin% trait_order)
+    chunk <- chunk[selected_index]
+    chunk <- coerce_python_ldsc_numeric(chunk,
+      row_numbers = rows_read - length(lines) + selected_index + 1L,
+      row_label = "file row")
 
     if (nrow(chunk) > 0L) {
       retained_index <- retained_index + 1L
