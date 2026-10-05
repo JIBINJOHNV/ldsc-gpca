@@ -7,6 +7,7 @@ import pandas as pd
 import polars as pl
 from .utils import DEFAULT_FILTERS, optional_prevalence
 from .workers import run_parallel_jobs
+from .vcf_common import require_single_sample
 
 def filter_commands(vcf_file, filters, query, bcftools='bcftools'):
     expression = '(INFO/AF=="." || INFO/EUR=="." || ABS(INFO/AF - INFO/EUR) > {d})'.format(d=filters['max_af_difference'])
@@ -59,6 +60,7 @@ def _extract_table(sample_name, out_file, commands, header):
           f'from {counts["records_after_mhc"]} records after MHC selection; AF QC: {audit_file}')
 
 def munge_input_worker(sample_name, input_path, output_folder, vcf_file, filters=None, bcftools='bcftools'):
+    require_single_sample(vcf_file, bcftools)
     munge_input_folder = os.path.join(output_folder, 'munge_input')
     os.makedirs(munge_input_folder, exist_ok=True)
     out_file = os.path.join(munge_input_folder, f"{sample_name}_mungeinput.tsv")
@@ -69,6 +71,7 @@ def munge_input_worker(sample_name, input_path, output_folder, vcf_file, filters
 
 def munge_input_worker_with_prevalence(sample_name, input_path, output_folder, vcf_file, sample_prevalence, filters=None, bcftools='bcftools'):
     """Create TSV, add total N with Polars, and return sample prevalence."""
+    require_single_sample(vcf_file, bcftools)
     folder = os.path.join(output_folder, 'munge_input')
     os.makedirs(folder, exist_ok=True)
     out_file = os.path.join(folder, f'{sample_name}_mungeinput.tsv')

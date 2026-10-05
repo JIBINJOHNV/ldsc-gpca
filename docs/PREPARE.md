@@ -62,7 +62,8 @@ directory. See the [GenomicSEM reuse guide](GENOMICSEM_LDSC.md#reuse-munged-file
 
 Supply a CSV with `traitname,vcf_files`. Relative VCF paths resolve beside this
 manifest. Each VCF must contain exactly one GWAS sample, not individual-level
-genotypes. Plain VCF and gzip-compressed VCF are accepted.
+genotypes. Sample-free and multi-sample VCFs are rejected before extraction;
+there is no implicit sample selection. Plain VCF and gzip-compressed VCF are accepted.
 
 ```csv
 traitname,vcf_files,population_prevalence,sample_prevalence

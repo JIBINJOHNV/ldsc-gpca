@@ -44,6 +44,7 @@ def print_analysis_help(r_script, arguments=(), file=None):
 PREPARE_INPUT_HELP = """INPUT FILE CONTRACT
   --input: comma-separated CSV with headers traitname,vcf_files.
   traitname: unique, non-empty identifier; vcf_files: one single-sample VCF per row.
+  Zero-sample and multi-sample VCFs are rejected; no sample is selected implicitly.
   Relative VCF paths resolve beside the manifest. Plain VCF and .vcf.gz accepted.
   Required VCF FORMAT fields: AF, ES, SE, LP, NEF. LP means -log10(P).
   --hm3: tab-separated text with SNP header; required only with
@@ -70,6 +71,8 @@ LDSC_INPUT_HELP = """INPUT FILE CONTRACT
   With --ldsc_only, vcf_files is optional; all other headers remain required.
   Extra columns and any column order are allowed; required headers remain mandatory.
   Names must be unique/non-empty. Use absolute VCF paths when VCFs are processed.
+  Each VCF must contain exactly one GWAS sample. Zero/multi-sample VCFs are rejected
+  before extraction writes tables; no sample is selected implicitly.
   ref=yes selects an LDSC reference trait; ref=no leaves it as a target.
   Use ref=yes for every trait to generate complete GPCA pairwise coverage.
   Prevalence columns must exist; blank/NA values are allowed.

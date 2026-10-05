@@ -12,6 +12,7 @@ from importlib.resources import files
 
 import polars as pl
 
+from .vcf_common import validate_and_transform, write_original_issues, selected_id, validate_ids
 from .interfaces import read_manifest
 from .restart import file_digest, write_checkpoint
 from .utils import optional_prevalence
@@ -44,7 +45,8 @@ def add_mode_options(parser):
     parser._option_string_actions['--outdir'].help = 'Output directory; creates only requested input folders, QC and optional munged files.'
     parser.description = 'Prepare GPCA/GWAMA inputs, shared raw LDSC tables and optional munged files from GWAS VCFs.'
     parser.epilog = '''INPUT FILE CONTRACT
-  --input: CSV with unique traitname and vcf_files; one GWAS sample per VCF.
+  --input: CSV with unique traitname and vcf_files; exactly one GWAS sample per VCF.
+  Zero-sample and multi-sample VCFs are rejected; no implicit sample selection.
   Relative VCF paths resolve beside the manifest. Plain VCF and .vcf.gz accepted.
   Every mode needs coordinates, REF/ALT and FORMAT AF,ES,SE,LP. LP is -log10(P).
   --mode gpca (default): FORMAT/NEF is also required. Writes nine-column
@@ -120,23 +122,8 @@ def write_ldsc_manifest(path, rows, metadata, outdir, *, munged=False):
             os.unlink(temporary)
 
 
-def prepare_shared_trait(name, vcf, stage, executable, splitby_chr, gpca_id_source,
-                         munge_id_source, hm3, p_min, mode, metadata):
-    from .prepare import (QUERY, RAW_COLUMNS, extract_table, validate_and_transform,
-                          write_original_issues, write_gpca, selected_id, validate_ids)
-    query = QUERY.replace(r'\t%NEF', r'\t%NEF\t%SI')
-    if mode == 'ldsc' and metadata['N'] is not None:
-        query = query.replace('%NEF', format(metadata['N'], '.17g'))
-    with tempfile.NamedTemporaryFile(dir=stage, suffix='.tsv') as temporary:
-        raw = extract_table(vcf, executable, temporary.name, query=query, columns=[*RAW_COLUMNS, 'INFO'])
-    gpca_rows = 0
-    if mode == 'both':
-        gpca, issues, summary = validate_and_transform(raw, p_min, gpca_id_source)
-        write_original_issues(vcf, stage/'qc'/f'{name}.csv', name, issues)
-        pl.DataFrame([{'traitname': name, **summary}]).write_csv(stage/'qc'/f'{name}.summary.csv')
-        if gpca.is_empty():
-            raise ValueError(f'{name}: no usable GPCA records; see GPCA_Input_QC_Issues.csv')
-        gpca_rows = write_gpca(gpca, name, stage, splitby_chr, gpca_id_source)
+def write_ldsc_trait(raw, name, vcf, stage, munge_id_source, hm3, p_min, metadata):
+    """Write the LDSC contract and QC, independently of GPCA row selection."""
     if metadata['N'] is not None:
         raw = raw.with_columns(pl.lit(metadata['N']).alias('N'))
     frame, issues, summary = validate_and_transform(raw, p_min, munge_id_source, require_info=True)
@@ -157,7 +144,7 @@ def prepare_shared_trait(name, vcf, stage, executable, splitby_chr, gpca_id_sour
     frame.select('SNP', 'CHR', pl.col('POS').alias('BP'), 'A1', 'A2', pl.col('eaf_A1').alias('EAF'),
                  pl.col('beta').alias('BETA'), pl.col('se').alias('SE'), pl.col('p').alias('P'), 'N', 'INFO').write_csv(
         stage/'munge_inputs'/f'{name}_munge_inputs.tsv', separator='\t')
-    return {'traitname': name, 'vcf_files': str(vcf), 'gpca_rows': gpca_rows,
+    return {'traitname': name, 'vcf_files': str(vcf), 'gpca_rows': 0,
             'excluded_non_autosomal_rows': summary['excluded_non_autosomal_rows'], 'munge_rows': frame.height,
             'p_underflow_rows': 0, 'success': True, 'error': ''}
 

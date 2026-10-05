@@ -4,7 +4,7 @@ import tempfile
 
 import polars as pl
 
-from .prepare import (QUERY, RAW_COLUMNS, extract_table, validate_and_transform,
+from .vcf_common import (QUERY, RAW_COLUMNS, extract_table, validate_and_transform,
                       write_original_issues, merge_issue_reports, validate_ids)
 from .workers import run_parallel_jobs
 

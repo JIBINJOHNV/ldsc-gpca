@@ -27,7 +27,8 @@ def build_parser():
     inspect its logs for column interpretation and unavailable filtering fields.
   --hm3: SNP,A1,A2 reference table (tabs/spaces), required for raw and VCF modes.
   --vcf_input: read manifest vcf_files, convert GWAS VCFs to raw tables, then munge.
-    Each VCF needs one GWAS sample, variant IDs and FORMAT AF,ES,SE,LP,SI.
+    Each VCF needs exactly one GWAS sample, variant IDs and FORMAT AF,ES,SE,LP,SI.
+    Zero-sample and multi-sample VCFs are rejected before extraction.
     Quantitative N comes from FORMAT/NEF unless manifest N overrides it.
     Binary VCFs require an explicit appropriate manifest N and both prevalences;
     no case-count or effective-N convention is inferred. VCF IDs must match hm3.

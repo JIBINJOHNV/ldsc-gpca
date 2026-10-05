@@ -73,6 +73,10 @@ With all four traits marked `ref=yes`, a complete managed run produces 16
 directed rows, including self-pairs: these represent 10 unique unordered/self
 combinations. Some `ref=no` traits can leave pairs missing for downstream GPCA.
 
+Each VCF must contain exactly one GWAS sample. Sample-free and multi-sample
+VCFs fail before an extraction table or its QC sidecar is opened; no first
+sample is selected implicitly. This applies to quantitative and binary traits.
+
 Each VCF needs INFO `AF,EUR` and FORMAT `SI,AF,EZ,LP,NEF`, along with variant
 IDs, coordinates and alleles. Binary extraction with population prevalence also
 needs FORMAT `NC,NCO`. The two AF fields have different uses; see
