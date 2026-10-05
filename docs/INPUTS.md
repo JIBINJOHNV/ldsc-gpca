@@ -190,8 +190,10 @@ it is appropriate for that trait.
 
 Munged files contain `SNP,A1,A2,N,Z`. GenomicSEM reuse requires tab separation and
 files from `prepare --munge_backend genomicsem`. Prior filtering, allele handling
-and sample-size conventions remain your responsibility when reusing files. The
-initial header check does not verify the preparation backend or allele orientation.
+and the scientific suitability of sample-size conventions remain your responsibility.
+Keep the complete preparation bundle: reuse verifies its completion, backend/runtime
+provenance, checksums, N/prevalences and exact reference allele order. Unverified
+legacy inputs require new preparation from raw data.
 
 ## GWAMA tables
 

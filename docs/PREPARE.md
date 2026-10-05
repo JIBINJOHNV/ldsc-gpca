@@ -54,8 +54,9 @@ munging options are rejected. **For later GenomicSEM LDSC reuse, select
 `--munge_backend genomicsem`**, using the same `--hm3` allele reference for all
 traits. Do not directly reuse Python-munged files in GenomicSEM: Python
 HapMap matching can retain strand complements rather than rewriting all alleles
-to the reference orientation. The GenomicSEM reuse check does not verify this
-orientation or the preparation backend. See the [GenomicSEM reuse guide](GENOMICSEM_LDSC.md#reuse-munged-files).
+to the reference orientation. GenomicSEM reuse verifies the completed preparation
+bundle and every SNP's exact reference allele order. Keep the entire preparation
+directory. See the [GenomicSEM reuse guide](GENOMICSEM_LDSC.md#reuse-munged-files).
 
 ## Files you need
 
@@ -80,6 +81,13 @@ LP means −log10(P); ES is the signed effect for ALT.
 | GPCA/GWAMA tables | FORMAT `NEF`, used for per-SNP GWAMA N. No INFO field or HapMap reference is required. |
 | Shared raw LDSC tables | FORMAT `SI` for INFO; FORMAT `NEF` unless manifest N overrides it. A tab-separated `--hm3` file with a `SNP` header. Selected IDs must match this reference. |
 | Munged LDSC files | The raw-input requirements above, plus `SNP,A1,A2` headers in `--hm3` and the chosen munging runtime. |
+
+The workflow maps FORMAT/SI into its INFO column. In the
+[GWAS-VCF specification](https://github.com/MRCIEU/gwas-vcf-specification), SI
+describes the accuracy of imputed summary association statistics. Confirm its
+meaning in the source GWAS; the field name alone does not establish that it is a
+genotype-imputation INFO metric. Likewise, validating positive N and its recorded
+source cannot establish that the supplied sample-size definition suits every GWAS design.
 
 You need `bcftools` on PATH or `--bcftools /path/to/bcftools` for every mode.
 Python munging uses the isolated LDSC environment configured by installation.
@@ -238,6 +246,9 @@ the directory and updated manifest have both been published. A later publication
 failure records `failed` when possible; files already published are retained for
 diagnosis and must not be treated as a completed preparation. Manifest and status
 updates use atomic replacement, so an interrupted write cannot truncate them.
+Both LDSC backends reject new versioned shared-preparation bundles whose completion
+record, manifest, selected files or sidecars do not verify. Python's older external
+NEF-file policy is unchanged; GenomicSEM requires the new complete provenance.
 Existing named outputs are refused; use a fresh directory for a new run.
 
 ## Choose IDs, layout and P-value floor
@@ -264,16 +275,17 @@ not reconstructed.
 | `gpca_inputs/{traitname}_GenomicPCA_inputs.tsv` | Whole-genome GPCA/GWAMA input. Split mode inserts `_chr{CHR}` after the trait name. |
 | `munge_inputs/{traitname}_munge_inputs.tsv` | Shared raw LDSC table with the eleven columns defined above; needs munging. |
 | **`munged/{traitname}.sumstats.gz`** | Final LDSC-ready files. Core headers are `SNP,N,Z,A1,A2`; order can differ by backend. Python can include reference-only rows with missing statistics; later LDSC discards these. |
-| `munged/{traitname}.prevalence.json` | Output checksum, sample-size convention, prevalence, backend and munging thresholds. Keep beside the munged file for Python reuse. |
+| `munged/{traitname}.prevalence.json` | Output checksum, N source/override/convention, both prevalences, backend and munging thresholds. GenomicSEM also records pinned source commit, package/R versions and allele-reference checksum. Keep beside the munged file. |
+| `munged/Allele_Reference.tsv` | GenomicSEM preparation: exact copy of the common reference used for all traits; required for reuse. |
 | **`Prepared_LDSC_Manifest.csv`** | Trait order, `ref=yes`, raw/munged paths, N override and prevalences. Munged paths are filled only after successful munging. |
 | `Preparation_Status.csv` | Per-trait `gpca_rows`, `munge_rows`, excluded non-autosomal count and success/error. |
-| `Preparation_Settings.json` | Input paths, ID/layout/P rules and, when run, munging settings/status. |
+| `Preparation_Settings.json` | Input paths, ID/layout/P rules and munging settings/status. Completion records manifest and munged-artifact checksums. GenomicSEM reuse rejects incomplete or changed bundles. |
 | `GPCA_Input_QC_Summary.csv`, `GPCA_Input_QC_Issues.csv` | GPCA counts and original affected VCF records. Present when GPCA tables are requested. |
 | `LDSC_Input_QC_Summary.csv`, `LDSC_Input_QC_Issues.csv` | Shared LDSC preparation counts, HapMap removals, N source/override and original affected records. Present in new LDSC modes. |
 | `Preparation_Worker_Attempts.csv` | Extraction/preparation worker attempts: `Job,Attempt,Success,Error`. |
 | `Preparation_Munging_Status.csv` | Munging success/error plus output, usable and missing row counts. Counts may be unavailable for failures. |
 | `Preparation_Munging_Worker_Attempts.csv` | Munging attempts: `Job,Attempt,Success,Error`. |
-| `munge_logs/` | Exact per-trait command JSON, console output and munging logs. Console output includes retries. |
+| `munge_logs/` | Exact per-trait command JSON, console output and munging logs. Console output includes retries. GenomicSEM `*.input_qc.csv` reports exact reference alignment, SNP count/order hash, or the first invalid SNP. |
 
 QC summaries contain `traitname,input_rows,retained_rows,removed_rows,
 p_adjusted_rows,excluded_non_autosomal_rows,success,error`. LDSC summaries also

@@ -9,6 +9,7 @@ from importlib.resources import files
 
 from .helptext import HelpParser
 from .interfaces import read_manifest
+from .genomicsem_inputs import validate_reuse, write_input_audit, InputCompatibilityError, AUDIT_FILE
 
 
 def build_parser():
@@ -37,8 +38,12 @@ def build_parser():
     Prepare reused files with prepare --mode ldsc (or --mode both) and
     --munge_backend genomicsem, using the same --hm3 allele reference for all traits.
     Do not directly reuse Python-munged files: HapMap matching can retain strand
-    complements that GenomicSEM LDSC does not align correctly. Reuse skips munging;
-    current input checks do not verify the preparation backend or allele orientation.
+    complements that GenomicSEM LDSC does not align correctly. Keep the entire
+    completed preparation bundle: manifest, settings, sidecars and allele reference.
+    Reuse verifies backend/runtime provenance, checksums, N/prevalences, unique SNPs
+    and exact reference A1/A2 order. Swapped/complemented/incompatible pairs fail;
+    no alleles or Z values are changed. Legacy files without this provenance fail.
+    GenomicSEM_Input_QC.csv records acceptance or the first failing trait/SNP.
     Raw-table and --vcf_input modes run GenomicSEM munging themselves.
   Relative manifest paths resolve beside the manifest. Row order is preserved.
   --ld_ref: directory with <CHR>.l2.ldscore.gz and <CHR>.l2.M_5_50 files.
@@ -67,7 +72,7 @@ OUTPUTS / DEPENDENCIES
     group.add_argument('--munged_dir', metavar='DIRECTORY', help='Reuse files from prepare --munge_backend genomicsem; skip munge. Default: unset. Mutually exclusive with --munged_input and --vcf_input.')
     group.add_argument('--munged_input', action='store_true', help='Reuse manifest munged_file paths from prepare --munge_backend genomicsem; skip munge.')
     group.add_argument('--vcf_input', action='store_true', help='Read manifest vcf_files; extract raw tables with INFO, then run GenomicSEM munging and LDSC. Default: off; read raw sumstats_file unless using a munged mode.')
-    inputs.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference. Default: unset; required unless skipping munge.')
+    inputs.add_argument('--hm3', metavar='REFERENCE.tsv', help='HapMap reference. Required for raw/VCF munging; omit for reuse, which verifies the bundled reference.')
     execution.add_argument('--n_cores', dest='n_cores', type=int, default=1,
                    help='VCF extraction and munging workers; 1 is sequential. Each failed trait gets one retry (2 total attempts); exhausted failures stop before LDSC. LDSC regression stays sequential.')
     vcf = p.add_argument_group('VCF conversion (--vcf_input only)')
@@ -135,6 +140,8 @@ def resolve_manifest(opts):
         if path.stat().st_size == 0:
             raise ValueError(f'{name}: empty input file: {path}')
         row['source_file'] = str(path.resolve())
+    if mode == 'existing':
+        validate_reuse(rows)
     return rows, mode
 
 
@@ -146,6 +153,9 @@ def main(argv=None):
         return 0
     opts = parser.parse_args(argv)
     try:
+        out = Path(opts.outdir).resolve()
+        if out.exists() and (not out.is_dir() or any(out.iterdir())):
+            raise ValueError('Use a fresh or empty --outdir; existing results are not overwritten.')
         if opts.n_cores < 1 or not 1 <= opts.chromosomes <= 22 or opts.n_blocks < 2:
             raise ValueError('--n_cores must be >=1, chromosomes 1–22, n-blocks >=2.')
         if not 0 <= opts.info_filter <= 1 or not 0 <= opts.maf_filter <= .5:
@@ -169,9 +179,6 @@ def main(argv=None):
             for path in (ld/f'{chrom}.l2.ldscore.gz',ld/f'{chrom}.l2.M_5_50',wld/f'{chrom}.l2.ldscore.gz'):
                 if not path.is_file():
                     raise ValueError(f'Reference file not found: {path}')
-        out = Path(opts.outdir).resolve()
-        if out.exists() and (not out.is_dir() or any(out.iterdir())):
-            raise ValueError('Use a fresh or empty --outdir; existing results are not overwritten.')
         rscript = shutil.which(opts.rscript)
         if not rscript:
             raise ValueError('Rscript not found; install R and GenomicSEM, or supply --rscript.')
@@ -180,8 +187,13 @@ def main(argv=None):
             if not executable:
                 raise ValueError('VCF input requires bcftools; install it or supply --bcftools.')
     except (ValueError, OSError) as error:
+        if isinstance(error, InputCompatibilityError):
+            out.mkdir(parents=True, exist_ok=True)
+            write_input_audit(out/AUDIT_FILE, [error.audit])
         parser.error(str(error))
     out.mkdir(parents=True, exist_ok=True)
+    if mode == 'existing':
+        write_input_audit(out/AUDIT_FILE, [row['_reuse_audit'] for row in rows])
     if mode == 'vcf':
         from .genomicsem_vcf import prepare_vcf_inputs
         try:

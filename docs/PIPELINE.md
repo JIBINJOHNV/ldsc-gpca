@@ -153,8 +153,9 @@ tables; the VCFs supply GWAMA statistics.
 Produce these files with `ldsc-gpca prepare --mode ldsc --munge_backend genomicsem`
 (or `--mode both`), using the same `--hm3` allele reference for all traits.
 Do not directly reuse Python-munged files: matching the same HapMap reference
-does not guarantee GenomicSEM-compatible allele orientation. Reuse skips munging,
-and current checks do not verify the preparation backend or allele orientation.
+does not guarantee GenomicSEM-compatible allele orientation. Keep the complete
+preparation bundle; reuse checks completion, backend/runtime provenance, checksums,
+N/prevalences and every SNP's exact reference allele order before regression.
 See the [GenomicSEM preparation and reuse example](GENOMICSEM_LDSC.md#reuse-munged-files).
 
 For a single directory, use `/data/traits_genomicsem_munged.csv` with trait names

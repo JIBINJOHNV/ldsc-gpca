@@ -281,10 +281,34 @@ ldsc-gpca ldsc --ldsc_backend genomicsem \
   --munged_input
 ```
 
-The current reuse check verifies the required headers and at least one data
-row. It does not verify the preparation backend, allele orientation, sidecar
-checksums or N/prevalence provenance. The preparation requirement above is a
-documented input requirement, not an automatic compatibility check.
+Keep the **complete preparation directory**, including `Prepared_LDSC_Manifest.csv`,
+`Preparation_Settings.json`, the per-trait `.prevalence.json` sidecars and
+`munged/Allele_Reference.tsv`. Each explicit file path must still be inside its
+preparation bundle. Different bundles may be combined only when their reference
+checksums agree. To relocate a bundle, keep its internal files intact and use a
+new reuse manifest/`--munged_dir`; do not edit the checksummed preparation manifest.
+
+Before regression, reuse verifies completed publication, manifest/file/sidecar/
+reference checksums, the GenomicSEM preparation backend and pinned package
+identity, both prevalences, and the N source, convention and override. A supplied
+manifest N must agree with the saved override; it cannot replace N in a reused
+file. These checks cannot establish whether the original N definition was
+scientifically appropriate for the study.
+
+Every SNP must be unique within its trait and have the exact **A1,A2 order in the
+bundled reference**, with positive finite N and finite Z. SNP subsets may differ
+between traits. The strand rule is strict: swapped, complemented, swapped-and-
+complemented and incompatible pairs are rejected, even if an alternative alignment
+could be constructed. No rows, alleles or Z values are changed. Re-munge raw inputs
+with GenomicSEM to obtain compatible files. Munging itself may remove unsupported
+SNPs, as documented in its logs.
+
+`GenomicSEM_Input_QC.csv` records accepted trait counts, SNP-order and content
+hashes, or the first failing trait/row/SNP and reason. The run stops at the first
+invalid input. The check also rejects older/external munged files lacking this
+provenance, including earlier preparation outputs; prepare them again from raw
+inputs. Raw-table and `--vcf_input` routes continue to run GenomicSEM munging with
+their supplied common reference.
 
 ## Results and next step
 

@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from ldsc_gpca import prepare_ldsc
 from ldsc_gpca.interfaces import read_manifest
+from ldsc_gpca.preparation_provenance import validate_completed_bundle
 
 
 class PublicationTests(unittest.TestCase):
@@ -47,6 +48,10 @@ class PublicationTests(unittest.TestCase):
             self.assertTrue((self.out/'munge_logs'/f'{name}.console.log').exists())
         self.assertFalse(list(self.out.glob('.manifest-*')))
         self.assertFalse(list(self.out.glob('.ldsc-checkpoint-*')))
+        if (self.out/'munged').exists():
+            sidecar = self.out/'munged/A.prevalence.json'
+            with self.assertRaisesRegex(ValueError, 'not a completed'):
+                validate_completed_bundle(self.out/'munged/A.sumstats.gz', sidecar, json.loads(sidecar.read_text()))
 
     def test_success_records_completion_after_files_and_manifest(self):
         original = prepare_ldsc.write_checkpoint
@@ -59,6 +64,8 @@ class PublicationTests(unittest.TestCase):
         with patch.object(prepare_ldsc, 'write_checkpoint', side_effect=check):
             self.run_munging()
         self.assertEqual(json.loads(self.settings.read_text())['munging_status'], 'completed')
+        sidecar = self.out/'munged/A.prevalence.json'
+        validate_completed_bundle(self.out/'munged/A.sumstats.gz', sidecar, json.loads(sidecar.read_text()))
 
     def test_directory_publication_failure_never_marks_completed(self):
         original = Path.rename

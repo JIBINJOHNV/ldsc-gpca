@@ -59,7 +59,8 @@ def build_parser(backend='python'):
     Reused munged files must come from prepare --mode ldsc (or --mode both) with
     --munge_backend genomicsem and the same --hm3 allele reference for all traits.
     Do not directly reuse Python-munged files; HapMap matching can retain strand
-    complements. Reuse checks do not verify the backend or allele orientation.
+    complements. Keep completed preparation bundles; reuse verifies provenance,
+    checksums, N/prevalences and exact reference allele order before regression.
     --vcf_input selects the GenomicSEM INFO-preserving VCF adapter; binary traits
     require an appropriate explicit manifest N and both prevalences.
     Without --vcf_input or those LDSC tables, the older quantitative VCF fallback

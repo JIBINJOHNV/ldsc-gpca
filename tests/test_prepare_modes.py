@@ -173,6 +173,14 @@ class PreparationModesTests(unittest.TestCase):
         manifest=pl.read_csv(self.out/'Prepared_LDSC_Manifest.csv')
         self.assertTrue(all(Path(path).exists() for path in manifest['munged_file']))
         self.check_reuse()
+        settings_path = self.out/'Preparation_Settings.json'
+        original_settings = settings_path.read_text()
+        settings = json.loads(original_settings)
+        settings['munging_status'] = 'failed'
+        settings_path.write_text(json.dumps(settings))
+        with self.assertRaisesRegex(ValueError, 'not a completed'):
+            self.check_reuse()
+        settings_path.write_text(original_settings)
         sidecar['sha256']='changed'
         (self.out/'munged/002.prevalence.json').write_text(json.dumps(sidecar))
         with self.assertRaisesRegex(ValueError,'munged file or N convention changed'):
@@ -206,7 +214,12 @@ class PreparationModesTests(unittest.TestCase):
                 patch.object(ldsc_cli,'compile_results'), contextlib.redirect_stdout(self.capture):
             ldsc_cli.main([*args,'--ldsc_only'])
             self.assertEqual(run.call_args.args[4].gwas_name.tolist(),['002','001'])
-        rows, mode=genomicsem_ldsc.resolve_manifest(genomicsem_ldsc.build_parser().parse_args(args))
+        opts=genomicsem_ldsc.build_parser().parse_args(args)
+        if json.loads((self.out/'munged/002.prevalence.json').read_text())['munge_backend'] == 'python':
+            with self.assertRaisesRegex(ValueError, 'backend must be genomicsem'):
+                genomicsem_ldsc.resolve_manifest(opts)
+            return
+        rows, mode=genomicsem_ldsc.resolve_manifest(opts)
         self.assertEqual(mode,'existing')
         self.assertEqual([r['traitname'] for r in rows],['002','001'])
 

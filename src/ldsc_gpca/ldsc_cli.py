@@ -236,6 +236,7 @@ def main(argv=None):
         print(f"Reference Traits: {len(input_df[input_df['ref'] == 'yes'])}")
     else:
         print("\n[!] Reusing munged files: extraction/munging filters are NOT reapplied.")
+        preparation_bundles = {}
         for index, row in input_df.iterrows():
             prefix = os.path.join(ldsc_input_folder, row['gwas_name'])
             if not is_valid_gz(prefix + '.sumstats.gz'):
@@ -251,6 +252,9 @@ def main(argv=None):
             check_saved_filters(metadata, filters, row['gwas_name'])
             if metadata['sample_size_column'] != row['sample_size_column'] or metadata['sha256'] != file_digest(prefix + '.sumstats.gz'):
                 raise ValueError(f"{row['gwas_name']}: munged file or N convention changed; rerun without --ldsc_only")
+            if metadata.get('preparation_method') == 'shared' and metadata.get('schema_version') == 1:
+                from .preparation_provenance import validate_completed_bundle
+                validate_completed_bundle(prefix + '.sumstats.gz', sidecar, metadata, cache=preparation_bundles)
             if row['sample_size_column'] == 'N_TOTAL' and pd.isna(row['sample_prevalence']):
                 value = optional_prevalence(metadata['sample_prevalence'], row['gwas_name'])
                 if value is None:

@@ -169,7 +169,10 @@ the same HapMap reference: they can retain strand-complement coding that Genomic
 LDSC does not align correctly. This applies to standalone `ldsc --ldsc_backend genomicsem`
 and `pipeline --ldsc_backend genomicsem` reuse. Raw-table and `--vcf_input`
 routes perform GenomicSEM munging themselves and need no separate prepare step.
-Current reuse checks do not verify the preparation backend or allele orientation;
+Keep the complete preparation bundle. Reuse verifies completion, backend/runtime
+provenance, checksums, N/prevalences and exact reference allele order before regression;
+incompatible or unverified inputs fail without being edited. Older files without
+this provenance must be prepared again from raw inputs;
 see the [preparation and reuse example](docs/GENOMICSEM_LDSC.md#reuse-munged-files).
 
 Select the input mode explicitly; the program does not choose raw versus munged
@@ -442,7 +445,7 @@ Python `ldsc` VCF paths, which resolve from the working directory.
 | GPCA selection | `traitname` plus completed LDSC results supplied through `--ldsc_results`. Add `vcf_files` only for automatic GWAMA preparation. |
 | Python LDSC results | Headered CSV/TSV/whitespace table, optionally gzip-compressed: `p1,p2,rg,se,z,p,h2_int,h2_int_se,gcov_int,gcov_int_se`, plus at least one h2/SE pair: `h2_obs,h2_obs_se` or `h2_liab,h2_liab_se`. See [scale and pair requirements](docs/REFERENCE.md#python-ldsc-results-table). |
 | GenomicSEM LDSC results | Final RData containing `LDSCoutput` with `S,I,V,S_Stand,V_Stand`. The intermediate `genomicsem_LDSC_raw.RData` is not the final GPCA input. |
-| Munged LDSC files | Per-trait `SNP,A1,A2,N,Z` columns; GenomicSEM reuse requires tab separation. They are inputs to regression, not its outputs. Preserve Python munging provenance sidecars. |
+| Munged LDSC files | Per-trait `SNP,A1,A2,N,Z` columns; GenomicSEM reuse requires tab separation and a verified complete preparation bundle. They are inputs to regression, not its outputs. Preserve munging provenance. |
 
 ### VCF fields and sample size
 

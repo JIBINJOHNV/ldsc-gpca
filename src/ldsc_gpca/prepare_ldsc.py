@@ -13,7 +13,7 @@ from importlib.resources import files
 import polars as pl
 
 from .interfaces import read_manifest
-from .restart import write_checkpoint
+from .restart import file_digest, write_checkpoint
 from .utils import optional_prevalence
 from .workers import run_parallel_jobs
 
@@ -65,6 +65,9 @@ LDSC MODES
   --munge_backend genomicsem and the same --hm3 allele reference for all traits.
   Do not directly reuse Python-munged files in GenomicSEM: matching the
   same HapMap reference does not guarantee the required allele orientation.
+  GenomicSEM preparation requires the pinned installed package. Keep the complete
+  preparation directory for reuse: manifest, settings, sidecars, and copied allele
+  reference. Reuse verifies completion, checksums, N/prevalences and allele order.
   New LDSC modes write Prepared_LDSC_Manifest.csv and LDSC_Input_QC_* reports.
   Raw tables remain available if munging fails; final munged/ is published only
   after all traits succeed. Failed jobs receive one retry (two total attempts).
@@ -192,7 +195,7 @@ def validate_mode(opts, argv):
         if flags & python_flags:
             raise ValueError('Conda/LDSC environment options apply only to Python munging')
         command = [opts.rscript, str(files('ldsc_gpca').joinpath('r', 'genomicsem', 'munge_entry.R'))]
-        probe = [opts.rscript, '--vanilla', '-e', "if (!requireNamespace('GenomicSEM', quietly=TRUE)) stop('Install the pinned GenomicSEM package first')"]
+        probe = command + ['--check']
     check = subprocess.run(probe, capture_output=True, text=True)
     if check.returncode:
         raise ValueError(f'{opts.munge_backend} munging runtime unavailable: {check.stderr or check.stdout}')
@@ -209,6 +212,8 @@ def munge_prepared(opts, command):
     write_checkpoint(settings_path, settings)
     try:
         _munge_and_publish(opts, command, out)
+        settings['munging_manifest_sha256'] = file_digest(out/'Prepared_LDSC_Manifest.csv')
+        settings['munging_artifacts'] = {path.name: file_digest(path) for path in sorted((out/'munged').iterdir()) if path.is_file()}
         settings['munging_status'] = 'completed'
         write_checkpoint(settings_path, settings)
     except BaseException as error:
@@ -223,12 +228,20 @@ def munge_prepared(opts, command):
 
 def _munge_and_publish(opts, command, out):
     from .ldsc_munge import FLOAT_FORMAT
-    from .restart import file_digest
+    from .genomicsem_inputs import (REFERENCE_FILE, read_allele_reference, validate_alleles,
+                                   write_input_audit, InputCompatibilityError)
     _, rows = read_manifest(out/'Prepared_LDSC_Manifest.csv')
     logs = out/'munge_logs'
     logs.mkdir()
     with tempfile.TemporaryDirectory(prefix='.munge-', dir=out) as temporary:
         stage = Path(temporary)
+        reference_path = Path(opts.hapmap_file).resolve()
+        if opts.munge_backend == 'genomicsem':
+            # Munge every trait against the same immutable snapshot, retained for reuse.
+            reference_path = stage/REFERENCE_FILE
+            shutil.copyfile(opts.hapmap_file, reference_path)
+            reference_sha256 = file_digest(reference_path)
+            reference = read_allele_reference(reference_path)
         def worker(row):
             name = row['traitname']
             with tempfile.TemporaryDirectory(prefix='trait-', dir=stage) as scratch:
@@ -239,7 +252,7 @@ def _munge_and_publish(opts, command, out):
                         '--signed-sumstats', 'BETA,0', '--info-min', str(opts.info_filter), '--maf-min', str(opts.maf_filter),
                         '--merge-alleles', str(Path(opts.hapmap_file).resolve())]
                 else:
-                    args = [row['sumstats_file'], str(prefix), str(Path(opts.hapmap_file).resolve()),
+                    args = [row['sumstats_file'], str(prefix), str(reference_path),
                             str(opts.info_filter), str(opts.maf_filter)]
                 (logs/f'{name}.command.json').write_text(json.dumps(command+args, indent=2)+'\n')
                 with (logs/f'{name}.console.log').open('a') as handle:
@@ -261,6 +274,23 @@ def _munge_and_publish(opts, command, out):
                     'sha256': file_digest(path), 'info_filter': opts.info_filter, 'maf_filter': opts.maf_filter,
                     'N_source': 'manifest_N' if row['N'] else 'FORMAT/NEF',
                     'float_format': FLOAT_FORMAT if opts.munge_backend == 'python' else 'GenomicSEM'}
+                metadata.update(schema_version=1, traitname=name,
+                    population_prevalence=float(row['population_prevalence']) if row['population_prevalence'] else None,
+                    N_override=float(row['N']) if row['N'] else None,
+                    N_convention='total' if row['population_prevalence'] else 'manifest_N' if row['N'] else 'NEF')
+                if opts.munge_backend == 'genomicsem':
+                    with prefix.with_name(name+'.runtime.tsv').open(newline='') as stream:
+                        runtimes = list(csv.DictReader(stream, delimiter='\t'))
+                    if len(runtimes) != 1:
+                        raise ValueError(f'{name}: missing GenomicSEM runtime identity')
+                    metadata.update(reference_file=REFERENCE_FILE, reference_sha256=reference_sha256, runtime=runtimes[0])
+                    try:
+                        audit = validate_alleles(path, name, reference, n_override=metadata['N_override'])
+                    except InputCompatibilityError as error:
+                        write_input_audit(logs/f'{name}.input_qc.csv', [error.audit])
+                        raise
+                    audit.update(sumstats_sha256=metadata['sha256'], reference_sha256=reference_sha256)
+                    write_input_audit(logs/f'{name}.input_qc.csv', [audit])
                 path.rename(stage/path.name)
                 (stage/f'{name}.prevalence.json').write_text(json.dumps(metadata, indent=2)+'\n')
                 return {'traitname': name, 'output_rows': frame.height, 'usable_rows': valid.height,

@@ -1171,8 +1171,12 @@ same `--hm3` allele reference for all traits. Do not directly reuse Python-munge
 files: even with the same HapMap reference, strand-complement coding can remain
 and be misaligned by GenomicSEM LDSC. `prepare --write_munge_inputs`
 produces unmunged files and does not satisfy this contract directly.
-The tool checks the required headers and at least one data row; it does not
-verify the preparation backend, allele orientation or sidecar provenance.
+Keep the entire preparation bundle. The tool verifies completed status, the
+manifest/file/sidecar/reference checksums, pinned GenomicSEM preparation identity,
+N source/convention/override, both prevalences, unique SNP IDs and exact reference
+A1/A2 order. Missing provenance, swapped/complemented/incompatible pairs and
+invalid N/Z fail with `GenomicSEM_Input_QC.csv`; no input is edited or silently
+dropped. Older unverified files must be prepared again from raw inputs.
 See the [GenomicSEM preparation and reuse example](GENOMICSEM_LDSC.md#reuse-munged-files).
 
 All modes need `--ld_ref`, containing `<CHR>.l2.ldscore.gz` and

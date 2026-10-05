@@ -11,7 +11,8 @@ def main(argv=None):
 The same workflow is available as ldsc-gpca ldsc --ldsc_backend genomicsem.
 For reuse, prepare files with --mode ldsc (or --mode both) and
 --munge_backend genomicsem, using the same --hm3 allele reference for all traits.
-Do not directly reuse Python-munged files; reuse does not verify allele orientation.
+Do not directly reuse Python-munged files. Reuse requires complete preparation
+bundles and verifies provenance, checksums, N/prevalences and reference allele order.
 Use ldsc-gpca genomicsem <command> --help for columns, separators and defaults.''')
     parser.add_argument('command', metavar='COMMAND', choices=['ldsc','gpca'], nargs='?', help='ldsc: munge/LDSC; gpca: PCA/GWAMA from LDSCoutput RData.')
     if argv and argv[0] == 'ldsc':

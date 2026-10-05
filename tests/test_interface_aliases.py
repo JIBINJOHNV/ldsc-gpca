@@ -122,15 +122,16 @@ class ManifestNamesTests(unittest.TestCase):
                 with self.assertRaises(ValueError):prepare.manifest_inputs(path)
 
     def test_native_all_modes_and_prevalence_rules(self):
+        from genomicsem_fixtures import make_bundle
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder).resolve()
-            for name in ('002','001'):(root/(name+'.sumstats')).write_text('SNP\tA1\tA2\tN\tZ\nrs1\tA\tG\t100\t1\n')
+            make_bundle(root, names=('002','001'), binary_traits=('001',))
             path=root/'in.csv'
             for mode in ('unmunged','paths','directory'):
                 columns=['traitname','sample_prevalence','population_prevalence'];rows=[['002','NA','NA'],['001','.2','.05']]
                 if mode!='directory':
-                    columns+=['munged_file' if mode=='paths' else 'sumstats_file'];rows=[row+[row[0]+'.sumstats'] for row in rows]
-                extra=['--munged_dir',str(root)] if mode=='directory' else ['--munged_input'] if mode=='paths' else []
+                    columns+=['munged_file' if mode=='paths' else 'sumstats_file'];rows=[row+['munged/'+row[0]+'.sumstats.gz'] for row in rows]
+                extra=['--munged_dir',str(root/'munged')] if mode=='directory' else ['--munged_input'] if mode=='paths' else []
                 write_csv(path,columns,rows)
                 opts=genomicsem_ldsc.build_parser().parse_args(['--input',str(path),'--outdir','out','--ld_ref','ld',*extra])
                 result,backend=genomicsem_ldsc.resolve_manifest(opts)
@@ -154,11 +155,12 @@ class ManifestNamesTests(unittest.TestCase):
             self.assertEqual(json.loads((out/'LDSC_Runtime.json').read_text())['ld_weights'],str(root/'w')+os.sep)
 
     def test_native_runner_receives_canonical_options(self):
+        from genomicsem_fixtures import make_bundle
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder).resolve();ld=root/'ld';weights=root/'weights';munged=root/'munged'
             for path in (ld,weights,munged):path.mkdir()
             for path in (ld/'1.l2.ldscore.gz',ld/'1.l2.M_5_50',weights/'1.l2.ldscore.gz'):path.write_text('fixture')
-            for name in ('002','001'):(munged/(name+'.sumstats')).write_text('SNP\tA1\tA2\tN\tZ\nrs1\tA\tG\t100\t1\n')
+            make_bundle(root, names=('002','001'))
             manifest=root/'in.csv';out=root/'out'
             write_csv(manifest,['traitname','sample_prevalence','population_prevalence'],[['002','NA','NA'],['001','NA','NA']])
             with patch.object(genomicsem_ldsc.shutil,'which',return_value='/fake/Rscript'),patch.object(genomicsem_ldsc.subprocess,'run') as run:
