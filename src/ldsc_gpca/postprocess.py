@@ -80,6 +80,42 @@ def table_engine(n_cores=0):
     return pl
 
 
+def validate_associations(frame, path):
+    """Fail on unusable raw associations before overrides, publication or archival."""
+    import polars as pl
+    checks = []
+    for column in ('BETA', 'SE', 'Z', 'PVAL', 'N_eff', 'N_obs'):
+        # Explicit N override may supply an absent N_eff column, but cannot hide
+        # invalid N values already present in the raw results.
+        if column not in frame.columns:
+            continue
+        value = pl.col(column).cast(pl.Float64, strict=False)
+        valid = value.is_finite()
+        if column in ('SE', 'N_eff', 'N_obs'):
+            valid = valid & (value > 0)
+            reason = f'{column}_not_finite_positive'
+        elif column == 'PVAL':
+            valid = valid & value.is_between(0, 1)
+            reason = 'PVAL_not_finite_or_outside_0_1'
+        else:
+            reason = f'{column}_not_finite'
+        checks.append(pl.when(valid.fill_null(False)).then(pl.lit(None, dtype=pl.String))
+                      .otherwise(pl.lit(reason)))
+    checked = frame.with_row_index('Row', offset=1).select('Row', 'SNPID',
+        pl.concat_str(checks, separator='; ', ignore_nulls=True).alias('Reason'))
+    issues = checked.filter(pl.col('Reason') != '')
+    prefix = path.name.removesuffix(RESULT_SUFFIX)
+    audit = path.with_name(prefix + '.GWAMA_Export_QC_Issues.csv')
+    issues.write_csv(audit)
+    pl.DataFrame([{'Status': 'failed' if issues.height else 'passed',
+        'Total_Rows': frame.height, 'Invalid_Rows': issues.height,
+        'Policy': 'error', 'Raw_Output': str(path)}]).write_csv(
+            path.with_name(prefix + '.GWAMA_Export_QC_Summary.csv'))
+    if issues.height:
+        raise ValueError(f'{path.name}: GWAMA output QC failed for {issues.height} row(s): '
+                         f'{issues["Reason"][0]}; raw output retained. See {audit}')
+
+
 def read_chromosome(path, required):
     import polars as pl
     started = perf_counter()
@@ -106,6 +142,7 @@ def read_chromosome(path, required):
         raise ValueError(f'{path.name}: parsed headers differ from the source headers')
     if frame['Direction'].null_count() or not frame['Direction'].str.contains(r'\A[+?\-]+\z').all():
         raise ValueError(f'{path.name}: Direction must contain only +, - and ? and be non-empty')
+    validate_associations(frame, path)
     frame = frame.with_columns([
         pl.col('Direction').str.count_matches(character, literal=True).alias(f'count_{label}')
         for label, character in [('question', '?'), ('plus', '+'), ('minus', '-')]])
@@ -135,6 +172,7 @@ def position_keys(combined):
 
 
 def combine_results(files, n_eff, info_value, *, n_cores=0, status_path=None):
+    validate_overrides(n_eff, info_value)
     pl = table_engine(n_cores)
     files = list(files)
     if not files:

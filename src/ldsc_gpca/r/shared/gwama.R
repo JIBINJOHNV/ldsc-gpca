@@ -200,6 +200,7 @@ run_genomic_pca_gwama <- function(chr = NULL, trait_order, CTI, pca_matrix,
   if (is.na(current$size) || current$size <= 0 || identical(previous, current))
     stop("GWAMA produced no fresh non-empty result: ", output_file, call. = FALSE)
 
+  validate_gwama_output(output_file, dat, loadings, file.path(outdir, output_name))
   invisible(output_name)
 }
 

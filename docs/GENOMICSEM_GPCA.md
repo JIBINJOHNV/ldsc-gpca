@@ -161,6 +161,23 @@ Chromosome GWAMA jobs retry once before an exhausted failure stops analysis.
 Workers default to automatic selection; Windows runs sequentially. Use fresh
 output directories to avoid conflicting audit or completed export files.
 
+After GWAMA writes its raw results, numerical QC checks every SNP before a
+worker can report success. The run fails for zero available weight, nonfinite
+BETA/Z/P, nonpositive or nonfinite SE/N, or P outside `[0,1]`. P underflow to
+zero is allowed. Signed loadings and partial trait availability remain valid
+when they produce a defined association; weights are not tested by their
+signed sum. For example, a SNP available only in a trait with zero PC1 loading
+has no available weight and fails even when its reported N_eff is positive.
+
+Raw results remain available alongside `<output>.GWAMA_QC_Issues.csv` and
+`<output>.GWAMA_QC_Summary.csv`. Issues identify result row, SNPID and reason;
+summary files record the fixed `error` policy. Failed jobs remain failed in
+`GWAMA_Run_Status.csv` and the existing worker-attempt audit. No SNP is silently
+excluded and no Z is fabricated. The exporter independently checks numerical
+values before overrides, combined output or archival, writing
+`<output>.GWAMA_Export_QC_Issues.csv` and `..._Summary.csv`. An N_eff override
+cannot hide an invalid N_eff already present in the raw output.
+
 ## Results and export settings
 
 Inspect QC, `GWAMA_Run_Status.csv`, the matrices and

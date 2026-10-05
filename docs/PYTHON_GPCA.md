@@ -204,6 +204,10 @@ Missing traits and invalid selected estimates stop by default.
 `--allow_missing_traits` permits audited removal of absent traits;
 `--failed_ldsc_action drop_traits` permits removal to obtain a valid complete
 subset. Both change what is analysed; neither repairs conflicting duplicates.
+Malformed numeric text is rejected before scale normalization and reports the
+source field and row, under both policies. Numeric missing tokens (blank,
+`NA`, `NaN`, `nan`) remain eligible for explicit exclusion; they are interpreted
+only in numeric fields, so literal trait identifiers are preserved.
 Low h2/SE is a diagnostic warning at the default threshold 2, not automatic
 trait exclusion.
 
@@ -221,6 +225,23 @@ Failed chromosome GWAMA jobs retry once; failure after two attempts stops.
 `--n_cores 0` selects workers automatically (Windows runs sequentially). Choose
 fresh output directories for comparisons: completed export files are not
 silently overwritten, and failed-run outputs should be inspected before reuse.
+
+After GWAMA writes its raw results, numerical QC checks every SNP before a
+worker can report success. The run fails for zero available weight, nonfinite
+BETA/Z/P, nonpositive or nonfinite SE/N, or P outside `[0,1]`. P underflow to
+zero is allowed. Signed loadings and partial trait availability remain valid
+when they produce a defined association; weights are not tested by their
+signed sum. For example, a SNP available only in a trait with zero PC1 loading
+has no available weight and fails even when its reported N_eff is positive.
+
+Raw results remain available alongside `<output>.GWAMA_QC_Issues.csv` and
+`<output>.GWAMA_QC_Summary.csv`. Issues identify result row, SNPID and reason;
+summary files record the fixed `error` policy. Failed jobs remain failed in
+`GWAMA_Run_Status.csv` and the existing worker-attempt audit. No SNP is silently
+excluded and no Z is fabricated. The exporter independently checks numerical
+values before overrides, combined output or archival, writing
+`<output>.GWAMA_Export_QC_Issues.csv` and `..._Summary.csv`. An N_eff override
+cannot hide an invalid N_eff already present in the raw output.
 
 ## Exports and what to inspect
 

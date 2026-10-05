@@ -136,6 +136,11 @@ INPUT FILE FORMATS
   Whole-genome files: {traitname}_GenomicPCA_inputs.tsv
   --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.
 
+GWAMA OUTPUT QC
+  Zero available weight or invalid BETA/Z/P/SE/N fails before success/export.
+  P=0 underflow is valid. Raw results and *.GWAMA_QC_* audits are retained.
+  No undefined row is silently excluded or assigned a fabricated Z.
+
 REQUIRED MANIFEST COLUMN
   traitname    Unique, non-empty trait identifier. Each row selects one
                trait, and row order defines all analysis matrices.
@@ -148,6 +153,7 @@ REQUIRED PYTHON LDSC COLUMNS
   Plus one complete heritability pair:
     h2_liab, h2_liab_se  OR  h2_obs, h2_obs_se
   Auto ignores empty pairs; ambiguous populated scales require a choice.
+  Malformed numeric text is fatal under every policy; errors name field/row.
   Mixed-scale covariance requires --heritability_scale mixed.
 
 MATRIX DEFINITIONS

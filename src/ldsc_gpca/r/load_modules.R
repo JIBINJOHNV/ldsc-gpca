@@ -15,7 +15,7 @@ load_gpca_modules <- function(root, backend = c("python_ldsc", "genomicsem"),
     library(glue)
     library(parallel)
   })
-  shared <- c("input.R", "matrix_validation.R", "reporting.R", "pca.R", "workers.R", "gwama.R")
+  shared <- c("input.R", "matrix_validation.R", "reporting.R", "pca.R", "workers.R", "gwama_qc.R", "gwama.R")
   specific <- if (backend == "python_ldsc") {
     c("constants.R", "cli.R", "reader.R", "qc.R", "covariance.R", "reporting.R", "workflow.R")
   } else {

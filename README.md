@@ -449,7 +449,9 @@ Python `ldsc` VCF paths, which resolve from the working directory.
 
 ### VCF fields and sample size
 
-Each supported VCF represents **one GWAS sample**, not individual genotypes.
+Each supported VCF must contain **exactly one GWAS sample**. All VCF routes
+reject sample-free and multi-sample files before extracting tables; no sample
+is selected implicitly.
 A `.vcf.gz` extension does not establish compatibility.
 
 | Stage | Required VCF fields beyond coordinates, REF and ALT | Values used |
@@ -591,8 +593,17 @@ units. Only PC1 is used for GWAMA; other components are reported for inspection.
   clamped or replaced by a nearest-positive-definite matrix. The loading
   calculation guards square roots of nonpositive eigenvalues and reports it;
   PC1 itself must have a finite positive eigenvalue.
+- Malformed numeric text fails before heritability normalization, including
+  with `--failed_ldsc_action drop_traits`. Documented missing values remain
+  eligible for explicit removal; a parse error is not an estimation failure.
 - Matrices and trait ordering must agree. CTI must be positive definite for
   GWAMA. A PC1 QC pass does not prove the full GWAMA/export run succeeded.
+- GWAMA results undergo numerical QC before successful status or export. Zero
+  available weight, nonfinite BETA/Z/P, nonpositive or nonfinite SE/N, or P
+  outside `[0,1]` fail the run. P underflow to zero remains valid. Raw results
+  are retained with per-output `*.GWAMA_QC_Issues.csv` and
+  `*.GWAMA_QC_Summary.csv`; the exporter also writes `*.GWAMA_Export_QC_*`
+  audits. Invalid rows are never silently removed or assigned a fabricated Z.
 
 Python long-format results supply marginal SEs, but not GenomicSEM's full
 cross-estimate sampling covariance matrices `V` and `V_Stand`. Do not use that

@@ -80,6 +80,11 @@ INPUT FILE CONTRACT
     Whole genome: {traitname}_GenomicPCA_inputs.tsv.
   --source_path: optional custom modified GWAMA R source; default is bundled v1.2.6.
 
+GWAMA OUTPUT QC
+  Zero available weight or invalid BETA/Z/P/SE/N fails before success/export.
+  P=0 underflow is valid. Raw results and *.GWAMA_QC_* audits are retained.
+  No undefined row is silently excluded or assigned a fabricated Z.
+
 AVAILABILITY
   genomicsem ldsc runs GenomicSEM munge/LDSC or accepts existing munged files.
   Both PCA matrix choices write all-PC variance and PC1 protein contributions.

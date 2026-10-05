@@ -114,6 +114,45 @@ class ExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'unique'): pp.combine_results([self.source('dup',[row(),row()])],None,None)
         with self.assertRaisesRegex(ValueError,'unique'): pp.combine_results([self.source('a',[row()]),self.source('b',[row()])],None,None)
 
+    def test_numerical_failures_are_audited_before_overrides_and_export(self):
+        for field in ('BETA', 'Z', 'SE', 'N_eff', 'PVAL'):
+            values = ['NA', 'NaN', 'inf', '-inf', 'broken', '']
+            if field in ('SE', 'N_eff'):
+                values += ['0', '-1']
+            if field == 'PVAL':
+                values += ['-0.1', '1.1']
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    item = row('invalid'); item[field] = value
+                    path = self.source('numerical', [item])
+                    before = path.read_bytes()
+                    # An explicit summary N override cannot conceal invalid raw N.
+                    with self.assertRaisesRegex(ValueError, 'GWAMA output QC failed'):
+                        pp.combine_results([path], 33000, .9)
+                    issues = pd.read_csv(self.root/'numerical.GWAMA_Export_QC_Issues.csv')
+                    self.assertEqual(issues.SNPID.tolist(), ['invalid'])
+                    self.assertTrue(issues.Reason.str.contains(field).all())
+                    self.assertEqual(path.read_bytes(), before)
+        self.status(['numerical'])
+        with self.assertRaisesRegex(ValueError, 'GWAMA output QC failed'):
+            pp.process_gwama_results(self.root, self.root/'summary', name='failed', archive=True)
+        self.assertFalse((self.root/'chromosome_wise').exists())
+        self.assertFalse(list(self.root.glob('*combined*')))
+        self.assertFalse((self.root/'summary').exists())
+        attempts = pd.read_csv(self.root/'GWAMA_Export_Worker_Attempts.csv')
+        self.assertTrue((~attempts.Success).all())
+
+    def test_valid_probability_underflow_and_zero_effect_are_preserved(self):
+        items = [row('underflow'), row('zero_effect')]
+        items[0].update(PVAL='0', Z='1000', BETA='1')
+        items[1].update(PVAL='1', Z='0', BETA='0')
+        combined, _ = pp.combine_results([self.source('valid_numeric', items)], None, None)
+        self.assertEqual(combined['PVAL'].to_list(), ['0', '1'])
+        self.assertEqual(combined['Z'].to_list(), ['1000', '0'])
+        summary = pd.read_csv(self.root/'valid_numeric.GWAMA_Export_QC_Summary.csv')
+        self.assertEqual(summary.Status.tolist(), ['passed'])
+        self.assertEqual(summary.Invalid_Rows.tolist(), [0])
+
     def test_chromosome_aliases_and_large_integer_sort_are_preserved(self):
         inputs=[row('a','X'),row('b','Y'),row('c','XY'),row('d','M'),row('e','chrMT'),
                 row('large2','1','9007199254740993'),row('large1','1','9007199254740992')]
