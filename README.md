@@ -105,13 +105,15 @@ Choose one route based on your starting files and intended result. A complete
 pipeline already includes LDSC, PCA and GWAMA; the standalone commands below
 let you run individual stages or continue from saved outputs.
 
-| Your starting files | What you want to do | Command | Start here |
-| --- | --- | --- | --- |
-| GWAS summary-statistics VCFs | Run preparation through PC1 SNP association results | `ldsc-gpca pipeline` | [Complete analysis from VCFs](#run-a-complete-analysis-from-vcfs) |
-| VCFs, compatible munged files, or GenomicSEM raw tables | Estimate heritabilities, genetic correlations and intercepts | `ldsc-gpca ldsc --ldsc_backend python` or `ldsc-gpca ldsc --ldsc_backend genomicsem` | [LDSC only](#run-ldsc-separately) |
-| Completed Python LDSC `ldsc_results.csv` | Calculate PCA and optionally run PC1 GWAMA | `ldsc-gpca gpca` | [Use completed LDSC results](#use-completed-ldsc-results) |
-| Completed GenomicSEM LDSC `genomicsem_LDSC.RData` | Calculate PCA and optionally run PC1 GWAMA | `ldsc-gpca genomicsem gpca` | [Use completed LDSC results](#use-completed-ldsc-results) |
-| GWAS summary-statistics VCFs | Prepare SNP tables or munged LDSC inputs for later use | `ldsc-gpca prepare` | [Prepare inputs separately](#prepare-inputs-separately) |
+| Your starting files | What you want to do | Command and instructions |
+| --- | --- | --- |
+| GWAS summary-statistics VCFs | Complete PC1 SNP association analysis | [`pipeline`](#run-a-complete-analysis-from-vcfs) |
+| VCFs, compatible munged files, or GenomicSEM raw tables | LDSC estimates only | [`ldsc`](#run-ldsc-separately) |
+| Completed Python LDSC estimates | PCA and optional PC1 GWAMA | [`gpca`](#use-completed-ldsc-results) |
+| Completed GenomicSEM LDSC estimates | PCA and optional PC1 GWAMA | [`genomicsem gpca`](#use-completed-ldsc-results) |
+| GWAS summary-statistics VCFs | Inputs for later analysis | [`prepare`](#prepare-inputs-separately) |
+
+Each command starts with `ldsc-gpca`; follow its link for the required options.
 
 For a new complete analysis, first check the [input requirements](#check-input-requirements),
 then choose [Python LDSC](#python-ldsc-from-gwas-vcfs) or
