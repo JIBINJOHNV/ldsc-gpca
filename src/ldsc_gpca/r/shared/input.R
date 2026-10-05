@@ -24,7 +24,9 @@ check_gpca_cli_options <- function(arguments) {
 }
 
 read_gpca_manifest <- function(path) {
-  manifest <- fread(path, data.table = FALSE, check.names = FALSE, colClasses = "character")
+  # Missing-value tokens are valid text in trait names and annotations.
+  manifest <- fread(path, data.table = FALSE, check.names = FALSE,
+                    colClasses = "character", na.strings = NULL)
   if (anyDuplicated(names(manifest))) stop("Manifest headers must be unique.", call. = FALSE)
   # Required canonical columns are checked by the consuming workflow.
   # Extra columns are annotations, not aliases for missing required fields.

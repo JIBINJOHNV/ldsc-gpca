@@ -3,9 +3,16 @@ run_genomicsem_ldsc <- function(manifest, outdir, ld, wld, hm3, mode, cores,
                                info_filter, maf_filter, chromosomes, n_blocks,
                                chisq_max, invalid_h2_action,
                                munge_fun = GenomicSEM::munge, ldsc_fun = GenomicSEM::ldsc) {
-  dat <- read.csv(manifest, colClasses = "character", check.names = FALSE)
-  for (column in c("sampleprevalence", "populationprevalence", "N"))
-    dat[[column]] <- as.numeric(dat[[column]])
+  dat <- read.csv(manifest, colClasses = "character", check.names = FALSE,
+                  na.strings = NULL, blank.lines.skip = FALSE)
+  if (!"traitname" %in% names(dat) || anyNA(dat$traitname) ||
+      any(!nzchar(trimws(dat$traitname))) || anyDuplicated(dat$traitname))
+    stop("Manifest traitname values must be unique and non-empty.", call. = FALSE)
+  for (column in c("sampleprevalence", "populationprevalence", "N")) {
+    values <- dat[[column]]
+    values[trimws(values) %in% c("", "NA", "NaN", "nan")] <- NA_character_
+    dat[[column]] <- as.numeric(values)
+  }
   old <- setwd(outdir)
   on.exit(setwd(old), add = TRUE)
   events <- data.frame(stage = character(), action = character(), reason = character())

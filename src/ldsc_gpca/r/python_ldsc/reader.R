@@ -190,11 +190,18 @@ read_python_ldsc_selected <- function(path, trait_order, chunk_size = 250000L,
       colClasses = list(character = c("p1", "p2")),
       check.names = FALSE,
       showProgress = FALSE,
-      na.strings = c("NA", "NaN", "nan", "")
+      # Preserve literal identifiers; numeric QC handles missing estimates.
+      na.strings = NULL
     )
 
-    chunk[, p1 := trimws(as.character(p1))]
-    chunk[, p2 := trimws(as.character(p2))]
+    for (column in c("p1", "p2")) {
+      identifiers <- trimws(chunk[[column]])
+      invalid <- which(is.na(identifiers) | identifiers == "")
+      if (length(invalid)) stop("Python LDSC column '", column,
+        "' contains a missing or empty trait identifier at file row ",
+        rows_read - length(lines) + invalid[1L] + 1L, ".", call. = FALSE)
+      set(chunk, j = column, value = identifiers)
+    }
     newly_seen <- unique(c(
       chunk$p1[chunk$p1 %chin% trait_order],
       chunk$p2[chunk$p2 %chin% trait_order]

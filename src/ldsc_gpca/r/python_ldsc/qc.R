@@ -5,9 +5,9 @@ coerce_python_ldsc_numeric <- function(ldsc_rows) {
   for (column_name in c(python_ldsc_numeric_columns, source_columns)) {
     original <- ldsc_rows[[column_name]]
     if (is.double(original) && is.null(attributes(original))) next
-    if (column_name %in% source_columns) {
-      original[trimws(as.character(original)) %in% c("", "NA", "NaN", "nan")] <- NA
-    }
+    # Readers preserve identifier text; interpret missing tokens only here,
+    # in numeric columns, before rejecting genuinely malformed values.
+    original[trimws(as.character(original)) %in% c("", "NA", "NaN", "nan")] <- NA
     converted <- suppressWarnings(as.numeric(original))
     invalid_conversion <- is.na(converted) & !is.na(original)
 

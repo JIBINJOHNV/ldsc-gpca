@@ -244,8 +244,10 @@ Conda environments after creation.
   leading/trailing spaces. Keep them identical across manifests, LDSC estimates
   and per-trait filenames. GPCA requires at least two retained traits and preserves
   manifest row order in matrices, loadings and GWAMA inputs.
-  Numeric-looking identifiers such as `001` are read as text in Python LDSC
-  tables, preserving leading zeros.
+  Identifiers such as `NA`, `NaN`, `nan` and `001` are read literally, quoted
+  or unquoted, in manifests and Python LDSC `p1`/`p2` columns. Leading zeros
+  are preserved. Missing-value tokens apply to numeric fields; empty or
+  whitespace-only identifiers are invalid.
   See [cleanup validation](../tests/CLEANUP_VALIDATION.md) for before/after checks
   of package performance changes using saved real LDSC and GenomicSEM results.
 - Header spelling and case matter. Use one canonical spelling for each managed
