@@ -13,7 +13,7 @@ def postprocess_parser(r_script='gpsca_gwama_python_ldsc.r', *, include_prepare=
     prog = 'ldsc-gpca genomicsem gpca' if r_script == 'gpsca_gwama_v2.r' else 'ldsc-gpca gpca'
     parser = HelpParser(prog=prog, add_help=False, usage=usage,
                         description='Automatic GWAMA export options. Summary output: <outdir>/harmonisation_input/.',
-                        epilog='These options apply after a successful GWAMA run; --validate_only skips export. --n_cores controls concurrent chromosome reads, the default shared Polars pool, and pigz compression workers. Existing POLARS_MAX_THREADS is respected.')
+                        epilog='These options apply after a successful GWAMA run; --validate_only and --pc1_only skip export. --n_cores controls concurrent chromosome reads, the default shared Polars pool, and pigz compression workers. Existing POLARS_MAX_THREADS is respected.')
     naming = parser.add_argument_group('Output naming')
     overrides = parser.add_argument_group('Summary column overrides')
     compression = parser.add_argument_group('Compression and archiving')
@@ -33,7 +33,7 @@ def preparation_help_parser(r_script, *, usage=None):
     from .prepare import add_prepare_options
     prog = 'ldsc-gpca genomicsem gpca' if r_script == 'gpsca_gwama_v2.r' else 'ldsc-gpca gpca'
     parser = HelpParser(prog=prog, add_help=False, usage=usage,
-        description='Optional automatic VCF preparation. Used only when --gpca_input_folder is omitted; skipped with --validate_only.',
+        description='Optional automatic VCF preparation. Used only when --gpca_input_folder is omitted; skipped with --validate_only or --pc1_only.',
         epilog=PREPARE_INPUT_HELP + '\nAnalysis uses --input MANIFEST.csv, --outdir DIRECTORY and --splitby_chr {split,nosplit} (default: split).\nSee --help for analysis inputs and options. With an existing GPCA folder these preparation options do not apply.')
     add_prepare_options(parser)
     return parser
@@ -97,16 +97,32 @@ def main(argv=None, *, r_script='gpsca_gwama_python_ldsc.r'):
     out_parser.add_argument('--gpca_input_folder')
     out_parser.add_argument('--splitby_chr', choices=['split','nosplit'], default='split')
     out_parser.add_argument('--validate_only', action='store_true')
+    out_parser.add_argument('--pc1_only', action='store_true')
     inputs = out_parser.parse_known_args(r_args)[0]
     outdir = inputs.outdir
     from .prepare import preparation_kwargs
     prep_settings = preparation_kwargs(opts)
-    if inputs.gpca_input_folder is not None and not inputs.validate_only:
+    if inputs.gpca_input_folder is not None and not (inputs.validate_only or inputs.pc1_only):
         if any(value != parser.get_default(name) for name,value in prep_settings.items()):
             parser.error('VCF preparation settings require omitting --gpca_input_folder; use ldsc-gpca prepare to create new tables')
-    if inputs.gpca_input_folder is None and not inputs.validate_only:
+    if inputs.gpca_input_folder is None and not (inputs.validate_only or inputs.pc1_only):
         if not inputs.input:
             parser.error('Automatic VCF preparation requires --input with traitname and vcf_files columns')
+        preflight_dir = Path(outdir) / 'matrix_preflight'
+        preflight_args = list(r_args)
+        for i, argument in enumerate(preflight_args):
+            if argument == '--outdir':
+                preflight_args[i + 1] = str(preflight_dir)
+                break
+            if argument.startswith('--outdir='):
+                preflight_args[i] = '--outdir=' + str(preflight_dir)
+                break
+        script = files('ldsc_gpca').joinpath('r', r_script)
+        with as_file(script) as path:
+            preflight_code = subprocess.run(
+                [rscript, str(path), *preflight_args, '--validate_only'], check=False).returncode
+        if preflight_code != 0:
+            return preflight_code
         from .prepare import prepare_inputs
         from polars.exceptions import PolarsError
         try:
@@ -124,8 +140,8 @@ def main(argv=None, *, r_script='gpsca_gwama_python_ldsc.r'):
         code = subprocess.run([rscript, str(path), *r_args], check=False).returncode
     if code != 0:
         return code
-    if '--validate_only' in r_args:
-        print('Validation-only run: GWAMA post-processing skipped.')
+    if inputs.validate_only or inputs.pc1_only:
+        print('PC1/validation-only run: GWAMA post-processing skipped.')
         return 0
     from .postprocess import process_gwama_results
     try:

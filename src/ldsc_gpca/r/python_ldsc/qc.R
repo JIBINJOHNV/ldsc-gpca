@@ -611,7 +611,7 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
                                            rg_out_of_range_action = c("warn", "error"),
                                            heritability_scale = c(
                                              "auto", "liability", "observed", "mixed"
-                                           )) {
+                                           ), defer_cti = FALSE) {
   z_consistency_action <- match.arg(z_consistency_action)
   rg_out_of_range_action <- match.arg(rg_out_of_range_action)
   heritability_scale <- match.arg(heritability_scale)
@@ -791,7 +791,7 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
     },
     error = function(e) conditionMessage(e)
   )
-  if (!is.null(chol_error)) {
+  if (!is.null(chol_error) && !defer_cti) {
     stop(
       glue(
         "The LDSC intercept matrix I is not positive definite ",
@@ -936,3 +936,28 @@ canonicalize_and_validate_ldsc <- function(ldsc_rows, trait_order,
 # tutorial's alternative procedure. Python LDSC supplies rg and univariate h2
 # here, but not GenomicSEM's full sampling-covariance V matrices; none are
 # fabricated. Trait names and order must agree exactly.
+
+# Subset already-validated estimates after explicit CTI selection; never refit.
+subset_validated_ldsc <- function(x, old_traits, traits) {
+  for (name in c("S_Stand", "I", "rg_se_matrix", "intercept_se_matrix"))
+    x[[name]] <- x[[name]][traits, traits, drop = FALSE]
+  for (name in c("heritability_results", "validation_summary", "self_pair_qc"))
+    x[[name]] <- x[[name]][match(traits, x[[name]]$Trait), , drop = FALSE]
+  pairs <- x$genetic_correlation_results
+  x$genetic_correlation_results <- pairs[pairs$Trait_1 %in% traits & pairs$Trait_2 %in% traits, , drop = FALSE]
+  pairs <- copy(x$collapsed_pairs)
+  pairs[, `:=`(pair_i = match(old_traits[pair_i], traits), pair_j = match(old_traits[pair_j], traits))]
+  pairs <- pairs[!is.na(pair_i) & !is.na(pair_j)]
+  x$collapsed_pairs <- pairs
+  s <- x$validation_summary
+  s$Trait_Order <- seq_along(traits)
+  s$Unique_Pairs_With_Selected_Traits <- s$Expected_Pairs_With_Selected_Traits <- length(traits)
+  s$Expected_Unique_Self_And_Pairwise_Rows <- s$Observed_Unique_Self_And_Pairwise_Rows <- nrow(pairs)
+  s$Selected_Source_Rows <- sum(pairs$source_row_count)
+  s$Duplicate_Rows_Collapsed <- s$Selected_Source_Rows - nrow(pairs)
+  s$Low_H2_Z_Diagnostic_Count <- sum(s$Low_H2_Z_Diagnostic)
+  s$Z_Inconsistent_With_RG_SE_Count <- sum(x$genetic_correlation_results$Z_Inconsistent_With_RG_SE)
+  s$Off_Diagonal_RG_Outside_Unit_Interval <- sum(x$genetic_correlation_results$RG_Outside_Unit_Interval)
+  x$validation_summary <- s
+  x
+}

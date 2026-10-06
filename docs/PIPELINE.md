@@ -10,6 +10,7 @@
 - [GenomicSEM LDSC from VCFs](#genomicsem-ldsc-from-vcfs)
 - [Migrate existing pipeline commands](#migrate-existing-pipeline-commands)
 - [Run LDSC and PCA without GWAMA](#run-ldsc-and-pca-without-gwama)
+- [PC1 and CTI validation](#pc1-and-cti-validation)
 - [Change filters, PCA and export settings](#change-filters-pca-and-export-settings)
 - [What runs and where results go](#what-runs-and-where-results-go)
 - [Failures and continuing work](#failures-and-continuing-work)
@@ -155,6 +156,24 @@ GenomicSEM likewise converts VCFs inside its LDSC stage. To add GWAMA later,
 use [the completed LDSC results with standalone GPCA](../README.md#use-completed-ldsc-results);
 provide prepared SNP tables or VCFs for automatic GWAMA preparation.
 
+## PC1 and CTI validation
+
+The GPCA stage assesses PC1 and CTI separately using the same final trait set.
+`--validate_only` requires both assessments to pass; `--pc1_only` requires PC1
+and reports CTI numerical failure without blocking PC1. Both skip GWAMA/export
+but still run upstream extraction, munging and LDSC. They are mutually exclusive.
+
+For optional CTI-based selection, use `--cti_action explore_drop` with an explicit
+positive `--max_cti_drop_fraction` below 1. Defaults are `error` and zero: no
+CTI exclusions. Both matrices are rechecked after each exploratory exclusion;
+review the history, final manifest and sign-aligned PC1 sensitivity in `gpca/`.
+This is separate from missing/invalid-estimate `--failed_ldsc_action` and cannot
+be combined with `--pc1_only`. Later negative genetic eigenvalues are controlled
+by `--negative_eigen_action`, not CTI selection.
+
+See [matrix validation](MATRIX_VALIDATION.md) for numerical thresholds, limitations
+and outputs. These settings do not alter munging, LDSC regression or SNP filters.
+
 ## Change filters, PCA and export settings
 
 This full Python example shows optional settings together:
@@ -252,7 +271,7 @@ Inspect all removal reports because changing traits changes PC1.
 
 Use `ldsc-gpca pipeline --ldsc_backend python --help` for Python defaults or `ldsc-gpca pipeline --ldsc_backend genomicsem --help` for GenomicSEM defaults. Required options have no default. “Off” flags are omitted. Backend-specific flags must match the selected backend.
 
-Preparation settings apply to VCFs. Every pipeline run extracts and munges for LDSC; full runs also prepare GWAMA tables. Export settings do not change the analysis and are skipped by `--validate_only`.
+Preparation settings apply to VCFs. Every pipeline run extracts and munges for LDSC; full runs also prepare GWAMA tables. Export settings do not change the analysis and are skipped by `--validate_only` or `--pc1_only`.
 
 <a id="files-and-input-modes"></a>
 
@@ -311,7 +330,7 @@ Preparation settings apply to VCFs. Every pipeline run extracts and munges for L
 | `--failed_ldsc_action` | Both | **`error`**. GPCA: `error` or `drop_traits` for invalid/missing estimates. Dropping changes the analysed trait set; no imputation. |
 | `--h2_z_warn_threshold` | Both | **`2`**. GPCA: warn below this retained-trait h2/SE ratio. Nonnegative; 0 disables. Diagnostic only, never a removal rule. |
 | `--rg_out_of_range_action` | Both | **`warn`**. GPCA: `warn` or `error` for finite off-diagonal rg outside [−1,1]. Never clamps values. |
-| `--negative_eigen_action` | Both | **`warn`**. GPCA: `warn` or `error` for substantive negative PCA eigenvalues. No silent matrix repair. |
+| `--negative_eigen_action` | Both | **`warn`**. Whole genetic matrix: `warn` permits valid PC1; `error` blocks substantive negative eigenvalues. No automatic exclusions or CTI repair. |
 | `--matrix_eigen_tolerance` | Both | **`1e-8`**. GPCA: positive relative tolerance separating substantive negative eigenvalues from floating-point noise. |
 | `--duplicate_tolerance` | Python | **`0.001`**. Python GPCA: positive absolute tolerance for duplicate rg, SE, P and intercept estimates. |
 | `--duplicate_z_tolerance` | Python | **`0.01`**. Python GPCA: positive absolute tolerance for duplicate-orientation Z values. |
@@ -332,6 +351,9 @@ Preparation settings apply to VCFs. Every pipeline run extracts and munges for L
 
 | Option | Backend | Default and effect |
 | --- | --- | --- |
+| `--pc1_only` | Both | **Off**. Run through valid PC1; report CTI numerical failures without blocking PC1. Skip GWAMA/export; still run LDSC. |
+| `--cti_action` | Both | **`error`**. `explore_drop` enables explicit exploratory CTI trait exclusion; rechecks both matrices. |
+| `--max_cti_drop_fraction` | Both | **`0`**. Fraction in [0,1); exploration requires a positive limit and retains at least two traits. |
 | `--validate_only` | Both | **Off**. Run LDSC and then QC/PCA; skip GWAMA/export. VCF extraction/munging still runs. GWAMA preparation is skipped unless --write_munge_inputs is requested. Does not inspect GWAMA tables. |
 | `--source_path` | Both | **Bundled modified GWAMA**. Optional custom R source defining the expected modified GWAMA function and output interface. Unused in validation-only mode. |
 | `--n_cores` | Both | **`1` (GenomicSEM), `5` (Python)**. Positive integer forwarded to LDSC and GPCA/export. GenomicSEM LDSC regression remains sequential; --prepare_workers is separate. |

@@ -83,3 +83,7 @@ results/
 !tests/test_self_duplicates.R
 !tests/SELF_DUPLICATE_VALIDATION.md
 !tests/MUNGED_DIR_VALIDATION.md
+
+!tests/test_matrix_preflight.py
+!tests/test_matrix_preflight.R
+!tests/MATRIX_PREFLIGHT_VALIDATION.md

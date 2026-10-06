@@ -10,6 +10,7 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
     parser$print_help()
     stop(e)
   })
+  args <- validate_matrix_options(args)
   for (name in c("h2_z_warn_threshold", "matrix_eigen_tolerance"))
     if (!is.finite(args[[name]]) || args[[name]] < 0 || (name == "matrix_eigen_tolerance" && args[[name]] == 0))
       stop(paste("Invalid", name), call. = FALSE)
@@ -31,17 +32,20 @@ genomicsem_main <- function(arguments = commandArgs(TRUE)) {
     env <- new.env(parent = emptyenv())
     loaded <- load(args$ldsc_results, envir = env)
     if (!"LDSCoutput" %in% loaded) stop("RData must contain LDSCoutput.", call. = FALSE)
-    x <- qc_genomicsem(env$LDSCoutput, traits, args, audit)
+    x <- qc_genomicsem(env$LDSCoutput, traits, args, audit, defer_cti = TRUE)
     traits <- colnames(x$S)
     matrix <- if (args$pca_matrix == "correlation") x$S_Stand else x$S
-    pc1 <- compute_pc1(matrix, traits, negative_eigen_action = args$negative_eigen_action,
-      matrix_eigen_tolerance = args$matrix_eigen_tolerance,
-      pc1_orientation = args$pc1_orientation, pca_matrix_type = args$pca_matrix,
-      report_dir = args$outdir)
+    assessment <- validate_analysis_matrices(matrix, x$I, traits, args)
+    traits <- assessment$traits
+    if (!identical(traits, colnames(x$S))) x <- subset_genomicsem(x, traits)
+    audit$retained <- traits
+    for (i in seq_len(nrow(assessment$excluded))) genomicsem_event(audit, "warning",
+      assessment$excluded$Reason[i], assessment$excluded$Trait[i], action = "removed")
+    pc1 <- assessment$pc1
     write_genomicsem_diagnostics(x, pc1, manifest, args)
-    if (args$validate_only) {
-      status <- data.frame(Chromosome = "not_run_validate_only", Success = NA,
-        Output = NA_character_, Error = "GWAMA intentionally skipped by --validate_only")
+    if (args$validate_only || args$pc1_only) {
+      status <- data.frame(Chromosome = if (args$pc1_only) "not_run_pc1_only" else "not_run_validate_only", Success = NA,
+        Output = NA_character_, Error = if (args$pc1_only) "GWAMA intentionally skipped by --pc1_only" else "GWAMA intentionally skipped by --validate_only")
     } else {
       if (is.null(args$gpca_input_folder)) stop("GWAMA requires --gpca_input_folder.", call. = FALSE)
       if (!file.exists(args$source_path)) stop("GWAMA function script not found: ", args$source_path, call. = FALSE)

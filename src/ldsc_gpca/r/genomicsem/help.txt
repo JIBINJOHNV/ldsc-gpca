@@ -16,10 +16,10 @@ Required inputs:
 
   --outdir DIRECTORY            Output directory; use a fresh directory. Required; no default.
 
-GWAMA inputs (not required with --validate_only):
+GWAMA inputs (not required with --validate_only or --pc1_only):
   --gpca_input_folder DIRECTORY
                                 Tab-separated GWAMA input files. Default: unset; package CLI
-                                prepares from VCF unless --validate_only.
+                                prepares from VCF unless --validate_only or --pc1_only.
 
   --source_path GWAMA.R         Optional custom modified GWAMA R source. Default: bundled
                                 N_weighted_GWAMA.function.1_2_6.R.
@@ -32,8 +32,8 @@ Trait and failed-result handling:
                                 if absent.
 
   --failed_ldsc_action CHOICE   Stop on invalid trait/pair estimates or remove traits with an
-                                audit; never impute. [Default: error.] [Choices: error,
-                                drop_traits.]
+                                audit; never impute. Does not enable numerical CTI exclusions.
+                                [Default: error.] [Choices: error, drop_traits.]
 
 PCA settings:
   --pca_matrix CHOICE           correlation uses S_Stand; covariance uses GenomicSEM S, on its
@@ -53,8 +53,9 @@ Diagnostic warning/error controls:
                                 [Default: warn.] [Choices: warn, error.]
 
   --negative_eigen_action CHOICE
-                                Warn or stop for substantive negative PCA eigenvalues; no matrix
-                                repair. [Default: warn.] [Choices: warn, error.]
+                                Warn or stop for substantive negative eigenvalues anywhere, not
+                                just PC1; no trait removal or CTI repair. Invalid PC1 always
+                                stops. [Default: warn.] [Choices: warn, error.]
 
   --matrix_eigen_tolerance FLOAT
                                 Relative negative-eigenvalue threshold. Default: 1e-8.
@@ -64,8 +65,22 @@ Execution and performance:
                                 sequentially. Failed jobs retry once, one at a time; failure
                                 after 2 attempts stops analysis.
 
-  --validate_only               Write QC and PCA diagnostics without running GWAMA. Default:
-                                off.
+  --validate_only               Assess PC1 and CTI separately without GWAMA; required-check
+                                failures return an error. Default: off.
+
+PC1 and CTI validation:
+  --pc1_only                    Save PC1 and both validation reports without GWAMA. CTI failure
+                                is nonblocking; invalid PC1 still stops. Default: off.
+
+  --cti_action CHOICE           CTI failure policy: error stops combined validation/GWAMA;
+                                explore_drop tries audited eigenvector-based trait exclusions
+                                and rechecks BOTH matrices. No matrix repair. Default: error.
+                                [Choices: error, explore_drop.]
+
+  --max_cti_drop_fraction FLOAT
+                                Maximum fraction of traits entering CTI assessment to exclude (0
+                                <= value < 1). explore_drop requires an explicit positive limit.
+                                Not a biological cutoff. Default: 0.
 
 INPUT FILE CONTRACT
   --input: comma-separated CSV with unique, non-empty traitname header.

@@ -95,7 +95,7 @@ class PipelineTests(unittest.TestCase):
                 csv_file(out/'ldsc_results.csv', ['p1','p2','rg','se','z','p','h2_obs','h2_obs_se','h2_int','h2_int_se','gcov_int','gcov_int_se'], pairs)
         elif name == 'gpca':
             (out/'GenomicPCA_PC1_Weights_Used.csv').write_text('synthetic stage output\n')
-            if '--validate_only' not in args:
+            if '--validate_only' not in args and '--pc1_only' not in args:
                 dataset = args[args.index('--dataset_id') + 1]
                 (out/'GWAMA_Run_Status.csv').write_text('synthetic stage output\n')
                 (out/f'{dataset}_postprocess.json').write_text('{}')
@@ -184,6 +184,20 @@ class PipelineTests(unittest.TestCase):
                 self.assertEqual(pipeline.main(self.args(backend, '--validate_only')), 1)
                 run.assert_not_called()
                 self.assertFalse(self.out.exists())
+
+    def test_pc1_only_and_cti_options_route_without_export_or_gwama_preparation(self):
+        self.assertEqual(self.run_mock(self.args('python', '--pc1_only')), 0)
+        self.assertEqual([args[0] for args in self.calls], ['ldsc', 'gpca'])
+        self.assertIn('--pc1_only', self.calls[-1])
+        self.assertNotIn('--gpca_input_folder', self.calls[-1])
+        self.assertFalse((self.out/'prepare').exists())
+
+    def test_explicit_cti_selection_options_reach_gpca(self):
+        self.assertEqual(self.run_mock(self.args('genomicsem', '--validate_only',
+            '--cti_action', 'explore_drop', '--max_cti_drop_fraction', '.02')), 0)
+        args = self.calls[-1]
+        self.assertEqual(args[args.index('--cti_action')+1], 'explore_drop')
+        self.assertEqual(args[args.index('--max_cti_drop_fraction')+1], '0.02')
 
     def test_genomicsem_validation_only_converts_in_ldsc_not_gwama_preparation(self):
         self.assertEqual(self.run_mock(self.args('genomicsem', '--validate_only')), 0)

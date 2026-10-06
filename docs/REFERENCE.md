@@ -443,6 +443,9 @@ because other backend filters/conventions can differ. See the
 | `--rg_normalization` | `pair` | Python backend only: `pair` uses original `rg`; `trait_wide` uses the newly computed `rg_trait_wide` column for PCA/GWAMA. |
 | `--n_cores` | Python `5`; GenomicSEM `1` | Positive worker count passed to LDSC and GPCA/export. GenomicSEM LDSC itself remains sequential. `0` is not accepted by pipeline. |
 | `--prepare_workers` | `4` | Positive trait-preparation worker count, separate from LDSC/GWAMA workers. |
+| `--pc1_only` | Off | Still run upstream LDSC; save valid PC1, report CTI without blocking on its numerical failure, and skip GWAMA/export. |
+| `--cti_action` | `error` | Stop combined runs on CTI failure; explicit `explore_drop` tries audited exclusions. |
+| `--max_cti_drop_fraction` | `0` | Fraction in [0,1); explore_drop requires an explicit positive limit. |
 | `--validate_only` | Off | Still run upstream LDSC, then QC/PCA; skip GWAMA and export. VCF extraction/munging still runs. GWAMA preparation is skipped unless --write_munge_inputs is requested. |
 | `--dataset_id` | Pipeline output-directory basename | Final filename prefix under `gpca/`. |
 | `--splitby_chr` | `split` | `split` needs all chromosomes 1–22 per trait; `nosplit` uses one whole-genome file per trait. |
@@ -1545,11 +1548,14 @@ follow in separate tables; Python-table-specific options are listed afterward.
 | `--input CSV` | Required | Selected-trait manifest; `traitname` required. |
 | `--ldsc_results FILE` | Required | Python table for `gpca`; GenomicSEM RData for `genomicsem gpca`. |
 | `--outdir DIRECTORY` | Required | QC, PCA, GWAMA and export destination. Use a fresh directory. |
-| `--gpca_input_folder DIRECTORY` | Unset | Existing nine-column per-trait tables. Omit for automatic VCF preparation, or for `--validate_only`. |
+| `--gpca_input_folder DIRECTORY` | Unset | Existing nine-column per-trait tables. Omit for automatic VCF preparation, or for `--validate_only` or `--pc1_only`. |
 | `--source_path FILE` | Bundled `N_weighted_GWAMA.function.1_2_6.R` | Optional trusted R source defining the already-modified `my_GWAMA` or `multivariate_GWAMA` function. Normally unnecessary. |
 | `--splitby_chr MODE` | `split` | `split` for chromosomes 1–22; `nosplit` for one whole-genome file per trait. |
 | `--n_cores INTEGER` | `0` | Chromosome GWAMA workers; `0` selects automatically, positive values request workers. Also controls final export concurrency; [details below](#cpu-workers-and-numerical-threads). |
-| `--validate_only` | Off | Run LDSC QC/PCA and audits; skip preparation, GWAMA and export. |
+| `--validate_only` | Off | Assess PC1 and CTI separately; required failures return an error. Skip preparation, GWAMA and export. |
+| `--pc1_only` | Off | Save valid PC1, report CTI failure without blocking PC1; skip preparation, GWAMA and export. Mutually exclusive with --validate_only. |
+| `--cti_action` | `error` | CTI failure stops combined runs. Explicit explore_drop enables exploratory exclusions and rechecks both matrices. |
+| `--max_cti_drop_fraction` | `0` | Fraction in [0,1); exploration requires a positive value. Not a biological cutoff. |
 | `--allow_missing_traits` | Off | Remove manifest traits absent from LDSC input with an audit; otherwise stop. Distinct from missing/failed estimates among present traits. |
 | `--failed_ldsc_action ACTION` | `error` | `error` stops on invalid selected traits/pairs; `drop_traits` applies audited deterministic trait removal to seek a usable subset. |
 | `--h2_z_warn_threshold FLOAT` | `2` | Warn for retained h2/SE below this value; finite ≥0. `0` disables. Does not remove traits. |
@@ -1604,9 +1610,11 @@ ldsc-gpca gpca \
   --gwama_output_info "${GWAMA_INFO:?Set a scientifically justified INFO value first}"
 ```
 
-Prepared files go to `<outdir>/gpca_inputs/`. All original manifest traits must
-prepare successfully before R starts, including traits that might later fail
-LDSC QC. `--validate_only` skips preparation. With an existing input folder,
+Prepared files go to `<outdir>/gpca_inputs/`. Combined matrix validation first
+runs in `outdir/matrix_preflight/` and blocks preparation on failure. Preparation
+still uses all supplied manifest VCFs; supply a retained manifest to avoid
+preparing excluded traits. The full run validates again afterward. Both
+`--validate_only` and `--pc1_only` skip preparation. With an existing input folder,
 non-default preparation settings are rejected; prepare new files separately.
 After an R failure, reuse successfully prepared files by explicitly supplying
 their folder on the next run.
@@ -1624,7 +1632,7 @@ their folder on the next run.
 ### All automatic export options
 
 Both GPCA commands run export after successful GWAMA. No separate command is
-needed. `--validate_only` skips it.
+needed. `--validate_only` and `--pc1_only` skip it.
 
 | Option | Default | Meaning / accepted values |
 | --- | --- | --- |
@@ -1687,8 +1695,10 @@ and [pipeline mode](PIPELINE.md#change-filters-pca-and-export-settings).
 | Covariance PCA matrix | Self h2 on diagonal; off-diagonal `selected rg × sqrt(h2_i × h2_j)` | GenomicSEM `S`, on its supplied scales |
 | GWAMA CTI/error covariance | Self `h2_int` on diagonal; pairwise `gcov_int` off-diagonal | GenomicSEM `I` |
 
-CTI must be symmetric and positive definite; it is not the genetic correlation
-matrix. PCA uses symmetric eigendecomposition. PC1 loadings equal the PC1
+CTI must be symmetric and pass the positive-definiteness/conditioning gate
+for combined validation or GWAMA; `--pc1_only` reports CTI numerical failure
+without blocking PC1. CTI is not the genetic correlation matrix. See
+[separate matrix validation](MATRIX_VALIDATION.md) for exact thresholds. PCA uses symmetric eigendecomposition. PC1 loadings equal the PC1
 eigenvector multiplied by the square root of its positive eigenvalue. Required
 trait order is preserved across all matrices, loadings and GWAMA input lists.
 Pairwise P, z and SE are diagnostics, not PCA significance filters or weights.
@@ -1731,7 +1741,8 @@ backend-specific tolerances and removal rules.
 | Weak h2/SE | Warn below `--h2_z_warn_threshold 2`; no removal; `0` disables |
 | Finite off-diagonal abs(rg)>1 | `--rg_out_of_range_action warn`; alternative `error`; never clamp |
 | Substantive negative PCA eigenvalues | `--negative_eigen_action warn`; alternative `error`; relative tolerance `1e-8` |
-| Asymmetric/structurally invalid matrices or non-positive-definite CTI | Stop; no nearest-positive-definite repair |
+| Asymmetric/structurally invalid matrices | Stop; no imputation or silent repair |
+| Non-positive-definite or ill-conditioned CTI | Stop combined validation/GWAMA; report without blocking PC1-only. Explicit explore_drop is a separate exploratory policy. |
 | PC1 eigenvalue | Must be finite and positive |
 
 Python-specific defaults are self-rg tolerance **0.01**, duplicate absolute tolerance
@@ -1787,8 +1798,14 @@ The PC1 trait contribution is `100 × (PC1 eigenvector coefficient)²`. It sums 
 causal contribution or the final SNP-specific GWAMA weight, which also depends
 on sample size. Interpret effect signs relative to the recorded PC orientation.
 
+Both backends also write separate PC1/CTI status, assessment history, assessed
+and final retained manifests, explicit CTI exclusions, and PC1 selection
+sensitivity. See the [matrix-validation output catalog](MATRIX_VALIDATION.md#outputs-and-failure-semantics).
+
 Python-specific audits include:
 
+- `Python_LDSC_Retained_Results.csv` (or `.tsv`/`.txt`): unchanged source columns
+  and numerical text for the final retained traits; use with `GenomicPCA_Retained_Traits.csv`
 - `Python_LDSC_Input_Validation_Summary.csv`
 - `Python_LDSC_Heritability_Scales.csv`, `Python_LDSC_Self_Pair_QC.csv`
 - `Python_LDSC_RG_SE_Matrix.csv`, `Python_LDSC_Intercept_SE_Matrix.csv`

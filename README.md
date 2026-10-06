@@ -19,6 +19,7 @@ and its modified GWAMA weighting. It reports all principal components, but
 - [Run LDSC separately](#run-ldsc-separately)
 - [Use completed LDSC results](#use-completed-ldsc-results)
 - [Prepare inputs separately](#prepare-inputs-separately)
+- [Validate PC1 and CTI separately](#validate-pc1-and-cti-separately)
 - [Choose analysis settings](#choose-analysis-settings)
 - [Find and interpret results](#find-and-interpret-results)
 - [Validation and reproducibility](#validation-and-reproducibility)
@@ -44,7 +45,9 @@ statistics using PC1 loadings and the intercept matrix, which accounts for
 correlation between trait-level errors, including sample overlap.
 
 **Munged files, completed LDSC results and GWAMA inputs are different files.**
-Completed LDSC results are enough for QC and PCA. SNP-level GWAMA also needs
+Completed LDSC results are enough for QC and PCA. PC1 and CTI are assessed
+separately: `--pc1_only` produces PC1 without GWAMA, whereas `--validate_only`
+requires both matrix checks to pass. Neither requires SNP-level tables. SNP-level GWAMA also needs
 per-trait tables containing alleles, frequency, N and association statistics.
 
 ## Install and activate
@@ -143,7 +146,8 @@ Do not directly reuse Python-munged files for GenomicSEM LDSC.
 | GenomicSEM LDSC `genomicsem_LDSC.RData`, containing the final `LDSCoutput` | [`ldsc-gpca genomicsem gpca`](docs/GENOMICSEM_GPCA.md) |
 
 Both require a trait-selection manifest and `--ldsc_results`. Add `--validate_only`
-for QC/PCA alone. **Without that flag, GWAMA also runs** and needs per-trait SNP
+for combined PC1/CTI validation, or `--pc1_only` for PC1 output with nonblocking
+CTI diagnostics. **Without either flag, GWAMA also runs** and needs per-trait SNP
 tables through `--gpca_input_folder`, or manifest VCF paths for automatic preparation.
 Completed LDSC estimates alone do not supply the SNP-level GWAMA data.
 See [the QC/PCA and GWAMA examples](#use-completed-ldsc-results).
@@ -351,7 +355,10 @@ review `gpca/GenomicPCA_PC1_Weights_Used.csv`. A full successful run also create
 `gpca/four_traits_GWAMA_combined_results.txt.gz` and
 `gpca/harmonisation_input/four_traits_GPCA_inputs.txt.gz`.
 
-To run LDSC and PCA only, replace the INFO line with `--validate_only`.
+To run LDSC and combined PC1/CTI validation without GWAMA, replace the INFO line
+with `--validate_only`. Use `--pc1_only` instead when only PC1 is required; a CTI
+numerical failure is then reported without blocking PC1. Both modes still run
+upstream LDSC and skip SNP export.
 For optional INFO/MAF filters, chi-square cutoffs, correlation methods, worker
 counts and export settings, see [analysis settings](#choose-analysis-settings)
 and the [pipeline recipes](docs/PIPELINE.md#change-filters-pca-and-export-settings).
@@ -439,9 +446,10 @@ These GPCA commands select the reader for the completed result format.
 Pass the completed result with `--ldsc_results`. For a full GWAMA run, use
 `--gpca_input_folder` for prepared tables, or include `vcf_files` in the manifest
 and omit that option to prepare them automatically. The command saves matrices,
-PC1 weights, QC reports and SNP results. Add `--validate_only` if you want only
-QC and PCA; this skips preparation, GWAMA and SNP export. Validation-only runs
-do not check per-SNP GWAMA input tables.
+PC1 weights, QC reports and SNP results. Add `--validate_only` to assess both
+PC1 and CTI without GWAMA, or `--pc1_only` to save PC1 even if CTI fails its
+numerical check. Both skip preparation, GWAMA and SNP export and do not check
+per-SNP GWAMA input tables. Input-integrity checks remain mandatory.
 
 ### Check estimates and calculate PCA
 
@@ -501,7 +509,8 @@ This recalculates QC/PCA from the saved estimates and runs GWAMA; it does not
 rerun LDSC. Repeat any nondefault PCA/QC options used in the check. For GenomicSEM LDSC
 results, use `genomicsem gpca` with the final RData file and your prepared folder;
 see the [GenomicSEM GWAMA example](docs/GENOMICSEM_GPCA.md#run-pc1-gwama).
-If a previous run used `--validate_only`, GWAMA inputs may still need preparation.
+If a previous run used `--validate_only` or `--pc1_only`, GWAMA inputs may still
+need preparation. A successful PC1-only run does not guarantee an eligible CTI.
 
 For LDSC results produced separately, either [prepare GWAMA tables](#prepare-inputs-separately)
 or include `vcf_files` in the selection manifest and omit `--gpca_input_folder`
@@ -561,6 +570,54 @@ commands retain their [legacy raw export](docs/PREPARE.md#also-write-raw-tables-
 For direct access to the upstream Python scripts, see the
 [raw LDSC commands](docs/REFERENCE.md#raw-ldsc-commands). These bypass the
 package's managed workflow and result collection.
+
+## Validate PC1 and CTI separately
+
+PC1 summarizes the genetic matrix. CTI is the intercept/error covariance matrix
+used by downstream GWAMA. A failure in one is not evidence that the other failed.
+The GPCA module checks both after constructing the matrices and applying the
+requested normalization; it writes separate statuses before enforcing the mode.
+
+| Requested result | Option | Required matrix outcome |
+| --- | --- | --- |
+| PC1 loadings only | `--pc1_only` | PC1 passes; CTI numerical failure is reported but nonblocking. No GWAMA. |
+| Assess readiness for the combined workflow | `--validate_only` | PC1 and CTI pass; no GWAMA or SNP-file validation. |
+| Full PC1 GWAMA | Neither flag | Both pass, followed by SNP-file checks, GWAMA and export. |
+
+For PC1 alone, replace `--validate_only` in either completed-LDSC example with
+`--pc1_only`. These flags are mutually exclusive. Both backends and pipeline
+support them; pipeline still runs extraction, munging and LDSC first.
+
+**Trait exclusion is a separate, explicit policy.** Default `--cti_action error`
+stops combined validation/GWAMA on CTI failure. For an exploratory subset:
+
+```bash
+ldsc-gpca gpca \
+  --input /data/selected_traits.csv \
+  --ldsc_results /results/python_ldsc/ldsc_results.csv \
+  --outdir /results/exploratory_cti_subset \
+  --validate_only \
+  --cti_action explore_drop \
+  --max_cti_drop_fraction 0.01
+```
+
+The example permits at most 1% of traits entering CTI assessment to be excluded;
+this is a chosen limit, not a validated biological cutoff. The default limit is
+zero and exploration requires an explicit positive fraction below 1. The
+procedure ranks participation in problematic CTI eigenvectors, removes one
+trait, and rechecks **both matrices** on the same retained set. It reports PC1
+loading changes and stops if the limit is exhausted or fewer than two traits
+would remain. It does not prove that removed traits were faulty or find a
+guaranteed minimum exclusion set. Original estimates remain unchanged.
+
+`--failed_ldsc_action` still concerns missing/invalid estimates. It does not
+activate CTI exclusions. `--negative_eigen_action warn` reports negative
+**genetic-matrix** eigenvalues anywhere while permitting valid PC1;
+`error` blocks substantive negative eigenvalues even when PC1 is computable.
+Neither option automatically repairs a matrix. Low h2/SE remains diagnostic.
+
+Read the [complete validation policy, numerical thresholds, failure behavior and
+output definitions](docs/MATRIX_VALIDATION.md) before adopting a selected subset.
 
 ## Choose analysis settings
 
@@ -663,8 +720,8 @@ units. Only PC1 is used for GWAMA; other components are reported for inspection.
 - Malformed numeric text fails before heritability normalization, including
   with `--failed_ldsc_action drop_traits`. Documented missing values remain
   eligible for explicit removal; a parse error is not an estimation failure.
-- Matrices and trait ordering must agree. CTI must be positive definite for
-  GWAMA. A PC1 QC pass does not prove the full GWAMA/export run succeeded.
+- Matrices and trait ordering must agree. CTI must pass the positive-definiteness and conditioning gate for
+  combined validation/GWAMA. PC1-only reports CTI failure without blocking PC1. A PC1 QC pass does not prove the full GWAMA/export run succeeded.
 - GWAMA results undergo numerical QC before successful status or export. Zero
   available weight, nonfinite BETA/Z/P, nonpositive or nonfinite SE/N, or P
   outside `[0,1]` fail the run. P underflow to zero remains valid. Raw results
@@ -710,7 +767,10 @@ removals before interpreting loadings or SNP associations.
 | `gpca/GenomicPCA_Correlation_Matrix_Used.csv`, `GenomicPCA_PCA_Matrix_Used.csv`, `GenomicPCA_CTI_Used.csv` | Exact correlation, selected PCA and intercept matrices used. Covariance mode also reports its covariance matrix. |
 | `gpca/GenomicPCA_PC1_Weights_Used.csv`; `GenomicPCA_PC1_QC.csv` | Trait loadings, their order and numerical PC1 checks. `PASS` here is not whole-run success. |
 | `gpca/GenomicPCA_Selected_Traits_Eigenvalues.csv`; `GenomicPCA_All_PCs_Variance_Explained.csv` | Eigenvalues and variance shares of the selected genetic matrix, not phenotypic variance explained or SNP heritability. Review negative eigenvalues before interpretation. |
-| `gpca/GWAMA_Run_Status.csv` | Success/failure for chromosome or whole-genome GWAMA jobs; validation-only runs do not run these jobs. |
+| `gpca/GenomicPCA_Matrix_Validation.csv`; `GenomicPCA_Matrix_Validation_History.csv` | Separate PC1/CTI outcomes, eigenvalue gap and CTI conditioning; history includes every exploratory exclusion. |
+| `gpca/GenomicPCA_Retained_Traits.csv`; `GenomicPCA_CTI_Excluded_Traits.csv` | Final manifest and separately audited exploratory CTI exclusions. Failed attempts only write assessed-trait diagnostics. |
+| `gpca/GenomicPCA_PC1_Selection_Sensitivity*.csv`; `Python_LDSC_Retained_Results.*` | PC1 changes after selection and Python LDSC source rows retained without changing estimates. GenomicSEM writes `GenomicSEM_LDSC_Used.RData`. |
+| `gpca/GWAMA_Run_Status.csv` | Success/failure for chromosome or whole-genome GWAMA jobs; validation-only and PC1-only runs do not run these jobs. |
 | `gpca/{dataset_id}_GWAMA_combined_results.txt.gz` | Full GWAMA columns, sorted by chromosome/position, plus `count_question,count_plus,count_minus` from `Direction`. |
 | `gpca/harmonisation_input/{dataset_id}_GPCA_inputs.txt.gz`; `gpca/{dataset_id}_postprocess.json` | Selected-column summary and export audit: sources, row counts, overrides and timings. |
 
@@ -731,6 +791,11 @@ Passing these checks does not establish scientific calibration of BETA/SE/N_eff.
 See the [full output catalog](docs/REFERENCE.md#find-and-interpret-the-outputs).
 
 ## Validation and reproducibility
+
+The [PC1/CTI validation evidence](tests/MATRIX_PREFLIGHT_VALIDATION.md) documents
+fixture tests and real-data replay of the new validation and selection modes,
+including expected failures and independent matrix/PC1 comparisons. These checks
+do not rerun LDSC or establish GWAMA calibration.
 
 The [v0.8.0 VCF-only pipeline validation](tests/PIPELINE_VCF_VALIDATION.md) covers
 the current input contract, regression tests and before/after routing checks.
@@ -765,6 +830,8 @@ outputs because package-only updates do not synchronize external runtimes.
 | Missing VCF/table fields | Match the fields to the actual stage above. Genotype VCFs, Python extraction VCFs, GenomicSEM raw tables and GWAMA inputs are not interchangeable. |
 | Trait absent, order mismatch or incomplete pairs | Match exact trait names, use the retained manifest after removal, and obtain all self/unordered pairs. Reordering or dropping rows cannot supply missing estimates. |
 | Split input files missing | Use the matching layout in preparation and GPCA. Default split requires every chromosome 1–22 for each trait; use `nosplit` for one autosomal file per trait. |
+| PC1 passes but CTI fails | Use `--pc1_only` only if PC1 loadings are your endpoint. Combined validation/GWAMA requires CTI to pass; exploratory exclusion needs `--cti_action explore_drop` and an explicit limit. Review both reports and sensitivity. |
+| Negative eigenvalues in later PCs | Default `--negative_eigen_action warn` does not block an otherwise valid PC1. `error` is a stricter whole-genetic-matrix policy; it never removes traits automatically. |
 | Invalid h2, genetic matrix or CTI | Inspect pair/trait QC and scale/N choices. Do not fill missing estimates, clamp rg or substitute a repaired matrix to bypass the error. Use documented removal/error policies only with justification. |
 | Pipeline output directory already exists | Use a new directory. Pipeline has no automatic resume mode; preserve the failed run and reuse completed stages explicitly. |
 | Interrupted Python LDSC | Standalone `ldsc --restart` can reuse batches whose input/reference hashes, settings and runtime/output provenance still match. Failed or changed batches rerun. See [restart rules](docs/PYTHON_LDSC.md#reuse-munged-files-or-restart). |
@@ -789,7 +856,8 @@ ldsc-gpca genomicsem gpca --help
 ```
 
 Managed flags use underscores. Enable switches with the flag alone, such as
-`--validate_only`. Pipeline and both GPCA commands also provide `--prepare_help`
+`--validate_only` or `--pc1_only`. Help includes a PC1/CTI validation section.
+Pipeline and both GPCA commands also provide `--prepare_help`
 and `--postprocess_help`. For complete option/default tables, use the workflow
 guides linked in [Choose a workflow](#choose-a-workflow).
 
@@ -798,6 +866,8 @@ guides linked in [Choose a workflow](#choose-a-workflow).
 - [Docker build/run guide](DOCKER.md) and [Nextflow image/QC examples](examples/nextflow/README.md).
   The Nextflow examples demonstrate tool checks and GPCA QC, not the full
   analysis pipeline; reconcile their local image tags with the image you build.
+- [PC1/CTI validation evidence](tests/MATRIX_PREFLIGHT_VALIDATION.md), including
+  aggregate real-data results, reproducibility checks and interpretation limits.
 - [Current pipeline validation](tests/PIPELINE_VCF_VALIDATION.md) and
   [upstream source attribution](docs/REFERENCE.md#sources-and-license).
 - [GitHub Issues](https://github.com/JIBINJOHNV/ldsc-gpca/issues) for reproducible

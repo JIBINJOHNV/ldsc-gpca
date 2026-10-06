@@ -317,3 +317,30 @@ resolve_ldsc_trait_order <- function(ldsc_rows, manifest_traits,
     missing_traits = missing_table
   )
 }
+
+# Keep source column names and numerical text, including unused extra columns.
+# Like the streaming reader, this requires one physical line per CSV/TSV record.
+export_retained_ldsc <- function(path, traits, outdir, chunk_size = 250000L) {
+  input <- open_ldsc_connection(path)
+  on.exit(close(input))
+  header <- readLines(input, n = 1L, warn = FALSE)
+  separator <- detect_delimiter(header)
+  extension <- if (separator == ",") "csv" else if (separator == "\t") "tsv" else "txt"
+  target <- file.path(outdir, paste0("Python_LDSC_Retained_Results.", extension))
+  partial <- paste0(target, ".partial")
+  output <- file(partial, "wt")
+  on.exit({close(output); if (file.exists(partial)) unlink(partial)}, add = TRUE)
+  writeLines(header, output)
+  repeat {
+    lines <- readLines(input, n = chunk_size, warn = FALSE)
+    if (!length(lines)) break
+    identifiers <- fread(text = paste(c(header, lines), collapse = "\n"), sep = separator,
+      select = c("p1", "p2"), colClasses = "character", na.strings = NULL, showProgress = FALSE)
+    if (nrow(identifiers) != length(lines)) stop("Retained export requires one record per physical line.", call. = FALSE)
+    keep <- trimws(identifiers$p1) %chin% traits & trimws(identifiers$p2) %chin% traits
+    writeLines(lines[keep], output)
+  }
+  flush(output)
+  if (!file.rename(partial, target)) stop("Cannot publish retained LDSC export.", call. = FALSE)
+  invisible(target)
+}

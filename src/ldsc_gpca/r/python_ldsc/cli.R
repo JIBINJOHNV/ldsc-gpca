@@ -46,7 +46,7 @@ colorize_cli_help <- function(help_text, enabled = TRUE) {
   group_headings <- c(
     "options:",
     "Required inputs:",
-    "GWAMA inputs (not required with --validate_only):",
+    "GWAMA inputs (not required with --validate_only or --pc1_only):",
     "Trait and failed-result handling:",
     "QC comparison thresholds:",
     "PCA settings:",
@@ -146,7 +146,8 @@ parse_command_line <- function() {
       "IMPORTANT DEFAULTS\n",
       "  Extra LDSC traits are ignored. Missing or invalid selected values stop\n",
       "  the run. No LDSC value is imputed or silently clamped. Use\n",
-      "  --failed_ldsc_action drop_traits only when automatic removal is wanted.\n\n",
+      "  --failed_ldsc_action drop_traits only for missing/invalid estimates.\n",
+      "  CTI exclusions require --cti_action explore_drop and an explicit limit.\n\n",
       "VALIDATION-ONLY EXAMPLE\n",
       "  Rscript gpsca_gwama_python_ldsc.r \\\n",
       "    --input selected_traits.csv \\\n",
@@ -161,7 +162,7 @@ parse_command_line <- function() {
 
   required_inputs <- parser$add_argument_group("Required inputs")
   gwama_inputs <- parser$add_argument_group(
-    "GWAMA inputs (not required with --validate_only)"
+    "GWAMA inputs (not required with --validate_only or --pc1_only)"
   )
   trait_handling <- parser$add_argument_group("Trait and failed-result handling")
   qc_thresholds <- parser$add_argument_group("QC comparison thresholds")
@@ -206,7 +207,7 @@ parse_command_line <- function() {
     default = NULL,
     metavar = "DIRECTORY",
     help = paste("Directory containing the nine-column per-trait GWAMA input files.",
-      "Default: unset; package CLI prepares from VCF unless --validate_only.",
+      "Default: unset; package CLI prepares from VCF unless --validate_only or --pc1_only.",
       "Required for GWAMA when calling R directly.")
   )
   gwama_inputs$add_argument(
@@ -241,7 +242,7 @@ parse_command_line <- function() {
     help = paste(
       "For missing/non-finite/invalid selected pairs: 'error' stops;",
       "'drop_traits' removes traits until a complete valid subset remains.",
-      "No estimates are imputed. Default: error."
+      "No estimates are imputed; this does not enable numerical CTI exclusions. Default: error."
     )
   )
 
@@ -369,7 +370,7 @@ parse_command_line <- function() {
     default = "warn",
     help = paste(
       "Warn or stop for substantive negative selected-PCA-matrix",
-      "eigenvalues. Raw values are reported. Default: warn."
+      "eigenvalues anywhere, not just PC1. No trait removal or CTI repair; invalid PC1 always stops. Default: warn."
     )
   )
   diagnostic_actions$add_argument(
@@ -383,11 +384,12 @@ parse_command_line <- function() {
     )
   )
 
+  add_matrix_validation_options(parser)
   execution$add_argument(
     "--validate_only",
     action = "store_true",
     default = FALSE,
-    help = "Run LDSC QC and PCA and write audit files, but do not run GWAMA."
+    help = "Assess PC1 and CTI separately and write audits without GWAMA; required-check failures return an error."
   )
   execution$add_argument(
     "--n_cores",
@@ -437,6 +439,7 @@ parse_command_line <- function() {
 }
 
 validate_cli_paths <- function(args) {
+  args <- validate_matrix_options(args)
   args$splitby_chr <- tolower(trimws(args$splitby_chr))
 
   if (!file.exists(args$input)) {
@@ -445,9 +448,9 @@ validate_cli_paths <- function(args) {
   if (!file.exists(args$ldsc_results)) {
     stop(glue("Python LDSC results not found: {args$ldsc_results}"), call. = FALSE)
   }
-  if (!isTRUE(args$validate_only)) {
+  if (!isTRUE(args$validate_only) && !isTRUE(args$pc1_only)) {
     if (is.null(args$gpca_input_folder) || !nzchar(args$gpca_input_folder)) {
-      stop("--gpca_input_folder is required unless --validate_only is used.", call. = FALSE)
+      stop("--gpca_input_folder is required unless --validate_only or --pc1_only is used.", call. = FALSE)
     }
     if (!dir.exists(args$gpca_input_folder)) {
       stop(

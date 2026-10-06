@@ -17,6 +17,8 @@ from .ldsc import ldsc_parser
 
 
 COMMON_GPCA = {
+    'cti_action': (str, 'error', ['error', 'explore_drop'], 'CTI policy: stop or explicit exploratory trait exclusion; rechecks PC1 and CTI.'),
+    'max_cti_drop_fraction': (float, 0, None, 'Maximum CTI exclusion fraction; explore_drop requires a positive value <1. Default: 0.'),
     'source_path': (str, None, None, 'Optional already-modified GWAMA source. Default: bundled GWAMA function.'),
     'splitby_chr': (str, 'split', ['split', 'nosplit'], 'GWAMA file layout.'),
     'failed_ldsc_action': (str, 'error', ['error', 'drop_traits'], 'GPCA failed-estimate policy; dropping traits changes PC1.'),
@@ -68,8 +70,8 @@ def build_parser(backend='python'):
   Bundled GWAMA requires a justified --gwama_output_info for final export.
   --outdir must not exist. Writes prepare/, ldsc/, gpca/, manifests/ and
     Pipeline_Run_Status.json. Existing module outputs/headers are unchanged.
-  --validate_only still RUNS VCF extraction, munging, LDSC and PCA. It skips
-    GWAMA/export. GWAMA preparation runs only if --write_munge_inputs is requested.
+  --validate_only and --pc1_only still RUN VCF extraction, munging, LDSC and PCA. Both skip
+    GWAMA/export. PC1-only reports CTI failure without blocking PC1. GWAMA preparation runs only if --write_munge_inputs is requested.
   --chisq_max: Python accepts a positive integer or auto; GenomicSEM a positive
     number. Keep Z^2 <= cutoff independently per trait for LDSC only.
     Omitted: Python filter disabled; GenomicSEM automatic rule.
@@ -83,6 +85,7 @@ def build_parser(backend='python'):
     execution = parser.add_argument_group('Pipeline execution')
     execution.add_argument('--ldsc_backend', choices=['python', 'genomicsem'], default=backend,
                         help='LDSC implementation; input contracts follow the selected backend.')
+    execution.add_argument('--pc1_only', action='store_true', help='Run through PC1 without GWAMA/export; CTI failure is nonblocking. Still runs LDSC. Default: off.')
     execution.add_argument('--validate_only', action='store_true',
                         help='Run upstream LDSC and GPCA QC/PCA, without GWAMA/export.')
     execution.add_argument('--allow_missing_traits', action='store_true',
@@ -193,10 +196,19 @@ def resolve_inputs(opts):
             continue
         if value is not None and (not math.isfinite(value) or value <= 0 or (name == 'p_min' and value >= 1)):
             raise ValueError('--' + name + ' is outside its valid positive finite range.')
+    if opts.pc1_only and opts.validate_only:
+        raise ValueError('Choose --pc1_only or --validate_only, not both.')
+    fraction = opts.max_cti_drop_fraction
+    if not math.isfinite(fraction) or not 0 <= fraction < 1:
+        raise ValueError('--max_cti_drop_fraction must be finite and in [0,1).')
+    if opts.cti_action == 'explore_drop' and (fraction <= 0 or opts.pc1_only):
+        raise ValueError('explore_drop requires a positive exclusion limit and cannot be used with --pc1_only.')
+    if opts.cti_action == 'error' and fraction != 0:
+        raise ValueError('--max_cti_drop_fraction requires --cti_action explore_drop.')
     validate_overrides(opts.n_eff, opts.info_value)
     if opts.dataset_id is not None:
         filename_component(opts.dataset_id)
-    if not opts.validate_only and opts.source_path is None and opts.info_value is None:
+    if not (opts.validate_only or opts.pc1_only) and opts.source_path is None and opts.info_value is None:
         raise ValueError('Bundled GWAMA omits INFO; full pipeline export requires a scientifically justified --gwama_output_info.')
     for name in ('ld_ref', 'ld_weights', 'hm3', 'source_path'):
         value = getattr(opts, name, None)
@@ -236,7 +248,7 @@ def resolve_inputs(opts):
     out = Path(opts.outdir).resolve()
     if out.exists():
         raise ValueError('Pipeline --outdir must not exist; choose a fresh directory (no automatic resume/overwrite).')
-    return out, columns, rows, not opts.validate_only or opts.write_munge_inputs
+    return out, columns, rows, not (opts.validate_only or opts.pc1_only) or opts.write_munge_inputs
 
 
 def prepare_hm3(source, destination):
@@ -349,7 +361,9 @@ def run_pipeline(opts):
             value = getattr(opts, name)
             if value is not None:
                 args += ['--' + name, str(value)]
-        if opts.validate_only:
+        if opts.pc1_only:
+            args.append('--pc1_only')
+        elif opts.validate_only:
             args.append('--validate_only')
         else:
             args += ['--gpca_input_folder', str(folder)]
@@ -358,7 +372,7 @@ def run_pipeline(opts):
         dataset = opts.dataset_id or out.name
         args += optional_actions(postprocess_parser(), opts, omit={'postprocess_help'}, overrides={'dataset_id': dataset})
         required = [gpca_dir/'GenomicPCA_PC1_Weights_Used.csv']
-        if not opts.validate_only:
+        if not (opts.validate_only or opts.pc1_only):
             required += [gpca_dir/'GWAMA_Run_Status.csv', gpca_dir/f'{dataset}_postprocess.json',
                          gpca_dir/f'{dataset}_GWAMA_combined_results.txt.gz',
                          gpca_dir/'harmonisation_input'/f'{dataset}_GPCA_inputs.txt.gz']
@@ -383,7 +397,7 @@ def main(argv=None):
         from .prepare import add_prepare_options
         help_parser = HelpParser(prog=parser.prog, add_help=False,
             description='Automatic preparation of GWAMA SNP tables from pipeline VCF inputs.',
-            epilog='Full pipeline runs always prepare these tables. --validate_only skips them unless '
+            epilog='Full pipeline runs always prepare these tables. --validate_only/--pc1_only skip them unless '
                    '--write_munge_inputs is requested. GWAMA preparation requires FORMAT AF,ES,SE,LP,NEF; '
                    'LDSC also needs the selected backend VCF fields. See pipeline --help and the VCF input guide.')
         add_prepare_options(help_parser)

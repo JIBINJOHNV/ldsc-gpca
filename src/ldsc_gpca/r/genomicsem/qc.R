@@ -1,6 +1,6 @@
 # genomicsem/qc.R: function bodies preserved from the original workflow.
 
-qc_genomicsem <- function(x, traits, args, audit) {
+qc_genomicsem <- function(x, traits, args, audit, defer_cti = FALSE) {
   audit$traits <- traits
   x <- validate_genomicsem_structure(x)
   absent <- setdiff(traits, colnames(x$S))
@@ -62,7 +62,7 @@ qc_genomicsem <- function(x, traits, args, audit) {
   expected <- x$S / sqrt(outer(diag(x$S), diag(x$S)))
   if (max(abs(expected - x$S_Stand)) > 1e-8 * max(1, max(abs(expected))))
     stop("S_Stand is inconsistent with standardized S; check RData provenance.", call. = FALSE)
-  tryCatch(chol(x$I), error = function(e) stop("Selected CTI is not positive definite; no automatic repair was applied.", call. = FALSE))
+  if (!defer_cti) tryCatch(chol(x$I), error = function(e) stop("Selected CTI is not positive definite; no automatic repair was applied.", call. = FALSE))
   for (trait in selected) {
     z <- x$S[trait, trait] / hse[trait, trait]
     if (args$h2_z_warn_threshold > 0 && z < args$h2_z_warn_threshold)

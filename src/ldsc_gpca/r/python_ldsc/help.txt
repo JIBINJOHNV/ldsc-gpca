@@ -19,11 +19,12 @@ Required inputs:
   --outdir DIRECTORY            Directory for QC audit files, matrices, weights, and GWAMA
                                 results. [Required; no default.]
 
-GWAMA inputs (not required with --validate_only):
+GWAMA inputs (not required with --validate_only or --pc1_only):
   --gpca_input_folder DIRECTORY
                                 Directory containing the nine-column per-trait GWAMA input
                                 files. Default: unset; package CLI prepares from VCF unless
-                                --validate_only. Required for GWAMA when calling R directly.
+                                --validate_only or --pc1_only. Required for GWAMA when calling R
+                                directly.
 
   --source_path GWAMA_FUNCTION.R
                                 Optional custom modified GWAMA R source. Default: bundled
@@ -40,8 +41,9 @@ Trait and failed-result handling:
 
   --failed_ldsc_action CHOICE   For missing/non-finite/invalid selected pairs: 'error' stops;
                                 'drop_traits' removes traits until a complete valid subset
-                                remains. No estimates are imputed. Default: error. [Choices:
-                                error, drop_traits.]
+                                remains. No estimates are imputed; this does not enable
+                                numerical CTI exclusions. Default: error. [Choices: error,
+                                drop_traits.]
 
 QC comparison thresholds:
   --duplicate_tolerance FLOAT   Maximum absolute difference between duplicate orientations for
@@ -103,16 +105,17 @@ Diagnostic warning/error controls:
 
   --negative_eigen_action CHOICE
                                 Warn or stop for substantive negative selected-PCA-matrix
-                                eigenvalues. Raw values are reported. Default: warn. [Choices:
-                                warn, error.]
+                                eigenvalues anywhere, not just PC1. No trait removal or CTI
+                                repair; invalid PC1 always stops. Default: warn. [Choices: warn,
+                                error.]
 
   --matrix_eigen_tolerance FLOAT
                                 Relative cutoff separating substantive negative eigenvalues from
                                 floating-point noise. Default: 1e-8.
 
 Execution and performance:
-  --validate_only               Run LDSC QC and PCA and write audit files, but do not run GWAMA.
-                                [Default: off.]
+  --validate_only               Assess PC1 and CTI separately and write audits without GWAMA;
+                                required-check failures return an error. [Default: off.]
 
   --n_cores INTEGER             Workers for chromosome-split GWAMA. 0 selects up to 22 based on
                                 available physical cores. Default: 0. Failed jobs retry once in
@@ -124,6 +127,20 @@ Execution and performance:
   --color CHOICE                Help-message colour: auto for terminals, always to force it, or
                                 never to disable it. NO_COLOR is respected in auto mode.
                                 Default: auto. [Choices: auto, always, never.]
+
+PC1 and CTI validation:
+  --pc1_only                    Save PC1 and both validation reports without GWAMA. CTI failure
+                                is nonblocking; invalid PC1 still stops. Default: off.
+
+  --cti_action CHOICE           CTI failure policy: error stops combined validation/GWAMA;
+                                explore_drop tries audited eigenvector-based trait exclusions
+                                and rechecks BOTH matrices. No matrix repair. Default: error.
+                                [Choices: error, explore_drop.]
+
+  --max_cti_drop_fraction FLOAT
+                                Maximum fraction of traits entering CTI assessment to exclude (0
+                                <= value < 1). explore_drop requires an explicit positive limit.
+                                Not a biological cutoff. Default: 0.
 
 INPUT FILE FORMATS
   Manifest: comma-separated CSV with a header row.
@@ -170,7 +187,8 @@ PC1 SIGN CONVENTION
 IMPORTANT DEFAULTS
   Extra LDSC traits are ignored. Missing or invalid selected values stop
   the run. No LDSC value is imputed or silently clamped. Use
-  --failed_ldsc_action drop_traits only when automatic removal is wanted.
+  --failed_ldsc_action drop_traits only for missing/invalid estimates.
+  CTI exclusions require --cti_action explore_drop and an explicit limit.
 
 VALIDATION-ONLY EXAMPLE
   Rscript gpsca_gwama_python_ldsc.r \

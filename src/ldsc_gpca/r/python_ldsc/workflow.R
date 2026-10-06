@@ -2,6 +2,8 @@
 
 gpsca_main <- function() {
   args <- validate_cli_paths(parse_command_line())
+  if (file.exists(file.path(args$outdir, "GenomicPCA_Matrix_Validation.csv")))
+    stop("Existing matrix assessment found; use a fresh --outdir to preserve results.", call. = FALSE)
   status_path <- file.path(args$outdir, "GenomicPCA_Run_Status.csv")
   write_status <- function(status, error = "") fwrite(data.table(
     Status = status, Failed_LDSC_Action = args$failed_ldsc_action, Error = error), status_path)
@@ -11,7 +13,7 @@ gpsca_main <- function() {
     Error = "GWAMA has not started"), gwama_path)
   tryCatch({
     gpsca_analysis(args)
-    write_status(if (isTRUE(args$validate_only)) "validated" else "completed")
+    write_status(if ((isTRUE(args$validate_only) || isTRUE(args$pc1_only))) "validated" else "completed")
   }, error = function(e) {
     write_status("failed", conditionMessage(e))
     status <- fread(gwama_path)
@@ -24,6 +26,7 @@ gpsca_main <- function() {
 
 # Analysis uses only the retained manifest order and unchanged statistical code.
 gpsca_analysis <- function(args) {
+  args <- validate_matrix_options(args)
   manifest_trait_order <- read_trait_manifest(args$input)
 
   message(glue(
@@ -86,7 +89,8 @@ gpsca_analysis <- function(args) {
     z_consistency_tolerance = args$z_consistency_tolerance,
     z_consistency_action = args$z_consistency_action,
     rg_out_of_range_action = args$rg_out_of_range_action,
-    heritability_scale = selected_heritability_scale
+    heritability_scale = selected_heritability_scale,
+    defer_cti = TRUE
   )
   ldsc$validation_summary$Original_Manifest_Trait_Count <-
     length(manifest_trait_order)
@@ -151,15 +155,28 @@ gpsca_analysis <- function(args) {
     pca_matrix <- correlation_matrix
   }
 
-  pc1 <- compute_pc1(
-    pca_matrix,
-    order,
-    negative_eigen_action = args$negative_eigen_action,
-    matrix_eigen_tolerance = args$matrix_eigen_tolerance,
-    pc1_orientation = args$pc1_orientation,
-    pca_matrix_type = args$pca_matrix,
-    report_dir = args$outdir
-  )
+  assessment <- validate_analysis_matrices(pca_matrix, CTI, order, args)
+  if (length(assessment$traits) != length(order)) {
+    ldsc <- subset_validated_ldsc(ldsc, order, assessment$traits)
+    order <- trait_order <- assessment$traits
+    correlation_matrix <- correlation_matrix[order, order, drop = FALSE]
+    if (!is.null(covariance_matrix)) {
+      covariance_source <- attr(covariance_matrix, "source", exact = TRUE)
+      covariance_matrix <- covariance_matrix[order, order, drop = FALSE]
+      attr(covariance_matrix, "source") <- covariance_source
+    }
+    if (!is.null(genetic_covariance_results)) genetic_covariance_results <-
+      genetic_covariance_results[genetic_covariance_results$Trait_1 %in% order &
+        genetic_covariance_results$Trait_2 %in% order, , drop = FALSE]
+  }
+  CTI <- assessment$CTI
+  pca_matrix <- assessment$pca_matrix
+  pc1 <- assessment$pc1
+  ldsc$validation_summary$Minimum_Intercept_Matrix_Eigenvalue <- assessment$cti$metrics$CTI_Minimum_Eigenvalue
+  ldsc$validation_summary$CTI_Status <- assessment$cti$metrics$CTI_Status
+  ldsc$validation_summary$CTI_Action <- args$cti_action
+  ldsc$validation_summary$CTI_Excluded_Trait_Count <- nrow(assessment$excluded)
+  ldsc$validation_summary$PC1_Only <- args$pc1_only
   pc1$loading_results$Heritability_Scale_Used <-
     ldsc$heritability_scale
   pc1$loading_results$RG_Normalization <- normalization
@@ -197,6 +214,10 @@ gpsca_analysis <- function(args) {
   self_pair_qc$Exclusion_Reason <-
     incomplete_resolution$excluded_traits$Reason[excluded_match]
 
+  self_pair_qc$CTI_Exclusion_Reason <- assessment$excluded$Reason[
+    match(self_pair_qc$Trait, assessment$excluded$Trait)]
+  export_retained_ldsc(args$ldsc_results, order, args$outdir, args$ldsc_chunk_size)
+
   write_analysis_outputs(
     args$outdir,
     ldsc,
@@ -211,15 +232,15 @@ gpsca_analysis <- function(args) {
     genetic_covariance_results
   )
 
-  if (isTRUE(args$validate_only)) {
+  if (isTRUE(args$validate_only) || isTRUE(args$pc1_only)) {
     validation_status <- data.frame(
-      Chromosome = "not_run_validate_only",
+      Chromosome = if (args$pc1_only) "not_run_pc1_only" else "not_run_validate_only",
       RG_Normalization = normalization,
       PCA_Matrix_Type = args$pca_matrix,
       Heritability_Scale_Used = ldsc$heritability_scale,
       Success = NA,
       Output = NA_character_,
-      Error = "GWAMA intentionally skipped by --validate_only",
+      Error = if (args$pc1_only) "GWAMA intentionally skipped by --pc1_only" else "GWAMA intentionally skipped by --validate_only",
       stringsAsFactors = FALSE
     )
     write.csv(

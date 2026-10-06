@@ -7,6 +7,7 @@
 - [When to use this command](#when-to-use-this-command)
 - [Files you need](#files-you-need)
 - [Check results and calculate PCA](#check-results-and-calculate-pca)
+- [Separate PC1 and CTI validation](#separate-pc1-and-cti-validation)
 - [What happens in order](#what-happens-in-order)
 - [Run PC1 GWAMA](#run-pc1-gwama)
 - [Choose the PCA method](#choose-the-pca-method)
@@ -58,6 +59,33 @@ This checks GenomicSEM estimates and writes matrices, PC1 loadings and QC report
 It does not prepare or inspect per-SNP GWAMA tables, run GWAMA or export SNP
 results. Review retained traits and warnings before the full run.
 
+## Separate PC1 and CTI validation
+
+`--validate_only` requires both PC1 and CTI to pass but does not run GWAMA.
+Replace it with `--pc1_only` when PC1 loadings are your endpoint: input integrity
+and PC1 must still pass, while CTI numerical failure is reported without blocking
+PC1. These modes are mutually exclusive and skip GWAMA preparation and export.
+
+Default `--cti_action error` never removes traits for CTI failure. To evaluate an
+exploratory subset, explicitly supply `--cti_action explore_drop` and
+`--max_cti_drop_fraction FLOAT` with a positive value below 1. The default limit
+is zero; the permitted count is the fraction times the entering trait count,
+rounded down. This cannot be combined with `--pc1_only`. Both matrices are
+rechecked after every exclusion. The heuristic is not evidence of faulty traits
+and is not guaranteed to find a smallest exclusion set.
+
+`--negative_eigen_action` concerns negative eigenvalues anywhere in the genetic
+matrix, not CTI. Default `warn` permits an otherwise valid PC1. `error` blocks
+substantive negative eigenvalues even if PC1 passes; it does not remove traits.
+`--failed_ldsc_action` remains the separate missing/invalid-estimate policy.
+
+Review `GenomicPCA_Matrix_Validation.csv`, its iteration history,
+`GenomicPCA_CTI_Excluded_Traits.csv`, `GenomicPCA_Retained_Traits.csv` and the
+`GenomicPCA_PC1_Selection_Sensitivity*.csv` reports. A PC1-only success does not
+establish eligibility for GWAMA. Structural errors can stop before matrices
+exist. See [exact thresholds, examples, failure behavior and all output
+columns](MATRIX_VALIDATION.md).
+
 ## What happens in order
 
 1. Load the GenomicSEM object and validate its matrices and trait names.
@@ -66,12 +94,15 @@ results. Review retained traits and warnings before the full run.
    matrices consistently.
 3. Use GenomicSEM `S_Stand` for correlation PCA (default), or GenomicSEM `S` for
    covariance PCA. Use GenomicSEM `I` for CTI in either case.
-4. Check matrices, calculate PC1 with symmetric eigen decomposition and write
-   QC, eigenvalue and loading reports.
-5. Unless `--validate_only`, run GWAMA on the retained traits' per-SNP tables
+4. Assess PC1 and CTI separately and write both results before enforcing the
+   mode. Explicit CTI selection rechecks both and subsets V/V_Stand consistently.
+5. Unless `--validate_only` or `--pc1_only`, run GWAMA on the retained traits' per-SNP tables
    and automatically combine/export successful current-run results.
 
-Automatic VCF preparation, when needed, occurs before R QC and trait removal.
+Automatic VCF preparation is preceded by combined validation in
+`outdir/matrix_preflight/`; the full run validates again after preparation.
+Preparation uses the supplied VCF manifest; supply a retained manifest to avoid
+preparing excluded traits.
 Only PC1 goes into GWAMA even though eigenvalue reports describe all components.
 Neither GenomicSEM nor Python GPCA runs paLDSC in this package.
 
@@ -158,8 +189,9 @@ These are downstream GPCA policies, separate from GenomicSEM LDSC's initial
 Weak h2/SE is only a warning below 2 by default. Estimated correlations outside
 `[-1,1]` and substantive negative genetic eigenvalues warn by default; their
 options can require an error instead. Values are not clamped and matrices are
-not silently repaired. CTI must be positive definite and PC1's eigenvalue must
-be finite and positive. Any nonpositive-eigenvalue guard used in loadings is
+not silently repaired. Combined validation/GWAMA requires CTI to pass the
+positive-definiteness and conditioning gate; PC1-only reports CTI numerical
+failure without blocking PC1. PC1's eigenvalue must be finite and positive. Any nonpositive-eigenvalue guard used in loadings is
 reported. See [QC interpretation](REFERENCE.md#understand-qc-and-scale-choices).
 
 Chromosome GWAMA jobs retry once before an exhausted failure stops analysis.
@@ -206,7 +238,7 @@ See the [README output checklist](../README.md#find-and-interpret-results) and
 
 Required options have no default. “Off” means omit the flag; include it alone to enable. The tables cover this command, including wrapper preparation/export options.
 
-Preparation settings apply only when VCF preparation runs. Export settings apply only after a full successful GWAMA run; both stages are skipped by `--validate_only`.
+Preparation settings apply only when VCF preparation runs. Export settings apply only after a full successful GWAMA run; both stages are skipped by `--validate_only` or `--pc1_only`.
 
 ### Files and input modes
 
@@ -216,7 +248,7 @@ Preparation settings apply only when VCF preparation runs. Export settings apply
 | `--outdir` | Required | Output directory. Use a fresh directory for a separate analysis. |
 | `--ldsc_results` | Required | Final RData containing LDSCoutput with S, V, I, S_Stand and V_Stand. |
 | `--hm3` | Unset | Tab-separated file with SNP header; needed only for optional --write_munge_inputs. Preparation selects IDs without allele alignment. |
-| `--gpca_input_folder` | Unset | Directory of existing nine-column GWAMA tables. Otherwise prepare from manifest VCFs for a full run. Not needed for ordinary validation-only runs. |
+| `--gpca_input_folder` | Unset | Directory of existing nine-column GWAMA tables. Otherwise prepare from manifest VCFs for a full run. Not needed with --validate_only or --pc1_only. |
 
 ### VCF preparation and file layout
 
@@ -239,14 +271,17 @@ Preparation settings apply only when VCF preparation runs. Export settings apply
 | `--failed_ldsc_action` | `error` | GPCA: `error` or `drop_traits` for invalid/missing estimates. Dropping changes the analysed trait set; no imputation. |
 | `--h2_z_warn_threshold` | `2` | GPCA: warn below this retained-trait h2/SE ratio. Nonnegative; 0 disables. Diagnostic only, never a removal rule. |
 | `--rg_out_of_range_action` | `warn` | GPCA: `warn` or `error` for finite off-diagonal rg outside [−1,1]. Never clamps values. |
-| `--negative_eigen_action` | `warn` | GPCA: `warn` or `error` for substantive negative PCA eigenvalues. No silent matrix repair. |
+| `--negative_eigen_action` | `warn` | Whole genetic matrix: `warn` permits valid PC1; `error` blocks substantive negative eigenvalues. No automatic exclusions or CTI repair. |
 | `--matrix_eigen_tolerance` | `1e-8` | GPCA: positive relative tolerance separating substantive negative eigenvalues from floating-point noise. |
 
 ### Execution
 
 | Option | Default | What it changes |
 | --- | --- | --- |
-| `--validate_only` | Off | Stop after QC/PCA, skipping GWAMA preparation, GWAMA and export. Does not inspect per-SNP tables. |
+| `--validate_only` | Off | Assess both PC1 and CTI; required failures return an error. Skip preparation, GWAMA and export. No SNP-file validation. |
+| `--pc1_only` | Off | Save valid PC1 and report CTI without making CTI numerical failure fatal. Skip GWAMA preparation, execution and export. Mutually exclusive with --validate_only. |
+| `--cti_action` | `error` | Stop on failed CTI; `explore_drop` explicitly enables exploratory eigenvector-based trait exclusions. |
+| `--max_cti_drop_fraction` | `0` | Exclusion fraction in [0,1); explore_drop requires an explicit positive value. At least two traits must remain. |
 | `--source_path` | Bundled modified GWAMA | Optional custom R source defining the expected modified GWAMA function and output interface. Unused in validation-only mode. |
 | `--n_cores` | `0` (automatic) | Nonnegative integer. Automatic split-GWAMA workers use available physical cores, capped by 22 jobs; Windows is sequential. Export auto uses available logical/affinity cores up to 22. Nosplit GWAMA is one job. |
 | `--bcftools` | `bcftools` on PATH | Executable name/path for VCF extraction or preparation; unnecessary when neither runs. |

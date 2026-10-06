@@ -45,7 +45,7 @@ compute_pc1 <- function(pca_matrix, trait_order,
                         matrix_eigen_tolerance = 1e-8,
                         pc1_orientation = c("tutorial", "as_computed"),
                         pca_matrix_type = c("correlation", "covariance"),
-                        report_dir = NULL) {
+                        report_dir = NULL, defer_negative_policy = FALSE) {
   negative_eigen_action <- match.arg(negative_eigen_action)
   pc1_orientation <- match.arg(pc1_orientation)
   pca_matrix_type <- match.arg(pca_matrix_type)
@@ -107,7 +107,7 @@ compute_pc1 <- function(pca_matrix, trait_order,
       "pmax(value, 0) applies only to loading calculation; the matrix itself ",
       "was not altered."
     )
-    if (negative_eigen_action == "error" && any(substantive_negative)) {
+    if (negative_eigen_action == "error" && any(substantive_negative) && !defer_negative_policy) {
       stop(eigen_message, call. = FALSE)
     }
     warning(eigen_message, call. = FALSE)
